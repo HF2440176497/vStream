@@ -16,7 +16,7 @@ static bool RegisterMemOp() {
   bool result = true;
   result &= factory.RegisterMemOpCreator(DevType::CPU, 
     [](int dev_id) {
-      return std::make_unique<MemOp>();
+      return std::make_shared<MemOp>();
     });
   return result;
 }

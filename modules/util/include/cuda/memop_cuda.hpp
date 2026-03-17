@@ -14,10 +14,9 @@ namespace cnstream {
 
 class CudaMemOp : public MemOp {
  public:
-  CudaMemOp();
+  explicit CudaMemOp(int device_id) : device_id_(device_id) {}
   virtual ~CudaMemOp() override;
   
-  explicit CudaMemOp(int device_id) : device_id_(device_id) {}
   int GetDeviceId() const override { return device_id_; }
   std::unique_ptr<CNSyncedMemory> CreateSyncedMemory(size_t size) override;
   std::shared_ptr<void> Allocate(size_t bytes) override;

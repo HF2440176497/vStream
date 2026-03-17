@@ -14,13 +14,13 @@ MemOpFactory& MemOpFactory::Instance() {
 }
 
 bool MemOpFactory::RegisterMemOpCreator(DevType dev_type,
-                                        std::function<std::unique_ptr<MemOp>(int dev_id)> creator) {
+                                        std::function<std::shared_ptr<MemOp>(int dev_id)> creator) {
   std::lock_guard<std::mutex> lock(mutex_);
   auto [it, inserted] = creators_.insert({dev_type, creator});
   return inserted;
 }
 
-std::unique_ptr<MemOp> MemOpFactory::CreateMemOp(DevType dev_type, int dev_id = -1) {
+std::shared_ptr<MemOp> MemOpFactory::CreateMemOp(DevType dev_type = DevType::CPU, int dev_id = -1) {
   std::lock_guard<std::mutex> lock(mutex_);
   auto it = creators_.find(dev_type);
   if (it != creators_.end()) {

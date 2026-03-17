@@ -68,13 +68,13 @@ endif()
 include_directories(${VSTREAM_ROOT_PATH}/3rdparty/libyuv/include)
 
 # Source files
-set(DEMO_SOURCES
+set(DEMO_CUDA_SOURCES
   inspect_mem.cpp
   transfmt_cuda_npp_demo.cu
   transfmt_cuda_kernel_demo.cu
 )
 
-foreach(demo_source ${DEMO_SOURCES})
+foreach(demo_source ${DEMO_CUDA_SOURCES})
     get_filename_component(demo_name ${demo_source} NAME_WE)
     cuda_add_executable(${demo_name} ${demo_source})
     add_dependencies(${demo_name} ${TOOLS_DEMO_CUDA_DEPENDENCIES})

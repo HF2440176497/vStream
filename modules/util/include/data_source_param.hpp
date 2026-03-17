@@ -88,6 +88,11 @@ inline std::string DevType2Str(DevType type) {
   }
 }
 
+inline std::unordered_map<std::string, DevType> dev_type_map = {
+  {"CPU", DevType::CPU},
+  {"CUDA", DevType::CUDA}
+};
+
 /**
  * @brief Gets image plane number by a specified image format.
  * 表示数量，范围为自然数

@@ -35,7 +35,7 @@ class MemOpFactory {
    * @return 注册是否成功
    */
   bool RegisterMemOpCreator(DevType dev_type,
-                           std::function<std::unique_ptr<MemOp>(int dev_id)> creator);
+                           std::function<std::shared_ptr<MemOp>(int dev_id)> creator);
 
   /**
    * @brief 根据设备类型创建MemOp实例
@@ -43,7 +43,7 @@ class MemOpFactory {
    * @param dev_id 设备ID，默认值为-1
    * @return 返回创建的MemOp实例，如果不支持该设备类型则返回nullptr
    */
-  std::unique_ptr<MemOp> CreateMemOp(DevType dev_type, int dev_id);
+  std::shared_ptr<MemOp> CreateMemOp(DevType dev_type, int dev_id);
 
  private:
   MemOpFactory();
@@ -67,7 +67,7 @@ class MemOpFactory {
     }
   };
 
-  std::unordered_map<DevType, std::function<std::unique_ptr<MemOp>(int dev_id)>, DevTypeHash> creators_ {};
+  std::unordered_map<DevType, std::function<std::shared_ptr<MemOp>(int dev_id)>, DevTypeHash> creators_ {};
   std::mutex mutex_;
 };
 

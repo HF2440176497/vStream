@@ -177,7 +177,7 @@ void DataFrame::CopyToSyncMem(DecodeFrame* dec_frame) {
   this->deAllocator_.reset();
 }
 
-// bool CNInferObject::AddAttribute(const std::string& key, const CNInferAttr& value) {
+// bool InferObject::AddAttribute(const std::string& key, const CNInferAttr& value) {
 //   std::lock_guard<std::mutex> lk(attribute_mutex_);
 //   if (attributes_.find(key) != attributes_.end()) return false;
 
@@ -185,7 +185,7 @@ void DataFrame::CopyToSyncMem(DecodeFrame* dec_frame) {
 //   return true;
 // }
 
-// bool CNInferObject::AddAttribute(const std::pair<std::string, CNInferAttr>& attribute) {
+// bool InferObject::AddAttribute(const std::pair<std::string, CNInferAttr>& attribute) {
 //   std::lock_guard<std::mutex> lk(attribute_mutex_);
 //   if (attributes_.find(attribute.first) != attributes_.end()) return false;
 
@@ -193,14 +193,14 @@ void DataFrame::CopyToSyncMem(DecodeFrame* dec_frame) {
 //   return true;
 // }
 
-// CNInferAttr CNInferObject::GetAttribute(const std::string& key) {
+// CNInferAttr InferObject::GetAttribute(const std::string& key) {
 //   std::lock_guard<std::mutex> lk(attribute_mutex_);
 //   if (attributes_.find(key) != attributes_.end()) return attributes_[key];
 
 //   return CNInferAttr();
 // }
 
-// bool CNInferObject::AddExtraAttribute(const std::string& key, const std::string& value) {
+// bool InferObject::AddExtraAttribute(const std::string& key, const std::string& value) {
 //   std::lock_guard<std::mutex> lk(attribute_mutex_);
 //   if (extra_attributes_.find(key) != extra_attributes_.end()) return false;
 
@@ -208,7 +208,7 @@ void DataFrame::CopyToSyncMem(DecodeFrame* dec_frame) {
 //   return true;
 // }
 
-// bool CNInferObject::AddExtraAttributes(const std::vector<std::pair<std::string, std::string>>& attributes) {
+// bool InferObject::AddExtraAttributes(const std::vector<std::pair<std::string, std::string>>& attributes) {
 //   std::lock_guard<std::mutex> lk(attribute_mutex_);
 //   bool ret = true;
 //   for (auto& attribute : attributes) {
@@ -217,7 +217,7 @@ void DataFrame::CopyToSyncMem(DecodeFrame* dec_frame) {
 //   return ret;
 // }
 
-// std::string CNInferObject::GetExtraAttribute(const std::string& key) {
+// std::string InferObject::GetExtraAttribute(const std::string& key) {
 //   std::lock_guard<std::mutex> lk(attribute_mutex_);
 //   if (extra_attributes_.find(key) != extra_attributes_.end()) {
 //     return extra_attributes_[key];
@@ -225,7 +225,7 @@ void DataFrame::CopyToSyncMem(DecodeFrame* dec_frame) {
 //   return "";
 // }
 
-// bool CNInferObject::RemoveExtraAttribute(const std::string& key) {
+// bool InferObject::RemoveExtraAttribute(const std::string& key) {
 //   std::lock_guard<std::mutex> lk(attribute_mutex_);
 //   if (extra_attributes_.find(key) != extra_attributes_.end()) {
 //     extra_attributes_.erase(key);
@@ -233,7 +233,7 @@ void DataFrame::CopyToSyncMem(DecodeFrame* dec_frame) {
 //   return true;
 // }
 
-// StringPairs CNInferObject::GetExtraAttributes() {
+// StringPairs InferObject::GetExtraAttributes() {
 //   std::lock_guard<std::mutex> lk(attribute_mutex_);
 //   return StringPairs(extra_attributes_.begin(), extra_attributes_.end());
 // }
