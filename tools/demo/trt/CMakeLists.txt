@@ -24,13 +24,13 @@ list(APPEND TOOLS_DEMO_TRT_3RDPARTY_LIBS
 
 set(TENSORRT_ROOT $ENV{TENSORRT_ROOT})
 if(NOT TENSORRT_ROOT)
-    set(TENSORRT_ROOT "/usr/local/TensorRT" CACHE PATH "TensorRT root directory")
+    set(TENSORRT_ROOT "/usr" CACHE PATH "TensorRT root directory")
 endif()
 
 # trt include
 find_path(TENSORRT_INCLUDE_DIR NvInfer.h
     HINTS ${TENSORRT_ROOT} ${CUDA_TOOLKIT_ROOT_DIR}
-    PATH_SUFFIXES include
+    PATH_SUFFIXES include include/x86_64-linux-gnu
 )
 
 # trt lib
@@ -63,17 +63,15 @@ endif()
 # Source files
 # 每个源文件生成一个可执行文件
 set(DEMO_TRT_SOURCES
-  builer.cpp
+  builder.cpp
 )
 
 foreach(demo_source ${DEMO_TRT_SOURCES})
     get_filename_component(demo_name ${demo_source} NAME_WE)
-    cuda_add_executable(${demo_name} ${demo_source})
-    add_dependencies(${demo_name} ${TOOLS_DEMO_TRT_DEPENDENCIES})
+    add_executable(${demo_name} ${demo_source})
     target_include_directories(${demo_name} PRIVATE 
         ${TENSORRT_INCLUDE_DIR}
     )
-
     target_link_libraries(${demo_name} 
         ${TOOLS_DEMO_TRT_3RDPARTY_LIBS}
         rt

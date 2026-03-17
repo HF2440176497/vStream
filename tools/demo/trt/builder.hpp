@@ -8,6 +8,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <chrono>
 
 namespace TRT {
 
@@ -66,8 +67,8 @@ class CompileOutput {
   void set_data(const std::vector<uint8_t>& data);
   void set_data(std::vector<uint8_t>&& data);
 
-  CompileOutputType    type;
-  std::string          file;
+  CompileOutputType    type_;
+  std::string          file_;
   std::vector<uint8_t> data_;
 };
 

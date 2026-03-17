@@ -8,8 +8,10 @@
 #include <cublas_v2.h>
 #include <cuda_runtime_api.h>
 
+#include <iostream>
 #include <fstream>
 #include <numeric>
+#include <sstream>
 
 using namespace nvinfer1;
 
@@ -167,10 +169,13 @@ std::string     ModelSource::onnxmodel() const { return onnxmodel_; }
 ModelSourceType ModelSource::type() const { return type_; }
 
 std::string ModelSource::descript() const {
-  if (type_ == ModelSourceType::ONNX)
-    return format("ONNX Model '%s'", onnxmodel_.c_str());
-  else if (type_ == ModelSourceType::ONNXDATA)
-    return format("ONNX Data [%p, %zu bytes]", onnx_data_, onnx_data_size_);
+  if (type_ == ModelSourceType::ONNX) {
+    return "ONNX Model '" + onnxmodel_ + "'";
+  } else if (type_ == ModelSourceType::ONNXDATA) {
+    std::ostringstream oss;
+    oss << "ONNX Data [" << onnx_data_ << ", " << onnx_data_size_ << " bytes]";
+    return oss.str();
+  }
   return "Unknown source type";
 }
 
@@ -206,9 +211,17 @@ bool compile(
   }
 
   // 2. 创建 Network (显式 batch 模式支持动态 shape)
-  const uint32_t explicitBatch = 1U << static_cast<uint32_t>(NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
-  std::shared_ptr<INetworkDefinition> network(builder->createNetworkV2(explicitBatch),
+  // deprecated
+  // const uint32_t explicitBatch = 1U << static_cast<uint32_t>(NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
+
+  if (!config.strict_qdq) {
+    std::cerr << "Warning: Strict QDQ mode is disabled. Not supported." << std::endl;
+    return false;
+  } 
+  const uint32_t strongly_typed_ = 1U << static_cast<uint32_t>(NetworkDefinitionCreationFlag::kSTRONGLY_TYPED);
+  std::shared_ptr<INetworkDefinition> network(builder->createNetworkV2(strongly_typed_),
                                               destroy_trt_pointer<INetworkDefinition>);
+
   if (!network) {
     std::cerr << "Failed to create network" << std::endl;
     return false;
@@ -286,24 +299,17 @@ bool compile(
   std::cout << "Workspace limit: " << workspace_size / 1024.0 / 1024.0 << " MB" << std::endl;
 
   // 7. 设置精度模式
-  if (mode == Mode::FP16) {
-    builder_config->setFlag(BuilderFlag::kFP16);
-    std::cout << "Enabled FP16 mode" << std::endl;
-  } else if (mode == Mode::INT8) {
-    // 关键：INT8 模式设置
-    builder_config->setFlag(BuilderFlag::kINT8);
-    std::cout << "Enabled INT8 mode" << std::endl;
 
-
-// 对于 ORT 量化后的 QDQ 模型，建议启用强类型模式（TensorRT 8.6+）
-// 这会强制 TensorRT 严格遵循 ONNX 中的 Q/DQ 节点
-#if NV_TENSORRT_MAJOR >= 8 && NV_TENSORRT_MINOR >= 6
-    if (config.strict_qdq) {
-      builder_config->setFlag(BuilderFlag::kSTRONGLY_TYPED);
-      std::cout << "Enabled strongly-typed mode for QDQ model" << std::endl;
-    }
-#endif
-  }
+  // BuilderFlag: FP16 INT8 deprecated, use strongly-typed mode instead
+  // 
+  // if (mode == Mode::FP16) {
+  //   builder_config->setFlag(BuilderFlag::kFP16);
+  //   std::cout << "Enabled FP16 mode" << std::endl;
+  // } else if (mode == Mode::INT8) {
+  //   // 关键：INT8 模式设置
+  //   builder_config->setFlag(BuilderFlag::kINT8);
+  //   std::cout << "Enabled INT8 mode" << std::endl;
+  // }
 
   // GPU 回退（如果某些层不支持目标精度，回退到 FP32）
   builder_config->setFlag(BuilderFlag::kGPU_FALLBACK);
@@ -373,14 +379,14 @@ bool compile(
   }
   std::cout << "Serialized engine size: " << serialized->size() / 1024.0 / 1024.0 << " MB" << std::endl;
 
-  if (saveto.type == CompileOutputType::File) {
-    std::ofstream file(saveto.file, std::ios::binary);
+  if (saveto.type_ == CompileOutputType::File) {
+    std::ofstream file(saveto.file_, std::ios::binary);
     if (!file) {
-      std::cerr << "Failed to open output file: " << saveto.file.c_str() << std::endl;
+      std::cerr << "Failed to open output file: " << saveto.file_.c_str() << std::endl;
       return false;
     }
     file.write(static_cast<const char*>(serialized->data()), serialized->size());
-    std::cout << "Engine saved to: " << saveto.file.c_str() << std::endl;
+    std::cout << "Engine saved to: " << saveto.file_.c_str() << std::endl;
   } else {
     const_cast<CompileOutput&>(saveto).set_data(
         std::vector<uint8_t>(static_cast<const uint8_t*>(serialized->data()),
@@ -389,16 +395,19 @@ bool compile(
   return true;
 }
 
+}  // namespace TRT
+
 int main(int argc, char* argv[]) {
 
   TRT::CompileConfig config;
-  config.dynamic_batch = true;
+  config.dynamic_batch = false;
   config.max_batch_size = 16;
   config.opt_batch_size = 4;
   config.strict_qdq = true;  // 关键：启用强类型模式
 
-  TRT::compile(TRT::Mode::INT8, TRT::ModelSource("yolo_qdq.onnx"), TRT::CompileOutput("yolo_qdq.engine"), config);
+  std::string onnx_path = "onnx_model/yolov8s_tracing_static_b4_quant_fix.onnx";
+  std::string out_engine_path = "onnx_model/yolov8s_tracing_static_b4_quant.engine";
+  TRT::compile(TRT::Mode::INT8, TRT::ModelSource(onnx_path), TRT::CompileOutput(out_engine_path), config);
 
+  return 0;
 }
-
-}  // namespace TRT
