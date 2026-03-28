@@ -58,12 +58,6 @@ class InferEngine {
     std::shared_ptr<std::promise<void>> promise_;
   };
 
-  // InferEngine(int dev_id, TrtModelLoaderPtr model, PreprocPtr preprocessor, PostprocPtr postprocessor,
-  //             uint32_t batchsize, uint32_t batching_timeout,
-  //             const std::function<void(const std::string& err_msg)>& error_func, bool batching_by_obj = false,
-  //             ObjPreprocPtr obj_preprocessor = nullptr, ObjPostprocPtr obj_postprocessor = nullptr,
-  //             bool mem_on_gpu_for_postproc = false, const std::string& module_name = "");
-
   explicit InferEngine(const InferOptions& options);
 
   ~InferEngine();
@@ -75,8 +69,7 @@ class InferEngine {
   void StageAssemble();
   void BatchingDone();
 
-  // ModelLoader 包含模型的相关信息，InferEngine 负责模型的推理
-  ModelLoaderPtr model_;
+  ModelLoader* model_;  // InferencePrivate we own this model_loader_
   PreprocPtr preprocessor_;
   PostprocPtr postprocessor_;
   ObjPreprocPtr obj_preprocessor_;
@@ -86,7 +79,6 @@ class InferEngine {
   uint32_t batching_timeout_ = 0;
   int dev_id_ = 0;
   bool batching_by_obj_ = false;
-  bool mem_on_gpu_for_postproc_ = false;
   std::string module_name_;
 
   BatchingStagePtr batching_stage_ = nullptr;
@@ -96,8 +88,8 @@ class InferEngine {
 
   CpuInputResourcePtr cpu_input_res_;
   CpuOutputResourcePtr cpu_output_res_;
-  GpuInputResourcePtr gpu_input_res_;
-  GpuOutputResourcePtr gpu_output_res_;
+  NetInputResourcePtr net_input_res_;
+  NetOutputResourcePtr net_output_res_;
 
   InferThreadPoolPtr thread_pool_;
   std::function<void(const std::string& err_msg)> error_func_;

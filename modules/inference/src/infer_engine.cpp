@@ -25,47 +25,6 @@
 
 namespace cnstream {
 
-InferEngine::InferEngine(int dev_id, ModelLoaderPtr model, PreprocPtr preprocessor, PostprocPtr postprocessor,
-                         uint32_t batchsize, uint32_t batching_timeout,
-                         const std::function<void(const std::string& err_msg)>& error_func, bool batching_by_obj,
-                         ObjPreprocPtr obj_preprocessor, ObjPostprocPtr obj_postprocessor, bool mem_on_gpu_for_postproc,
-                         const std::string& module_name)
-    : model_(model),
-      preprocessor_(preprocessor),
-      postprocessor_(postprocessor),
-      obj_preprocessor_(obj_preprocessor),
-      obj_postprocessor_(obj_postprocessor),
-      batchsize_(batchsize),
-      batching_timeout_(batching_timeout),
-      dev_id_(dev_id),
-      batching_by_obj_(batching_by_obj),
-      mem_on_gpu_for_postproc_(mem_on_gpu_for_postproc),
-      module_name_(module_name),
-      error_func_(error_func) {
-        
-  cudaSetDevice(dev_id_);
-
-  thread_pool_ = std::make_shared<InferThreadPool>();
-  thread_pool_->SetErrorHandleFunc(error_func);
-  thread_pool_->Init(dev_id_, batchsize * 3 + 4);
-
-  cpu_input_res_ = std::make_shared<CpuInputResource>(model, batchsize);
-  gpu_input_res_ = std::make_shared<GpuInputResource>(model, batchsize);
-  gpu_output_res_ = std::make_shared<GpuOutputResource>(model, batchsize);
-
-  if (!mem_on_gpu_for_postproc_) {
-    cpu_output_res_ = std::make_shared<CpuOutputResource>(model, batchsize);
-    cpu_output_res_->Init();
-  }
-
-  cpu_input_res_->Init();
-  gpu_input_res_->Init();
-  gpu_output_res_->Init();
-
-  StageAssemble();
-
-  running_ = true;
-}
 
 InferEngine::InferEngine(const InferOptions& options)
     : model_(options.model()),
@@ -77,27 +36,23 @@ InferEngine::InferEngine(const InferOptions& options)
       batching_timeout_(options.batching_timeout()),
       dev_id_(options.dev_id()),
       batching_by_obj_(options.batching_by_obj()),
-      mem_on_gpu_for_postproc_(options.mem_on_gpu_for_postproc()),
       module_name_(options.module_name()),
       error_func_(options.error_handler()) {
   cudaSetDevice(dev_id_);
 
   thread_pool_ = std::make_shared<InferThreadPool>();
-  thread_pool_->SetErrorHandleFunc(error_func_);
-  thread_pool_->Init(dev_id_, batchsize_ * 3 + 4);
+  thread_pool_->SetErrorHandleFunc(error_func);
+  thread_pool_->Init(dev_id_, batchsize * 3 + 4);
 
   cpu_input_res_ = std::make_shared<CpuInputResource>(model_, batchsize_);
-  gpu_input_res_ = std::make_shared<GpuInputResource>(model_, batchsize_);
-  gpu_output_res_ = std::make_shared<GpuOutputResource>(model_, batchsize_);
-
-  if (!mem_on_gpu_for_postproc_) {
-    cpu_output_res_ = std::make_shared<CpuOutputResource>(model_, batchsize_);
-    cpu_output_res_->Init();
-  }
+  cpu_output_res_ = std::make_shared<CpuOutputResource>(model_, batchsize_);
+  net_input_res_ = std::make_shared<NetInputResource>(model_, batchsize_);
+  net_output_res_ = std::make_shared<NetOutputResource>(model_, batchsize_);
 
   cpu_input_res_->Init();
-  gpu_input_res_->Init();
-  gpu_output_res_->Init();
+  cpu_output_res_->Init();
+  net_input_res_->Init();
+  net_output_res_->Init();
 
   StageAssemble();
 
@@ -118,10 +73,13 @@ InferEngine::~InferEngine() {
 
   if (cpu_input_res_) cpu_input_res_->Destroy();
   if (cpu_output_res_) cpu_output_res_->Destroy();
-  if (gpu_input_res_) gpu_input_res_->Destroy();
-  if (gpu_output_res_) gpu_output_res_->Destroy();
+  if (net_input_res_) net_input_res_->Destroy();
+  if (net_output_res_) net_output_res_->Destroy();
 }
 
+/**
+ * note: 暂时严格按照 prec - h2d - infer - d2h - postproc 顺序
+ */
 void InferEngine::StageAssemble() {
   bool cpu_preprocessing = (!batching_by_obj_ && preprocessor_) || (batching_by_obj_ && obj_preprocessor_);
 
@@ -134,38 +92,25 @@ void InferEngine::StageAssemble() {
           std::make_shared<CpuPreprocessingBatchingStage>(model_, batchsize_, preprocessor_, cpu_input_res_);
     }
 
-    auto h2d_stage = std::make_shared<H2DBatchingDoneStage>(model_, batchsize_, dev_id_, cpu_input_res_, gpu_input_res_);
+    auto h2d_stage = std::make_shared<H2DBatchingDoneStage>(model_, batchsize_, dev_id_, cpu_input_res_, net_input_res_);
     batching_done_stages_.push_back(h2d_stage);
   }
 
   auto infer_stage =
-      std::make_shared<InferBatchingDoneStage>(model_, batchsize_, dev_id_, gpu_input_res_, gpu_output_res_);
+      std::make_shared<InferBatchingDoneStage>(model_, batchsize_, dev_id_, net_input_res_, net_output_res_);
   batching_done_stages_.push_back(infer_stage);
 
-  if (!mem_on_gpu_for_postproc_) {
-    auto d2h_stage =
-        std::make_shared<D2HBatchingDoneStage>(model_, batchsize_, dev_id_, gpu_output_res_, cpu_output_res_);
-    batching_done_stages_.push_back(d2h_stage);
-  }
+  auto d2h_stage =
+      std::make_shared<D2HBatchingDoneStage>(model_, batchsize_, dev_id_, net_output_res_, cpu_output_res_);
+  batching_done_stages_.push_back(d2h_stage);
 
   if (batching_by_obj_) {
-    if (mem_on_gpu_for_postproc_) {
-      obj_postproc_stage_ = std::make_shared<ObjPostprocessingBatchingDoneStage>(model_, batchsize_, dev_id_,
-                                                                                 obj_postprocessor_, gpu_output_res_);
-    } else {
       obj_postproc_stage_ = std::make_shared<ObjPostprocessingBatchingDoneStage>(model_, batchsize_, dev_id_,
                                                                                  obj_postprocessor_, cpu_output_res_);
-    }
   } else {
-    if (mem_on_gpu_for_postproc_) {
-      auto postproc_stage =
-          std::make_shared<PostprocessingBatchingDoneStage>(model_, batchsize_, dev_id_, postprocessor_, gpu_output_res_);
-      batching_done_stages_.push_back(postproc_stage);
-    } else {
-      auto postproc_stage =
-          std::make_shared<PostprocessingBatchingDoneStage>(model_, batchsize_, dev_id_, postprocessor_, cpu_output_res_);
-      batching_done_stages_.push_back(postproc_stage);
-    }
+    auto postproc_stage =
+        std::make_shared<PostprocessingBatchingDoneStage>(model_, batchsize_, dev_id_, postprocessor_, cpu_output_res_);
+    batching_done_stages_.push_back(postproc_stage);
   }
 }
 

@@ -10,14 +10,15 @@ namespace cnstream {
 
 class ModelLoader {
  public:
-  ModelLoader(const std::string& engine_path, DevType dev_type, int device_id = 0):
-    engine_path_(engine_path), device_type_(dev_type), device_id_(device_id) {};
+  ModelLoader(DevType dev_type, int device_id = 0):
+    device_type_(dev_type), device_id_(device_id) {};
   virtual ~ModelLoader() = default;
-  bool IsValid() = 0;
+  virtual bool IsValid() = 0;
+  virtual bool Init(const std::string& engine_path) = 0;
 
  public:
   int GetDeviceId() const { return device_id_; }
-  DeviceType GetDeviceType() const { return device_type_; }
+  DevType GetDeviceType() const { return device_type_; }
 
   uint32_t get_batch_size() const { return input_shapes_[input_ordered_index_].N(); }
   uint32_t get_channel_size() const { return input_shapes_[input_ordered_index_].C(); }
@@ -52,10 +53,15 @@ class ModelLoader {
     return DataType::INVALID;
   }
 
+#ifdef UNIT_TEST
+ public:
+#else
  protected:
+#endif
   std::string engine_path_;
   DevType     device_type_ = DevType::INVALID;
   int         device_id_ = -1;
+
   // 保存模型映射信息
   std::vector<TensorShape>   input_shapes_;
   std::vector<TensorShape>   output_shapes_;
@@ -63,6 +69,12 @@ class ModelLoader {
   std::vector<DataType>      output_data_types_;
   std::vector<std::string>   input_names_;
   std::vector<std::string>   output_names_;
+  
+  std::map<std::string, int> bind_name_index_map_{};  // bind_name - index
+  std::string                input_name_;             // frist input name
+  std::string                output_name_;            // frist output name
+  int                        input_ordered_index_ = 0;
+  int                        output_ordered_index_ = 0;
 };
 
 
@@ -105,8 +117,6 @@ class ModelLoaderFactory {
   std::mutex mutex_;
 };
 
-using ModelLoaderPtr = std::shared_ptr<ModelLoader>;
-
 }  // namespace cnstream
 
-#endif  // MODULES_INFERENCE_CUDA_MODEL_LOADER_HPP_
+#endif  // MODULES_INFERENCE_MODEL_LOADER_HPP_

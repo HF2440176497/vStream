@@ -20,7 +20,7 @@ class InferOptions {
     return *this;
   }
 
-  InferOptions& SetModel(ModelLoaderPtr model) {
+  InferOptions& SetModel(ModelLoader* model) {
     model_ = model;
     return *this;
   }
@@ -65,18 +65,18 @@ class InferOptions {
     return *this;
   }
 
-  InferOptions& SetMemOnGpuForPostproc(bool flag) {
-    mem_on_gpu_for_postproc_ = flag;
-    return *this;
-  }
-
   InferOptions& SetModuleName(const std::string& name) {
     module_name_ = name;
     return *this;
   }
 
+  InferOptions& SetProfiler(ModuleProfiler* profiler) {
+    profiler_ = profiler;
+    return *this;
+  }
+
   int dev_id() const { return dev_id_; }
-  ModelLoaderPtr model() const { return model_; }
+  ModelLoader* model() const { return model_; }
   PreprocPtr preprocessor() const { return preprocessor_; }
   PostprocPtr postprocessor() const { return postprocessor_; }
   uint32_t batchsize() const { return batchsize_; }
@@ -85,12 +85,12 @@ class InferOptions {
   bool batching_by_obj() const { return batching_by_obj_; }
   ObjPreprocPtr obj_preprocessor() const { return obj_preprocessor_; }
   ObjPostprocPtr obj_postprocessor() const { return obj_postprocessor_; }
-  bool mem_on_gpu_for_postproc() const { return mem_on_gpu_for_postproc_; }
   const std::string& module_name() const { return module_name_; }
+  ModuleProfiler* profiler() const { return profiler_; }
 
  private:
   int dev_id_ = 0;
-  ModelLoaderPtr model_ = nullptr;
+  ModelLoader* model_ = nullptr;
   PreprocPtr preprocessor_ = nullptr;
   PostprocPtr postprocessor_ = nullptr;
   uint32_t batchsize_ = 1;
@@ -99,8 +99,8 @@ class InferOptions {
   bool batching_by_obj_ = false;
   ObjPreprocPtr obj_preprocessor_ = nullptr;
   ObjPostprocPtr obj_postprocessor_ = nullptr;
-  bool mem_on_gpu_for_postproc_ = false;
   std::string module_name_;
+  ModuleProfiler* profiler_ = nullptr;
 };
 
 }  // namespace cnstream

@@ -90,7 +90,7 @@ class Postproc : virtual public ReflexObjectEx<Postproc> {
    * @note
    * - This function is called by the Inferencer module when the parameter `obj_infer` is set to false. See the Inferencer parameter description for details.
    */
-  virtual int Execute(const std::vector<float*>& net_outputs, const std::shared_ptr<ModelLoader>& model,
+  virtual int Execute(const std::vector<float*>& net_outputs, ModelLoader* model,
                       const FrameInfoPtr& package) { return 0; }
 
   /**
@@ -106,7 +106,7 @@ class Postproc : virtual public ReflexObjectEx<Postproc> {
    *  - This function is called by the Inferencer module when the parameter `obj_infer` is set to false.
            See the Inferencer parameter description for details.
    */
-  virtual int Execute(const std::vector<void*>& net_outputs, const std::shared_ptr<ModelLoader>& model,
+  virtual int Execute(const std::vector<void*>& net_outputs, ModelLoader* model,
                       const std::vector<FrameInfoPtr> &packages) { return 0; }
 
  protected:
@@ -166,7 +166,7 @@ class ObjPostproc : virtual public ReflexObjectEx<ObjPostproc> {
    * - This function is called by the Inferencer module when the parameter `obj_infer` is set to true.
           See the Inferencer parameter description for details.
    */
-  virtual int Execute(const std::vector<float*>& net_outputs, const std::shared_ptr<ModelLoader>& model,
+  virtual int Execute(const std::vector<float*>& net_outputs, ModelLoader* model,
                       const FrameInfoPtr& finfo, const std::shared_ptr<InferObject>& pobj) { return 0; }
 
   /**
@@ -182,13 +182,13 @@ class ObjPostproc : virtual public ReflexObjectEx<ObjPostproc> {
    * - This function is called by the Inferencer module when the parameter `obj_infer` is set to true.
           See the Inferencer parameter description for details.
    */
-  virtual int Execute(const std::vector<void*>& net_outputs, const std::shared_ptr<ModelLoader>& model,
+  virtual int Execute(const std::vector<void*>& net_outputs, ModelLoader* model,
                       const std::vector<std::pair<FrameInfoPtr, std::shared_ptr<InferObject>>>& obj_infos) {
     return 0;
   }
 
  protected:
-  float threshold_ = 0;
+  float threshold_ = 0;  // TODO: More information
 };  // class ObjPostproc
 
 using ObjPostprocPtr = std::shared_ptr<ObjPostproc>;

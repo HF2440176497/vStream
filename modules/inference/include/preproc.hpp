@@ -79,7 +79,7 @@ class Preproc : virtual public ReflexObjectEx<Preproc> {
    *
    * @return Returns 0 if successful, otherwise returns -1.
    */
-  virtual int Execute(const std::vector<float*>& net_inputs, const std::shared_ptr<ModelLoader>& model,
+  virtual int Execute(const std::vector<float*>& net_inputs, ModelLoader* model,
                       const FrameInfoPtr& package) = 0;
 };  // class Preproc
 
@@ -126,7 +126,7 @@ class ObjPreproc : virtual public ReflexObjectEx<ObjPreproc> {
    *
    * @return Returns 0 if successful, otherwise returns -1.
    */
-  virtual int Execute(const std::vector<float*>& net_inputs, const std::shared_ptr<ModelLoader>& model,
+  virtual int Execute(const std::vector<float*>& net_inputs, ModelLoader* model,
                       const FrameInfoPtr& finfo, const std::shared_ptr<InferObject>& pobj) = 0;
 };  // class ObjPreproc
 
@@ -134,4 +134,4 @@ using ObjPreprocPtr = std::shared_ptr<ObjPreproc>;
 
 }  // namespace cnstream
 
-#endif  // ifndef MODULES_INFERENCE_INCLUDE_PREPROC_HPP_
+#endif  // MODULES_INFERENCE_PREPROC_HPP_

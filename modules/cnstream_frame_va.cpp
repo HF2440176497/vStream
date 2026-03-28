@@ -129,10 +129,10 @@ size_t DataFrame::GetBytes() const {
  * @brief 每次调用查找已注册的 MemOp 创建器，根据当前 dev_type 和 dev_id 创建 MemOp
  * 调用处：CopyToSyncMem(dec_frame)
  */
-std::unique_ptr<MemOp> DataFrame::CreateMemOp() {
+std::shared_ptr<MemOp> DataFrame::CreateMemOp() {
   auto dev_type = this->ctx_.dev_type;
   int dev_id = this->ctx_.dev_id;
-  std::unique_ptr<MemOp> memop = MemOpFactory::Instance().CreateMemOp(dev_type, dev_id);  // inside mutex_ lock
+  std::shared_ptr<MemOp> memop = MemOpFactory::Instance().CreateMemOp(dev_type, dev_id);  // inside mutex_ lock
   if (!memop) {
     LOGF(FRAME) << "CreateMemOp: failed to create MemOp from " << static_cast<int>(dev_type) << " with dev_id " << dev_id;
     return nullptr;
@@ -150,7 +150,7 @@ void DataFrame::CopyToSyncMem(DecodeFrame* dec_frame) {
     return;
   }
 
-  std::unique_ptr<MemOp> memop = CreateMemOp();
+  std::shared_ptr<MemOp> memop = CreateMemOp();
   if (!memop) return;
 
   if (this->deAllocator_ != nullptr && dec_frame->fmt == this->fmt_) {
@@ -177,66 +177,87 @@ void DataFrame::CopyToSyncMem(DecodeFrame* dec_frame) {
   this->deAllocator_.reset();
 }
 
-// bool InferObject::AddAttribute(const std::string& key, const CNInferAttr& value) {
-//   std::lock_guard<std::mutex> lk(attribute_mutex_);
-//   if (attributes_.find(key) != attributes_.end()) return false;
+bool InferObject::AddAttribute(const std::string& key, const InferAttr& value) {
+  std::lock_guard<std::mutex> lk(attribute_mutex_);
+  if (attributes_.find(key) != attributes_.end()) return false;
 
-//   attributes_.insert(std::make_pair(key, value));
-//   return true;
-// }
+  attributes_.insert(std::make_pair(key, value));
+  return true;
+}
 
-// bool InferObject::AddAttribute(const std::pair<std::string, CNInferAttr>& attribute) {
-//   std::lock_guard<std::mutex> lk(attribute_mutex_);
-//   if (attributes_.find(attribute.first) != attributes_.end()) return false;
+bool InferObject::AddAttribute(const std::pair<std::string, InferAttr>& attribute) {
+  std::lock_guard<std::mutex> lk(attribute_mutex_);
+  if (attributes_.find(attribute.first) != attributes_.end()) return false;
 
-//   attributes_.insert(attribute);
-//   return true;
-// }
+  attributes_.insert(attribute);
+  return true;
+}
 
-// CNInferAttr InferObject::GetAttribute(const std::string& key) {
-//   std::lock_guard<std::mutex> lk(attribute_mutex_);
-//   if (attributes_.find(key) != attributes_.end()) return attributes_[key];
+InferAttr InferObject::GetAttribute(const std::string& key) {
+  std::lock_guard<std::mutex> lk(attribute_mutex_);
+  if (attributes_.find(key) != attributes_.end()) return attributes_[key];
+  return InferAttr();
+}
 
-//   return CNInferAttr();
-// }
+bool InferObject::AddExtraAttribute(const std::string& key, const std::string& value) {
+  std::lock_guard<std::mutex> lk(attribute_mutex_);
+  if (extra_attributes_.find(key) != extra_attributes_.end()) return false;
 
-// bool InferObject::AddExtraAttribute(const std::string& key, const std::string& value) {
-//   std::lock_guard<std::mutex> lk(attribute_mutex_);
-//   if (extra_attributes_.find(key) != extra_attributes_.end()) return false;
+  extra_attributes_.insert(std::make_pair(key, value));
+  return true;
+}
 
-//   extra_attributes_.insert(std::make_pair(key, value));
-//   return true;
-// }
+bool InferObject::AddExtraAttributes(const std::vector<std::pair<std::string, std::string>>& attributes) {
+  std::lock_guard<std::mutex> lk(attribute_mutex_);
+  bool ret = true;
+  for (auto& attribute : attributes) {
+    ret &= AddExtraAttribute(attribute.first, attribute.second);
+  }
+  return ret;
+}
 
-// bool InferObject::AddExtraAttributes(const std::vector<std::pair<std::string, std::string>>& attributes) {
-//   std::lock_guard<std::mutex> lk(attribute_mutex_);
-//   bool ret = true;
-//   for (auto& attribute : attributes) {
-//     ret &= AddExtraAttribute(attribute.first, attribute.second);
-//   }
-//   return ret;
-// }
+std::string InferObject::GetExtraAttribute(const std::string& key) {
+  std::lock_guard<std::mutex> lk(attribute_mutex_);
+  if (extra_attributes_.find(key) != extra_attributes_.end()) {
+    return extra_attributes_[key];
+  }
+  return "";
+}
 
-// std::string InferObject::GetExtraAttribute(const std::string& key) {
-//   std::lock_guard<std::mutex> lk(attribute_mutex_);
-//   if (extra_attributes_.find(key) != extra_attributes_.end()) {
-//     return extra_attributes_[key];
-//   }
-//   return "";
-// }
+bool InferObject::RemoveExtraAttribute(const std::string& key) {
+  std::lock_guard<std::mutex> lk(attribute_mutex_);
+  if (extra_attributes_.find(key) != extra_attributes_.end()) {
+    extra_attributes_.erase(key);
+  }
+  return true;
+}
 
-// bool InferObject::RemoveExtraAttribute(const std::string& key) {
-//   std::lock_guard<std::mutex> lk(attribute_mutex_);
-//   if (extra_attributes_.find(key) != extra_attributes_.end()) {
-//     extra_attributes_.erase(key);
-//   }
-//   return true;
-// }
+StringPairs InferObject::GetExtraAttributes() {
+  std::lock_guard<std::mutex> lk(attribute_mutex_);
+  return StringPairs(extra_attributes_.begin(), extra_attributes_.end());
+}
 
-// StringPairs InferObject::GetExtraAttributes() {
-//   std::lock_guard<std::mutex> lk(attribute_mutex_);
-//   return StringPairs(extra_attributes_.begin(), extra_attributes_.end());
-// }
 
+bool InferObject::AddFeature(const std::string& key, const InferFeature& feature) {
+  std::lock_guard<std::mutex> lk(feature_mutex_);
+  if (features_.find(key) != features_.end()) {
+    return false;
+  }
+  features_.insert(std::make_pair(key, feature));
+  return true;
+}
+
+InferFeature InferObject::GetFeature(const std::string& key) {
+  std::lock_guard<std::mutex> lk(feature_mutex_);
+  if (features_.find(key) != features_.end()) {
+    return features_[key];
+  }
+  return InferFeature();
+}
+
+InferFeatures InferObject::GetFeatures() {
+  std::lock_guard<std::mutex> lk(feature_mutex_);
+  return InferFeatures(features_.begin(), features_.end());
+}
 
 }  // namespace cnstream

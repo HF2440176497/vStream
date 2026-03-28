@@ -23,10 +23,11 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <any>
 
 namespace cnstream {
 
-void Collection::Add(const std::string& tag, std::unique_ptr<cnstream::any>&& value) {
+void Collection::Add(const std::string& tag, std::unique_ptr<std::any>&& value) {
   std::lock_guard<std::mutex> lk(data_mtx_);
   if (data_.end() != data_.find(tag)) {
 #if !defined(_LIBCPP_NO_RTTI)
@@ -37,16 +38,16 @@ void Collection::Add(const std::string& tag, std::unique_ptr<cnstream::any>&& va
     LOGF(COLLECTION) << "Data tagged by [" << tag << "] had been added.";
 #endif
   }
-  data_[tag] = std::forward<std::unique_ptr<cnstream::any>>(value);
+  data_[tag] = std::forward<std::unique_ptr<std::any>>(value);
 }
 
-bool Collection::AddIfNotExists(const std::string& tag, std::unique_ptr<cnstream::any>&& value) {
+bool Collection::AddIfNotExists(const std::string& tag, std::unique_ptr<std::any>&& value) {
   std::lock_guard<std::mutex> lk(data_mtx_);
   if (data_.end() != data_.find(tag)) {
     LOGD(COLLECTION) << "Data tagged by [" << tag << "] had been added. Current data will not be added.";
     return false;
   }
-  data_[tag] = std::forward<std::unique_ptr<cnstream::any>>(value);
+  data_[tag] = std::forward<std::unique_ptr<std::any>>(value);
   return true;
 }
 

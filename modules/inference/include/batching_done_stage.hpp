@@ -43,7 +43,6 @@ class NetOutputResource;
 class InferTask;
 class FrameInfo;
 class InferObject;
-
 class ModelLoader;  // model interface
 
 struct AutoSetDone {
@@ -62,13 +61,13 @@ using BatchingDoneInput = std::vector<std::pair<std::shared_ptr<FrameInfo>, std:
 class BatchingDoneStage {
  public:
   BatchingDoneStage() = default;
-  BatchingDoneStage(std::shared_ptr<ModelLoader> model, uint32_t batchsize, int dev_id)
+  BatchingDoneStage(ModelLoader* model, uint32_t batchsize, int dev_id)
       : model_(model), batchsize_(batchsize), dev_id_(dev_id) {}
   virtual ~BatchingDoneStage() {}
   virtual std::vector<std::shared_ptr<InferTask>> BatchingDone(const BatchingDoneInput& finfos) = 0;
 
   void SetDumpResizedImageDir(const std::string &dir) {
-     dump_resized_image_dir_ = dir;
+    dump_resized_image_dir_ = dir;
   }
 
   void SetSavingInputData(const bool& saving_infer_input, const std::string& module_name) {
@@ -83,7 +82,7 @@ class BatchingDoneStage {
   bool saving_infer_input_ = false;
   std::string module_name_ = "";
   std::string dump_resized_image_dir_ = "";
-  std::shared_ptr<ModelLoader> model_;
+  ModelLoader* model_;
   uint32_t batchsize_ = 0;
   int dev_id_ = 0;
 };  // class BatchingDoneStage
@@ -91,7 +90,7 @@ class BatchingDoneStage {
 
 class H2DBatchingDoneStage : public BatchingDoneStage {
  public:
-  H2DBatchingDoneStage(std::shared_ptr<ModelLoader> model,
+  H2DBatchingDoneStage(ModelLoader* model,
                        uint32_t batchsize,
                        int dev_id,
                        std::shared_ptr<CpuInputResource> cpu_input_res, 
@@ -108,7 +107,7 @@ class H2DBatchingDoneStage : public BatchingDoneStage {
 
 class InferBatchingDoneStage : public BatchingDoneStage {
  public:
-  InferBatchingDoneStage(std::shared_ptr<ModelLoader> model,
+  InferBatchingDoneStage(ModelLoader* model,
                          DataFormat model_input_format,
                          uint32_t batchsize,
                          int dev_id,
@@ -124,7 +123,7 @@ class InferBatchingDoneStage : public BatchingDoneStage {
 
 class D2HBatchingDoneStage : public BatchingDoneStage {
  public:
-  D2HBatchingDoneStage(std::shared_ptr<ModelLoader> model,
+  D2HBatchingDoneStage(ModelLoader* model,
                        uint32_t batchsize,
                        int dev_id,
                        std::shared_ptr<NetOutputResource> net_output_res,
@@ -142,7 +141,7 @@ class D2HBatchingDoneStage : public BatchingDoneStage {
 
 class PostprocessingBatchingDoneStage : public BatchingDoneStage {
  public:
-  PostprocessingBatchingDoneStage(std::shared_ptr<ModelLoader> model,
+  PostprocessingBatchingDoneStage(ModelLoader* model,
                                   uint32_t batchsize,
                                   int dev_id, 
                                   std::shared_ptr<Postproc> postprocessor,
@@ -151,7 +150,7 @@ class PostprocessingBatchingDoneStage : public BatchingDoneStage {
       postprocessor_(postprocessor), 
       cpu_output_res_(cpu_output_res) {}
 
-  PostprocessingBatchingDoneStage(std::shared_ptr<ModelLoader> model,
+  PostprocessingBatchingDoneStage(ModelLoader* model,
                                   uint32_t batchsize,
                                   int dev_id, 
                                   std::shared_ptr<Postproc> postprocessor,
@@ -172,7 +171,34 @@ class PostprocessingBatchingDoneStage : public BatchingDoneStage {
 };  // class PostprocessingBatchingDoneStage
 
 
+class ObjPostprocessingBatchingDoneStage : public BatchingDoneStage {
+ public:
+  ObjPostprocessingBatchingDoneStage(ModelLoader* model, uint32_t batchsize, int dev_id,
+                                     std::shared_ptr<ObjPostproc> postprocessor,
+                                     std::shared_ptr<CpuOutputResource> cpu_output_res)
+      : BatchingDoneStage(model, batchsize, dev_id), postprocessor_(postprocessor), cpu_output_res_(cpu_output_res) {}
 
+  ObjPostprocessingBatchingDoneStage(ModelLoader* model, uint32_t batchsize, int dev_id,
+                                     std::shared_ptr<ObjPostproc> postprocessor,
+                                     std::shared_ptr<NetOutputResource> net_output_res)
+      : BatchingDoneStage(model, batchsize, dev_id), postprocessor_(postprocessor), net_output_res_(net_output_res) {}
+
+  std::vector<std::shared_ptr<InferTask>> BatchingDone(const BatchingDoneInput& finfos) override { return {}; }
+
+  std::vector<std::shared_ptr<InferTask>> ObjBatchingDone(const BatchingDoneInput& finfos,
+                                                          const std::vector<std::shared_ptr<InferObject>>& objs);
+  std::vector<std::shared_ptr<InferTask>> ObjBatchingDone(const BatchingDoneInput& finfos,
+                                                          const std::vector<std::shared_ptr<InferObject>>& objs,
+                                                          const std::shared_ptr<CpuOutputResource> &cpu_output_res);
+  std::vector<std::shared_ptr<InferTask>> ObjBatchingDone(const BatchingDoneInput& finfos,
+                                                          const std::vector<std::shared_ptr<InferObject>>& objs,
+                                                          const std::shared_ptr<NetOutputResource> &net_output_res);
+
+ private:
+  std::shared_ptr<ObjPostproc> postprocessor_;
+  std::shared_ptr<CpuOutputResource> cpu_output_res_ = nullptr;
+  std::shared_ptr<NetOutputResource> net_output_res_ = nullptr;
+};  // class ObjPostprocessingBatchingDoneStage
 
 
 

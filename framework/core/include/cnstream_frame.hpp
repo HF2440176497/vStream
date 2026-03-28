@@ -28,7 +28,6 @@
 
 #include "cnstream_collection.hpp"
 #include "cnstream_common.hpp"
-#include "util/cnstream_any.hpp"
 
 /**
  *  @file cnstream_frame.hpp

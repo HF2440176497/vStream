@@ -169,6 +169,10 @@ bool ReflexObjectEx<T>::Register(const ClassInfo<T>& info) {
 template <typename T>
 ReflexObjectEx<T>::~ReflexObjectEx() {}
 
+#ifdef UNIT_TEST
+std::map<std::string, ClassInfo<ReflexObject>>& CheckGlobalObjMap();
+#endif
+
 }  // namespace cnstream
 
 #endif  // MODULES_INFERENCE_INCLUDE_REFLEX_OBJECT_HPP_

@@ -79,7 +79,7 @@ std::vector<std::shared_ptr<InferTask>> H2DBatchingDoneStage::BatchingDone(const
 } 
 
 
-InferBatchingDoneStage::InferBatchingDoneStage(std::shared_ptr<ModelLoader> model,
+InferBatchingDoneStage::InferBatchingDoneStage(ModelLoader* model,
                                                DataFormat model_input_format,
                                                uint32_t batchsize,
                                                int dev_id,

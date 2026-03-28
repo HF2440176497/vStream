@@ -35,13 +35,13 @@
 namespace cnstream {
 
 // Note: virtual functions should not be called in constructor
-IOResource::IOResource(std::shared_ptr<ModelLoader> model, uint32_t batchsize)
+IOResource::IOResource(ModelLoader* model, uint32_t batchsize)
     : InferResource<IOResValue>(model, batchsize) {
 }
 
 IOResource::~IOResource() {}
 
-CpuInputResource::CpuInputResource(std::shared_ptr<ModelLoader> model, uint32_t batchsize)
+CpuInputResource::CpuInputResource(ModelLoader* model, uint32_t batchsize)
     : IOResource(model, batchsize) {
   memop_ = MemOpFactory::Instance().CreateMemOp(DevType::CPU, -1);
 }
@@ -49,7 +49,7 @@ CpuInputResource::CpuInputResource(std::shared_ptr<ModelLoader> model, uint32_t 
 CpuInputResource::~CpuInputResource() {}
 
 
-IOResValue CpuInputResource::Allocate(std::shared_ptr<ModelLoader> model, uint32_t batchsize) {
+IOResValue CpuInputResource::Allocate(ModelLoader* model, uint32_t batchsize) {
   int input_num = model->InputNum();
 
   IOResValue value;
@@ -70,16 +70,16 @@ IOResValue CpuInputResource::Allocate(std::shared_ptr<ModelLoader> model, uint32
   return value;
 }
 
-void CpuInputResource::Deallocate(std::shared_ptr<ModelLoader> model, uint32_t batchsize,
+void CpuInputResource::Deallocate(ModelLoader* model, uint32_t batchsize,
                                   const IOResValue& value) {
 }
 
-CpuOutputResource::CpuOutputResource(std::shared_ptr<ModelLoader> model, uint32_t batchsize)
+CpuOutputResource::CpuOutputResource(ModelLoader* model, uint32_t batchsize)
     : IOResource(model, batchsize) {}
 
 CpuOutputResource::~CpuOutputResource() {}
 
-IOResValue CpuOutputResource::Allocate(std::shared_ptr<ModelLoader> model, uint32_t batchsize) {
+IOResValue CpuOutputResource::Allocate(ModelLoader* model, uint32_t batchsize) {
   int output_num = model->OutputNum();
   IOResValue value;
   value.datas.resize(output_num);
@@ -99,18 +99,18 @@ IOResValue CpuOutputResource::Allocate(std::shared_ptr<ModelLoader> model, uint3
   return value;
 }
 
-void CpuOutputResource::Deallocate(std::shared_ptr<ModelLoader> model, uint32_t batchsize,
+void CpuOutputResource::Deallocate(ModelLoader* model, uint32_t batchsize,
                                    const IOResValue& value) {
 }
 
-NetInputResource::NetInputResource(std::shared_ptr<ModelLoader> model, uint32_t batchsize)
+NetInputResource::NetInputResource(ModelLoader* model, uint32_t batchsize)
     : IOResource(model, batchsize) {
   memop_ = MemOpFactory::Instance().CreateMemOp(model->GetDeviceType(), model->GetDeviceId());
 }
 
 NetInputResource::~NetInputResource() {}
 
-IOResValue NetInputResource::Allocate(std::shared_ptr<ModelLoader> model, uint32_t batchsize) {
+IOResValue NetInputResource::Allocate(ModelLoader* model, uint32_t batchsize) {
   int input_num = model->InputNum();
   IOResValue value;
   value.datas.resize(input_num);
@@ -130,18 +130,18 @@ IOResValue NetInputResource::Allocate(std::shared_ptr<ModelLoader> model, uint32
   return value;
 }
 
-void NetInputResource::Deallocate(std::shared_ptr<ModelLoader> model, uint32_t batchsize,
+void NetInputResource::Deallocate(ModelLoader* model, uint32_t batchsize,
                                   const IOResValue& value) {
 }
 
-NetOutputResource::NetOutputResource(std::shared_ptr<ModelLoader> model, uint32_t batchsize)
+NetOutputResource::NetOutputResource(ModelLoader* model, uint32_t batchsize)
     : IOResource(model, batchsize) {
   memop_ = MemOpFactory::Instance().CreateMemOp(model->GetDeviceType(), model->GetDeviceId());
 }
 
 NetOutputResource::~NetOutputResource() {}
 
-IOResValue NetOutputResource::Allocate(std::shared_ptr<ModelLoader> model, uint32_t batchsize) {
+IOResValue NetOutputResource::Allocate(ModelLoader* model, uint32_t batchsize) {
   int output_num = model->OutputNum();
   IOResValue value;
   value.datas.resize(output_num);
@@ -161,7 +161,7 @@ IOResValue NetOutputResource::Allocate(std::shared_ptr<ModelLoader> model, uint3
   return value;
 }
 
-void NetOutputResource::Deallocate(std::shared_ptr<ModelLoader> model, uint32_t batchsize,
+void NetOutputResource::Deallocate(ModelLoader* model, uint32_t batchsize,
                                    const IOResValue& value) {
 }
 

@@ -81,9 +81,16 @@ void TrtModelLoader::Logger::log(nvinfer1::Severity severity, const char* msg) n
 }
 
 
-TrtModelLoader::TrtModelLoader(const std::string& engine_path, int device_id) : ModelLoader(engine_path, DevType::CUDA, device_id) {
+TrtModelLoader::TrtModelLoader(int device_id) : ModelLoader(DevType::CUDA, device_id) {
   cudaSetDevice(device_id_);
-  LoadEngine(engine_path);
+}
+
+bool TrtModelLoader::Init(const std::string& engine_path) {
+  if (engine_path.empty()) {
+    LOGF(MODEL) << "Empty engine path";
+    return false;
+  }
+  return LoadEngine(engine_path);
 }
 
 TrtModelLoader::~TrtModelLoader() {
@@ -124,11 +131,14 @@ bool TrtModelLoader::LoadEngine(const std::string& engine_path) {
     LOGF(MODEL) << "Failed to create TensorRT execution context";
     return false;
   }
-  ParseBindings();
+  if (!ParseBindings()) {
+    return false;
+  }
+  engine_path_ = engine_path;
   return true;
 }
 
-void TrtModelLoader::ParseBindings() {
+bool TrtModelLoader::ParseBindings() {
   input_shapes_.clear();
   output_shapes_.clear();
   input_data_types_.clear();
@@ -138,6 +148,11 @@ void TrtModelLoader::ParseBindings() {
   bind_name_index_map_.clear();
 
   auto bind_num = engine_->getNbIOTensors();
+
+  if (bind_num <= 2) {
+    LOGE(MODEL) << "Model with tensor num: " << bind_num << " is not supported";
+    return false;
+  }
 
   for (int i = 0; i < bind_num; ++i) {
     auto const bind_name = engine_->getIOTensorName(i);
@@ -174,7 +189,7 @@ void TrtModelLoader::ParseBindings() {
       int index_ = bind_name_index_map_[input_name_];
       if (index_ != input_ordered_index_) {
         LOGF(MODEL) << "input_index_ not match bind_name: " << input_name_ << " actual_index: " << index_ << std::endl;
-        return;
+        return false;
       }
   }
 
@@ -184,7 +199,7 @@ void TrtModelLoader::ParseBindings() {
       int index_ = bind_name_index_map_[output_name_];
       if (index_ != output_ordered_index_) {
         LOGF(MODEL) << "output_index_ not match bind_name: " << output_name_ << " actual_index: " << index_ << std::endl;
-        return;
+        return false;
       }
   }
 
@@ -195,7 +210,7 @@ void TrtModelLoader::ParseBindings() {
     
     // for dynamic input, get opt shape
     if (dims.d[0] == -1 && input_name == input_name_) {
-      auto opt_profie_index = context_->context_->getOptimizationProfile();
+      auto opt_profie_index = context_->getOptimizationProfile();
       opt_dims = engine_->getProfileShape(input_name.c_str(), opt_profie_index, 
                                           nvinfer1::OptProfileSelector::kOPT);
     } else {  // static shape
@@ -204,7 +219,7 @@ void TrtModelLoader::ParseBindings() {
     TensorShape input_shape(dims_to_vector(opt_dims));
     input_shapes_.push_back(input_shape);  // 对应 input_names_ 顺序
  }
-
+  return true;
 }  // end of ParseBindings
 
 

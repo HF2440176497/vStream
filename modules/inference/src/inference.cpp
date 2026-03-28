@@ -54,11 +54,11 @@ struct InferContext {
 
 using InferContextSptr = std::shared_ptr<InferContext>;
 
-class InferencePrivate {
+class InferencePrivate: public NonCopyable {
  public:
   explicit InferencePrivate(Inference* q) : q_ptr_(q) {}
   InferParams params_{};
-  std::shared_ptr<ModelLoader> model_loader_;
+  std::unique_ptr<ModelLoader> model_loader_;  
   std::shared_ptr<Preproc> preproc_ = nullptr;
   std::shared_ptr<Postproc> postproc_ = nullptr;
 
@@ -84,28 +84,27 @@ class InferencePrivate {
     params_ = params;
     module_name_ = q_ptr_->GetName();
     std::string model_path = GetPathRelativeToTheJSONFile(params.model_path, param_set);
-    // try {
-    //   auto model_loader = std::make_shared<ModelLoader>(model_path);
-    //   bsize_ = model_loader->get_batch_size();
-    //   model_loader_ = model_loader;
-    // } catch (std::exception &e) {
-    //   LOGE(INFERENCER) << "[" << q_ptr_->GetName() << "] init offline model failed. model_path: ["
-    //              << model_path << "]. error message: [" << e.what() << "]";
-    //   return false;
-    // }
 
+    LOGI(INFERENCER) << "[" << module_name_ << "] load model [path: " << model_path << "]";
+
+    // TODO: 未来由 Pipeline 参数透传到此，以此为准 检验 data 中是否相同
     auto dev_type = params.dev_type;
     auto dev_id = params.dev_id;
     auto& factory = ModelLoaderFactory::Instance();
 
-    // eg: LoadEngine - ParBinding
-    std::shared_ptr<ModelLoader> model_loader = factory.CreateModelLoader(dev_type, dev_id);
-    model_loader_ = model_loader;
+    // LoadEngine - ParBinding
+    model_loader_ = factory.CreateModelLoader(dev_type, dev_id);
     if (!model_loader_) {
       LOGE(INFERENCER) << "[" << module_name_ << "] create model loader failed. dev_type: "
                  << dev_type << ", dev_id: " << dev_id;
       return false;
     }
+
+    if (!model_loader_->Init(model_path)) {
+      LOGE(INFERENCER) << "[" << module_name_ << "] init model failed. path: " << model_path;
+      return false;
+    }
+
     bsize_ = model_loader_->get_batch_size();
 
     if (params.object_infer) {
@@ -196,13 +195,25 @@ class InferencePrivate {
       thread_id_str.erase(0, thread_id_str.length() - 9);
       std::string tid_str = "th_" + thread_id_str;
 
-      ctx->engine = std::make_shared<InferEngine>(
-          params_.device_id, model_loader_, preproc_, postproc_, bsize_, params_.batching_timeout,
-          tid_str, std::bind(&InferencePrivate::InferEngineErrorHnadleFunc, this, std::placeholders::_1),
-          params_.keep_aspect_ratio, params_.object_infer, obj_preproc_, obj_postproc_, obj_filter_,
-          dump_resized_image_dir_, params_.model_input_pixel_format,
-          params_.saving_infer_input, module_name_, q_ptr_->GetProfiler(), params_.pad_method);
+      InferOptions infer_options;
+      infer_options.SetDeviceId(params_.device_id)
+          .SetModel(model_loader_.get())
+          .SetPreprocessor(preproc_)
+          .SetPostprocessor(postproc_)
+          .SetBatchSize(bsize_)
+          .SetBatchingTimeout(params_.batching_timeout)
+          .SetErrorHandler(std::bind(&InferencePrivate::InferEngineErrorHnadleFunc, this, std::placeholders::_1))
+          .SetBatchingByObj(params_.object_infer)
+          .SetObjPreprocessor(obj_preproc_)
+          .SetObjPostprocessor(obj_postproc_)
+          .SetObjFilter(obj_filter_)
+          .SetDumpResizedImageDir(dump_resized_image_dir_)
+          .SetModelInputPixelFormat(params_.model_input_pixel_format)
+          .SetSavingInferInput(params_.saving_infer_input)
+          .SetModuleName(module_name_)
+          .SetProfiler(q_ptr_->GetProfiler());
 
+      ctx->engine = std::make_shared<InferEngine>(infer_options);
       ctx->trans_data_helper = std::make_shared<InferTransDataHelper>(q_ptr_, params_.infer_interval * bsize_ * 2);
       ctxs_[tid] = ctx;
     }
@@ -290,6 +301,8 @@ void Inference::Close() {
  */
 int Inference::Process(std::shared_ptr<FrameInfo> data) {
 
+  // 获取当前 thread 的 InferContext
+  // ModelLoader 仍然由 InferencePrivate 所有
   std::shared_ptr<InferContext> pctx = d_ptr_->GetInferContext();
   bool eos = data->IsEos();
   bool drop_data = d_ptr_->params_.infer_interval > 0 && pctx->drop_count++ % d_ptr_->params_.infer_interval != 0;

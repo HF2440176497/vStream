@@ -26,10 +26,10 @@
 #include <string>
 #include <map>
 #include <utility>
+#include <any>
 
 #include "cnstream_common.hpp"
 #include "cnstream_logging.hpp"
-#include "util/cnstream_any.hpp"
 
 namespace cnstream {
 
@@ -138,11 +138,11 @@ class Collection : public NonCopyable {
 #endif
 
  private:
-  void Add(const std::string& tag, std::unique_ptr<cnstream::any>&& value);
-  bool AddIfNotExists(const std::string& tag, std::unique_ptr<cnstream::any>&& value);
+  void Add(const std::string& tag, std::unique_ptr<std::any>&& value);
+  bool AddIfNotExists(const std::string& tag, std::unique_ptr<std::any>&& value);
 
  private:
-  std::map<std::string, std::unique_ptr<cnstream::any>> data_;
+  std::map<std::string, std::unique_ptr<std::any>> data_;
   std::mutex data_mtx_;
 };  // class Collection
 
@@ -154,8 +154,8 @@ ValueT& Collection::Get(const std::string& tag) {
     LOGF(COLLECTION) << "No data tagged by [" << tag << "] has been added.";
   }
   try {
-    return any_cast<ValueT&>(*iter->second);
-  } catch (bad_any_cast& e) {
+    return std::any_cast<ValueT&>(*iter->second);
+  } catch (std::bad_any_cast& e) {
 #if !defined(_LIBCPP_NO_RTTI)
     LOGF(COLLECTION) << "The type of data tagged by [" << tag << "]  is ["
                      << iter->second->type().name()
@@ -167,29 +167,29 @@ ValueT& Collection::Get(const std::string& tag) {
   }
 
   // never be here.
-  return any_cast<ValueT&>(*iter->second);
+  return std::any_cast<ValueT&>(*iter->second);
 }
 
 template <typename ValueT> inline
 ValueT& Collection::Add(const std::string& tag, const ValueT& value) {
-  Add(tag, std::unique_ptr<cnstream::any>(new cnstream::any(value)));
+  Add(tag, std::unique_ptr<std::any>(new std::any(value)));
   return Get<ValueT>(tag);
 }
 
 template <typename ValueT> inline
 ValueT& Collection::Add(const std::string& tag, ValueT&& value) {
-  Add(tag, std::unique_ptr<cnstream::any>(new cnstream::any(std::forward<ValueT>(value))));
+  Add(tag, std::unique_ptr<std::any>(new std::any(std::forward<ValueT>(value))));
   return Get<ValueT>(tag);
 }
 
 template <typename ValueT> inline
 bool Collection::AddIfNotExists(const std::string& tag, const ValueT& value) {
-  return AddIfNotExists(tag, std::unique_ptr<cnstream::any>(new cnstream::any(value)));
+  return AddIfNotExists(tag, std::unique_ptr<std::any>(new std::any(value)));
 }
 
 template <typename ValueT> inline
 bool Collection::AddIfNotExists(const std::string& tag, ValueT&& value) {
-  return AddIfNotExists(tag, std::unique_ptr<cnstream::any>(new cnstream::any(std::forward<ValueT>(value))));
+  return AddIfNotExists(tag, std::unique_ptr<std::any>(new std::any(std::forward<ValueT>(value))));
 }
 
 #if !defined(_LIBCPP_NO_RTTI)
