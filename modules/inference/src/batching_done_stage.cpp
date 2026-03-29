@@ -192,7 +192,7 @@ std::vector<std::shared_ptr<InferTask>> PostprocessingBatchingDoneStage::Batchin
           IOResValue cpu_output_value = cpu_output_res->WaitResourceByTicket(&cor_ticket);
           std::vector<float*> net_outputs;
 
-          // net_outputs 长度 == 模型输出 tensor 数量，例如 == 1
+          // net_outputs 长度 == output tensor num，例如 == 1
           for (size_t output_idx = 0; output_idx < cpu_output_value.datas.size(); ++output_idx) {
             // bidx 指明了在当前 batch 中的 index
             net_outputs.push_back(reinterpret_cast<float*>(cpu_output_value.datas[output_idx].Offset(bidx)));

@@ -1,4 +1,4 @@
-# ModelStream
+# vStream
 
 高性能视频结构化分析框架，采用模块化流水线设计。
 
@@ -81,7 +81,7 @@ REGISTER_MODULE(MyModule);
 ## 项目结构
 
 ```
-ModelStream/
+vStream/
 ├── framework/core/       # 核心框架 (Pipeline, Module, FrameInfo, Connector)
 ├── modules/              # 功能模块 (source, util, unittest)
 ├── 3rdparty/            # 第三方库 (libyuv, googletest, json)
@@ -102,9 +102,8 @@ ModelStream/
 
 ## 待开发
 
-- InferenceModule 推理模块
+- Inference 推理模块
 - VideoSource 视频源
-- RTSPSource RTSP 流
 - Python 绑定
 - Encoder/Render 模块
 

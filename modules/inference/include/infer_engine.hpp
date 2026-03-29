@@ -62,7 +62,7 @@ class InferEngine {
 
   ~InferEngine();
 
-  ResultWaitingCard FeedData(void* frame_info);
+  ResultWaitingCard FeedData(std::shared_ptr<FrameInfo> frame_info);
   void ForceBatchingDone() { BatchingDone(); }
 
  private:
@@ -78,7 +78,7 @@ class InferEngine {
   uint32_t batchsize_ = 0;
   uint32_t batching_timeout_ = 0;
   int dev_id_ = 0;
-  bool batching_by_obj_ = false;
+  bool batching_by_obj_ = false;  // infer_param: obj_infer_
   std::string module_name_;
 
   BatchingStagePtr batching_stage_ = nullptr;
@@ -96,9 +96,8 @@ class InferEngine {
 
   BatchingDoneInput batched_finfos_;
   std::vector<void*> batched_objs_;
-  uint32_t cached_frame_cnt_ = 0;
+  uint32_t cached_frame_cnt_ = 0;  // ++ on FeedData
 
-  std::mutex mtx_;
   std::condition_variable cv_;
   std::thread timeout_thread_;
   std::atomic<bool> running_{false};

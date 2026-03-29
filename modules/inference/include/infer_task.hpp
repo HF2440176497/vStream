@@ -33,9 +33,13 @@
 class InferTask;
 using InferTaskSptr = std::shared_ptr<InferTask>;
 
+/**
+ * 执行 func_ 并返回执行结果, func: int()
+ * @return int 执行结果
+ */
 class InferTask {
  public:
-  std::string task_msg = "task";  // for debug.
+  std::string task_msg;  // for debug.
 
   explicit InferTask(const std::function<int()>& task_func) : func_(task_func) {
     statem_ = promise_.get_future();
@@ -71,6 +75,7 @@ class InferTask {
 
   void WaitForTaskComplete() { statem_.wait(); }
 
+  // 等待前置任务完成
   void WaitForFrontTasksComplete() {
     for (const auto& task_statem : pre_task_statem_) {
       task_statem.wait();
@@ -84,5 +89,4 @@ class InferTask {
   std::vector<std::shared_future<int>> pre_task_statem_;
 };  // class InferTask
 
-
-#endif  // MODULES_INFERENCE_SRC_INFER_TASK_HPP_
+#endif  // INFER_TASK_HPP_

@@ -495,6 +495,7 @@ void Pipeline::TransmitData(NodeContext* context, const std::shared_ptr<FrameInf
   }
 
   // transmit to next nodes
+  // 操作后面的
   for (auto next_node : node->GetNext()) {
     if (!PassedByAllParentNodes(&next_node->data, cur_mask)) continue;
     auto next_module = next_node->data.module;

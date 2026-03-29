@@ -75,7 +75,9 @@ void CpuInputResource::Deallocate(ModelLoader* model, uint32_t batchsize,
 }
 
 CpuOutputResource::CpuOutputResource(ModelLoader* model, uint32_t batchsize)
-    : IOResource(model, batchsize) {}
+    : IOResource(model, batchsize) {
+  memop_ = MemOpFactory::Instance().CreateMemOp(DevType::CPU, -1);
+}
 
 CpuOutputResource::~CpuOutputResource() {}
 

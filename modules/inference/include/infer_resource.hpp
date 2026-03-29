@@ -54,18 +54,18 @@ class InferResource : public QueuingServer {
   RetT value_;
 };  // class InferResource
 
-// Note: ptrs 含有 RAII 内存，在 Resource 析构时自动释放
 struct IOResValue {
   struct IOResData {
-    void* ptr = nullptr;
+    void* ptr = nullptr;  // 每个 tensor 的内存数据指针
     TensorShape shape;
-    size_t batch_offset = 0;  // 每个 batch 数据的偏移量
+    size_t batch_offset = 0;  // 单个数据的偏移量
     uint32_t batchsize = 0;
     void* Offset(int batch_idx) const {
       return reinterpret_cast<void*>(reinterpret_cast<char*>(ptr) + batch_offset * batch_idx);
     }
   };
-  std::vector<std::shared_ptr<void>> ptrs;
+  // size == input/output tensor num
+  std::vector<std::shared_ptr<void>> ptrs;  // RAII 内存，在 Resource 析构时自动释放
   std::vector<IOResData> datas;
 };  // struct IOResValue
 
@@ -74,7 +74,7 @@ struct IOResValue {
 CNSTREAM_REGISTER_EXCEPTION(IOResource);
 
 // IOResource: 通过 Allocate 分配内存，通过 Deallocate 释放内存
-// 子类定义封装 IOResValue 
+// 子类定义封装 IOResValue 的获取和析构方法
 class IOResource : public InferResource<IOResValue> {
  public:
   IOResource(ModelLoader* model, uint32_t batchsize);

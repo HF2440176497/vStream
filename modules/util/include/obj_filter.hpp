@@ -66,6 +66,7 @@ class ObjFilter : virtual public ReflexObjectEx<ObjFilter> {
    * @param obj: The object infomations.
    *
    * @return Returns true if this object is satisfied, otherwise returns false.
+   * 返回 false 时，说明当前 obj 被过滤，continue
    */
   virtual bool Filter(const FrameInfoPtr& finfo, const InferObjectPtr& pobj) = 0;
 };  // class ObjFilter

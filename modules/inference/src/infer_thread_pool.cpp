@@ -91,6 +91,11 @@ InferTaskSptr InferThreadPool::PopTask() {
   return task;
 }
 
+/**
+ * 设置 Execute 异常处理函数
+ * @param err_func 异常处理函数，参数为错误信息
+ * @return void
+ * */
 void InferThreadPool::SetErrorHandleFunc(const std::function<void(const std::string& err_msg)>& err_func) {
   std::lock_guard<std::mutex> lk(mtx_);
   error_func_ = err_func;

@@ -184,6 +184,7 @@ void InferParamManager::RegisterAll(ParamRegister *pregister) {
   };
   ASSERT(RegisterParam(pregister, param));
 
+  // 当设置此标志位，会反射创建 obj 处理的相关对象 例如 obj_filter， ObjPreproc 
   param.name = "object_infer";
   param.desc_str =
       "Optional. if object_infer is set to true, the detection target is used as the input to"

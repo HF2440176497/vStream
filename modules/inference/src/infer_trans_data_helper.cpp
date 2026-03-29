@@ -67,7 +67,7 @@ void InferTransDataHelper::Loop() {
     cond_not_full_.notify_one();
 
     if (cnstream::IsStreamRemoved(data.first->stream_id)) {
-      if (!data.first->IsEos()) {  // Eos 需要向后传
+      if (!data.first->IsEos()) {  // eos 需要向后传
         // discard packet if stream has been removed
         continue;
       }
@@ -75,8 +75,10 @@ void InferTransDataHelper::Loop() {
 
     auto finfo = data.first;
     auto card = data.second;
-    card.WaitForCall();
+    if (!running_.load()) break;
+    card.WaitForCall();  // TODO: 有可能会阻塞
 
+    // 虽然在 Loop 线程，但是调用 TransmitData 时 module 的成员会加锁保护
     if (infer_) {
       infer_->TransmitData(finfo);
     }

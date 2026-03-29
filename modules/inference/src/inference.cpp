@@ -58,7 +58,7 @@ class InferencePrivate: public NonCopyable {
  public:
   explicit InferencePrivate(Inference* q) : q_ptr_(q) {}
   InferParams params_{};
-  std::unique_ptr<ModelLoader> model_loader_;  
+  std::unique_ptr<ModelLoader> model_loader_ = nullptr;  
   std::shared_ptr<Preproc> preproc_ = nullptr;
   std::shared_ptr<Postproc> postproc_ = nullptr;
 
@@ -69,7 +69,7 @@ class InferencePrivate: public NonCopyable {
   std::string dump_resized_image_dir_ = "";
   std::string module_name_ = "";
 
-  std::map<std::thread::id, InferContextSptr> ctxs_;
+  std::map<std::thread::id, InferContextSptr> ctxs_ { };
   std::mutex ctx_mtx_;
 
   void InferEngineErrorHnadleFunc(const std::string& err_msg) {
@@ -87,7 +87,7 @@ class InferencePrivate: public NonCopyable {
 
     LOGI(INFERENCER) << "[" << module_name_ << "] load model [path: " << model_path << "]";
 
-    // TODO: 未来由 Pipeline 参数透传到此，以此为准 检验 data 中是否相同
+    // TODO: 未来由 Pipeline 参数透传到此，以此为准来检验 data 中是否相同
     auto dev_type = params.dev_type;
     auto dev_id = params.dev_id;
     auto& factory = ModelLoaderFactory::Instance();
@@ -285,7 +285,7 @@ void Inference::Close() {
 
   /*destroy infer contexts*/
   d_ptr_->ctx_mtx_.lock();
-  d_ptr_->ctxs_.clear();  // shared_ptr<InferContext>
+  d_ptr_->ctxs_.clear();  // std::map<std::thread::id, shared_ptr<InferContext>>
   d_ptr_->ctx_mtx_.unlock();
 
   delete d_ptr_;
@@ -301,7 +301,7 @@ void Inference::Close() {
  */
 int Inference::Process(std::shared_ptr<FrameInfo> data) {
 
-  // 获取当前 thread 的 InferContext
+  // 获取当前 thread 的 InferContext，也就是 Pipeline 启动的 TaskLoop 线程
   // ModelLoader 仍然由 InferencePrivate 所有
   std::shared_ptr<InferContext> pctx = d_ptr_->GetInferContext();
   bool eos = data->IsEos();
@@ -324,13 +324,13 @@ int Inference::Process(std::shared_ptr<FrameInfo> data) {
       // minimize batch_timeout delay
       pctx->engine->ForceBatchingDone();
     }
+    // drop_ 重新从 1 计数
     if (drop_data) pctx->drop_count %= d_ptr_->params_.infer_interval;
     std::shared_ptr<std::promise<void>> promise = std::make_shared<std::promise<void>>();
     promise->set_value();
     InferEngine::ResultWaitingCard card(promise);
     pctx->trans_data_helper->SubmitData(std::make_pair(data, card));
   } else {
-    // InferTransDataHelper::Loop 会等待 card
     InferEngine::ResultWaitingCard card = pctx->engine->FeedData(data);
     pctx->trans_data_helper->SubmitData(std::make_pair(data, card));
   }
