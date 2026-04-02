@@ -19,9 +19,6 @@
  *************************************************************************/
 
 #include "obj_batching_stage.hpp"
-#include <cn_codec_common.h>
-#include <cnrt.h>
-#include <easyinfer/model_loader.h>
 #include <memory>
 #include <vector>
 #include "cnstream_frame.hpp"

@@ -263,7 +263,7 @@ bool SourceModule::SendData(const std::shared_ptr<FrameInfo> data) {
   if (!data->IsEos() && IsStreamRemoved(data->stream_id)) {
     return false;
   }
-  return DoTransmitData(data);
+  return TransmitData(data);
 }
 
 }  // namespace cnstream

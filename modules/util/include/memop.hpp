@@ -70,6 +70,9 @@ class MemOp {
   
   virtual std::shared_ptr<void> Allocate(size_t bytes);  // 分配 RAII 内存
   virtual void Copy(void* dst, const void* src, size_t size);
+  virtual void CopyFromHost(void* dst, const void* src, size_t size);
+  virtual void CopyToHost(void* dst, const void* src, size_t size);
+
   virtual int GetDeviceId() const;
   virtual std::unique_ptr<CNSyncedMemory> CreateSyncedMemory(size_t size);
   virtual int ConvertImageFormat(CNSyncedMemory* dst_mem, DataFormat dst_fmt, const DecodeFrame* src_frame);

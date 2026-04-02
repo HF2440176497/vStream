@@ -10,16 +10,17 @@ namespace cnstream {
 
 class ModelLoader {
  public:
-  ModelLoader(DevType dev_type, int device_id = 0):
-    device_type_(dev_type), device_id_(device_id) {};
+  ModelLoader(DevType dev_type, int dev_id = 0):
+    dev_type_(dev_type), dev_id_(dev_id) {};
   virtual ~ModelLoader() = default;
   virtual bool IsValid() = 0;
   virtual bool Init(const std::string& engine_path) = 0;
 
  public:
-  int GetDeviceId() const { return device_id_; }
-  DevType GetDeviceType() const { return device_type_; }
+  int GetDeviceId() const { return dev_id_; }
+  DevType GetDeviceType() const { return dev_type_; }
 
+  /** 单输入模型，获取对应的信息 */
   uint32_t get_batch_size() const { return input_shapes_[input_ordered_index_].N(); }
   uint32_t get_channel_size() const { return input_shapes_[input_ordered_index_].C(); }
   uint32_t get_height_size() const { return input_shapes_[input_ordered_index_].H(); }
@@ -34,18 +35,21 @@ class ModelLoader {
     }
     return TensorShape();
   }
+
   TensorShape OutputShape(uint32_t index) const {
     if (index < output_shapes_.size()) {
       return output_shapes_[index];
     }
     return TensorShape();
   }
+
   DataType InputDataType(uint32_t index) const {
     if (index < input_data_types_.size()) {
       return input_data_types_[index];
     }
     return DataType::INVALID;
   }
+
   DataType OutputDataType(uint32_t index) const {
     if (index < output_data_types_.size()) {
       return output_data_types_[index];
@@ -53,16 +57,41 @@ class ModelLoader {
     return DataType::INVALID;
   }
 
+  std::string InputName(uint32_t index) const {
+    if (index < input_names_.size()) {
+      return input_names_[index];
+    }
+    return "";
+  }
+
+  std::string OutputName(uint32_t index) const {
+    if (index < output_names_.size()) {
+      return output_names_[index];
+    }
+    return "";
+  }
+  int get_input_ordered_index() const { return input_ordered_index_; }
+  int get_output_ordered_index() const { return output_ordered_index_; }
+
+  size_t GetInputDataBatchAlignSize(uint32_t index) const {
+    return InputShape(index).DataCount() * data_type_size(input_data_types_[index]);
+  }
+
+  size_t GetOutputDataBatchAlignSize(uint32_t index) const {
+    return OutputShape(index).DataCount() * data_type_size(output_data_types_[index]);
+  }
+
+  virtual bool RunSync(std::vector<std::shared_ptr<void>> inputs, std::vector<std::shared_ptr<void>> outputs) = 0;
+
 #ifdef UNIT_TEST
  public:
 #else
  protected:
 #endif
   std::string engine_path_;
-  DevType     device_type_ = DevType::INVALID;
-  int         device_id_ = -1;
+  DevType     dev_type_ = DevType::INVALID;
+  int         dev_id_ = -1;
 
-  // 保存模型映射信息
   std::vector<TensorShape>   input_shapes_;
   std::vector<TensorShape>   output_shapes_;
   std::vector<DataType>      input_data_types_;

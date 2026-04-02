@@ -32,21 +32,22 @@ InferEngine::InferEngine(const InferOptions& options)
       postprocessor_(options.postprocessor()),
       obj_preprocessor_(options.obj_preprocessor()),
       obj_postprocessor_(options.obj_postprocessor()),
-      batchsize_(options.batchsize()),
       batching_timeout_(options.batching_timeout()),
       dev_id_(options.dev_id()),
       batching_by_obj_(options.batching_by_obj()),
       module_name_(options.module_name()),
       error_func_(options.error_handler()) {
 
+  batchsize_ = model_->get_batch_size();
+
   thread_pool_ = std::make_shared<InferThreadPool>();
   thread_pool_->SetErrorHandleFunc(error_func);
-  thread_pool_->Init(dev_id_, batchsize * 3 + 4);
+  thread_pool_->Init(dev_id_, batchsize_ * 3 + 4);
 
-  cpu_input_res_ = std::make_shared<CpuInputResource>(model_, batchsize_);
-  cpu_output_res_ = std::make_shared<CpuOutputResource>(model_, batchsize_);
-  net_input_res_ = std::make_shared<NetInputResource>(model_, batchsize_);
-  net_output_res_ = std::make_shared<NetOutputResource>(model_, batchsize_);
+  cpu_input_res_ = std::make_shared<CpuInputResource>(model_);
+  cpu_output_res_ = std::make_shared<CpuOutputResource>(model_);
+  net_input_res_ = std::make_shared<NetInputResource>(model_);
+  net_output_res_ = std::make_shared<NetOutputResource>(model_);
 
   cpu_input_res_->Init();
   cpu_output_res_->Init();
@@ -106,8 +107,6 @@ void InferEngine::StageAssemble() {
       obj_postproc_stage_ = std::make_shared<ObjPostprocessingBatchingDoneStage>(model_, batchsize_, dev_id_,
                                                                                  obj_postprocessor_, cpu_output_res_);
   } else {
-
-    // TODO: 后处理暂时使用 cpu postprocess
     auto postproc_stage =
         std::make_shared<PostprocessingBatchingDoneStage>(model_, batchsize_, dev_id_, postprocessor_, cpu_output_res_);
     batching_done_stages_.push_back(postproc_stage);
@@ -132,28 +131,28 @@ InferEngine::ResultWaitingCard InferEngine::FeedData(std::shared_ptr<FrameInfo> 
     objs_holder->mutex.unlock();
 
     for (int obj_idx = 0; obj_idx < objs.size(); ++obj_idx) {
-      auto& obj = objs[idx];
+      auto& obj = objs[obj_idx];
 
       if (obj_filter_) {
-        if (!obj_filter->Filter(frame_info, obj)) continue;
+        if (!obj_filter_->Filter(frame_info, obj_idx)) continue;
       }
 
-      InferTaskSptr task = obj_batching_stage_->Batching(frame_info, obj);
+      InferTaskSptr task = obj_batching_stage_->Batching(frame_info, obj_idx);
       thread_pool_->SubmitTask(task);
 
       batched_finfos_.push_back(std::make_pair(frame_info, auto_set_done));
-      batched_objs_.push_back(obj);
+      batched_objs_.push_back(obj_idx);
 
       if (batched_finfos_.size() == batchsize_) {
         BatchingDone();
-        // timeout_helper_.Reset(NULL);
+        // timeout_helper_.Reset(nullptr);
       } else {
         // timeout_helper_.Reset([this]() -> void { BatchingDone(); });
       }
     }
     if (cached_frame_cnt_ >= batchsize_) {
       BatchingDone();
-      // timeout_helper_.Reset(NULL);
+      // timeout_helper_.Reset(nullptr);
     }
 
   } else {  // batching_by_obj_ = false
@@ -165,7 +164,7 @@ InferEngine::ResultWaitingCard InferEngine::FeedData(std::shared_ptr<FrameInfo> 
 
     if (batched_finfos_.size() == batchsize_) {
       BatchingDone();
-      // timeout_helper_.Reset(NULL);
+      // timeout_helper_.Reset(nullptr);
     } else {
       // timeout_helper_.Reset([this]() -> void { BatchingDone(); });
     }

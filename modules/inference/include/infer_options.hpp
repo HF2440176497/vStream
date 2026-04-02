@@ -35,11 +35,6 @@ class InferOptions {
     return *this;
   }
 
-  InferOptions& SetBatchSize(uint32_t batchsize) {
-    batchsize_ = batchsize;
-    return *this;
-  }
-
   InferOptions& SetBatchingTimeout(uint32_t timeout) {
     batching_timeout_ = timeout;
     return *this;
@@ -79,7 +74,6 @@ class InferOptions {
   ModelLoader* model() const { return model_; }
   PreprocPtr preprocessor() const { return preprocessor_; }
   PostprocPtr postprocessor() const { return postprocessor_; }
-  uint32_t batchsize() const { return batchsize_; }
   uint32_t batching_timeout() const { return batching_timeout_; }
   const std::function<void(const std::string& err_msg)>& error_handler() const { return error_func_; }
   bool batching_by_obj() const { return batching_by_obj_; }
@@ -93,8 +87,7 @@ class InferOptions {
   ModelLoader* model_ = nullptr;
   PreprocPtr preprocessor_ = nullptr;
   PostprocPtr postprocessor_ = nullptr;
-  uint32_t batchsize_ = 1;
-  uint32_t batching_timeout_ = 2000;
+  uint32_t batching_timeout_ = 3000;
   std::function<void(const std::string& err_msg)> error_func_;
   bool batching_by_obj_ = false;
   ObjPreprocPtr obj_preprocessor_ = nullptr;

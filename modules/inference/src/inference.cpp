@@ -65,7 +65,8 @@ class InferencePrivate: public NonCopyable {
   std::shared_ptr<ObjPreproc> obj_preproc_ = nullptr;
   std::shared_ptr<ObjPostproc> obj_postproc_ = nullptr;
   std::shared_ptr<ObjFilter> obj_filter_ = nullptr;
-  int bsize_ = 0;
+
+  uint32_t trans_data_size_ = 20;
   std::string dump_resized_image_dir_ = "";
   std::string module_name_ = "";
 
@@ -78,7 +79,7 @@ class InferencePrivate: public NonCopyable {
 
   /**
    * @brief 解析来自 params 的模型参数
-   * param_set 只是用于组成完整路径
+   * param_set 只是用于取出路径参数，需要的参数都已在 params 中
    */
   bool InitByParams(const InferParams &params, const ModuleParamSet &param_set) {
     params_ = params;
@@ -88,8 +89,8 @@ class InferencePrivate: public NonCopyable {
     LOGI(INFERENCER) << "[" << module_name_ << "] load model [path: " << model_path << "]";
 
     // TODO: 未来由 Pipeline 参数透传到此，以此为准来检验 data 中是否相同
-    auto dev_type = params.dev_type;
-    auto dev_id = params.dev_id;
+    auto dev_type = params.device_type;
+    auto dev_id = params.device_id;
     auto& factory = ModelLoaderFactory::Instance();
 
     // LoadEngine - ParBinding
@@ -104,8 +105,7 @@ class InferencePrivate: public NonCopyable {
       LOGE(INFERENCER) << "[" << module_name_ << "] init model failed. path: " << model_path;
       return false;
     }
-
-    bsize_ = model_loader_->get_batch_size();
+    trans_data_size_ = params.trans_data_size;
 
     if (params.object_infer) {
       LOGI(INFERENCER) << "[" << module_name_ << "] inference mode: inference with objects.";
@@ -200,7 +200,6 @@ class InferencePrivate: public NonCopyable {
           .SetModel(model_loader_.get())
           .SetPreprocessor(preproc_)
           .SetPostprocessor(postproc_)
-          .SetBatchSize(bsize_)
           .SetBatchingTimeout(params_.batching_timeout)
           .SetErrorHandler(std::bind(&InferencePrivate::InferEngineErrorHnadleFunc, this, std::placeholders::_1))
           .SetBatchingByObj(params_.object_infer)
@@ -208,13 +207,12 @@ class InferencePrivate: public NonCopyable {
           .SetObjPostprocessor(obj_postproc_)
           .SetObjFilter(obj_filter_)
           .SetDumpResizedImageDir(dump_resized_image_dir_)
-          .SetModelInputPixelFormat(params_.model_input_pixel_format)
           .SetSavingInferInput(params_.saving_infer_input)
           .SetModuleName(module_name_)
           .SetProfiler(q_ptr_->GetProfiler());
 
       ctx->engine = std::make_shared<InferEngine>(infer_options);
-      ctx->trans_data_helper = std::make_shared<InferTransDataHelper>(q_ptr_, params_.infer_interval * bsize_ * 2);
+      ctx->trans_data_helper = std::make_shared<InferTransDataHelper>(q_ptr_, params_.infer_interval * trans_data_size_);
       ctxs_[tid] = ctx;
     }
     return ctx;
@@ -226,13 +224,13 @@ class InferencePrivate: public NonCopyable {
 
 Inference::Inference(const std::string& name) : Module(name) {
   d_ptr_ = nullptr;
-  // hasTransmit_.store(true);  // transmit data by module itself
+  hasTransmit_.store(true);  // transmit data by module itself
   param_register_.SetModuleDesc(
       "Inference is a module for running offline model inference,"
       " as well as preprocessing and postprocessing.");
   
   param_manager_ = std::make_shared<InferParamManager>();
-  LOGF_IF(INFERENCER, !param_manager_) << "Inference::Inference(const std::string& name) new InferParams failed.";
+  LOGF_IF(INFERENCER, !param_manager_) << "Inference::Inference new InferParams failed.";
   param_manager_->RegisterAll(&param_register_);
 }
 
@@ -311,11 +309,6 @@ int Inference::Process(std::shared_ptr<FrameInfo> data) {
     if (data->IsRemoved()) {
       // discard packets from removed-stream
       return 0;
-    }
-    DataFramePtr frame = data->collection.Get<DataFramePtr>(kDataFrameTag);
-    if (frame->ctx_.dev_id != d_ptr_->params_.device_id) {  // 简化：不进行跨卡的传输
-      LOGF(INFERENCER) << "Inference::Process() frame dev_id != params_ device_id";
-      return -1;
     }
   }
 

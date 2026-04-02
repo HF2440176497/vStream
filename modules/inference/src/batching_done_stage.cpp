@@ -18,9 +18,7 @@
  * THE SOFTWARE.
  *************************************************************************/
 
-#include <easybang/resize_and_colorcvt.h>
-#include <easyinfer/easy_infer.h>
-#include <easyinfer/mlu_memory_op.h>
+
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -29,7 +27,6 @@
 #include <utility>
 #include <vector>
 
-#include "cnrt.h"
 #include "infer_engine.hpp"
 #include "infer_resource.hpp"
 #include "infer_task.hpp"
@@ -55,21 +52,26 @@ std::vector<std::shared_ptr<InferTask>> H2DBatchingDoneStage::BatchingDone(const
 
     // waiting for schedule
     IOResValue cpu_value = this->cpu_input_res_->WaitResourceByTicket(&cir_ticket);
-    IOResValue mlu_value = this->net_input_res_->WaitResourceByTicket(&mir_ticket);
+    IOResValue net_value = this->net_input_res_->WaitResourceByTicket(&mir_ticket);
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+#ifdef UNIT_TEST
+    // std::this_thread::sleep_for(std::chrono::milliseconds(100));
     assert(finfos.size() == batchsize_);
-
-
 
     for (uint32_t bidx = 0; bidx < batchsize_; bidx++) {
       std::cout << "H2DBatchingDoneStage, bidx: " << bidx
-          << "; [" << finfos[bidx].first->batch_index << ", " << finfos[bidx].first->item_index << "] " << std::endl;
+          << "; [" << finfos[bidx].first->stream_id << ", " << finfos[bidx].first->timestamp << "] " << std::endl;
     }
+#endif
 
-
-
-    
+    for (int i = 0; i < model_->InputNum(); i++) {
+      void* src_cpu = cpu_value.ptrs[i].get();
+      void* dst_net = net_value.ptrs[i].get();
+      auto input_data_type = model_->InputDataType(i);
+      size_t data_size = net_value.datas[i].shape.DataCount() * data_type_size(input_data_type);
+      memop_->CopyFromHost(src_cpu, dst_net, data_size);
+    }
+  
     this->cpu_input_res_->DeallingDone();
     this->net_input_res_->DeallingDone();
     return 0;
@@ -80,13 +82,11 @@ std::vector<std::shared_ptr<InferTask>> H2DBatchingDoneStage::BatchingDone(const
 
 
 InferBatchingDoneStage::InferBatchingDoneStage(ModelLoader* model,
-                                               DataFormat model_input_format,
                                                uint32_t batchsize,
                                                int dev_id,
                                                std::shared_ptr<NetInputResource> net_input_res,
                                                std::shared_ptr<NetOutputResource> net_output_res)
     : BatchingDoneStage(model, batchsize, dev_id),
-      model_input_format_(model_input_format),
       net_input_res_(net_input_res),
       net_output_res_(net_output_res) {
 }
@@ -100,23 +100,35 @@ std::vector<std::shared_ptr<InferTask>> InferBatchingDoneStage::BatchingDone(con
   QueuingTicket net_input_res_ticket = net_input_res_->PickUpNewTicket();
   QueuingTicket net_output_res_ticket = net_output_res_->PickUpNewTicket();
   task = std::make_shared<InferTask>([net_input_res_ticket, net_output_res_ticket, this, finfos]() -> int {
-    QueuingTicket mir_ticket = net_input_res_ticket;
-    QueuingTicket mor_ticket = net_output_res_ticket;
-    IOResValue mlu_input_value = this->net_input_res_->WaitResourceByTicket(&mir_ticket);
-    IOResValue mlu_output_value = this->net_output_res_->WaitResourceByTicket(&mor_ticket);
+    QueuingTicket nir_ticket = net_input_res_ticket;
+    QueuingTicket nor_ticket = net_output_res_ticket;
+    IOResValue net_input_value = this->net_input_res_->WaitResourceByTicket(&nir_ticket);
+    IOResValue net_output_value = this->net_output_res_->WaitResourceByTicket(&nor_ticket);
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(800));
+#ifdef UNIT_TEST
+    // std::this_thread::sleep_for(std::chrono::milliseconds(800));
     assert(finfos.size() == batchsize_);
-
-
 
     for (uint32_t bidx = 0; bidx < batchsize_; bidx++) {
       std::cout << "InferBatchingDoneStage, bidx: " << bidx
-          << "; [" << finfos[bidx].first->batch_index << ", " << finfos[bidx].first->item_index << "] " << std::endl;
+          << "; [" << finfos[bidx].first->stream_id << ", " << finfos[bidx].first->timestamp << "] " << std::endl;
     }
+#endif
 
+    if (profiler_) {  // module profiler
+      for (auto it : finfos)
+        profiler_->RecordProcessStart("RUN MODEL", std::make_pair(it.first->stream_id, it.first->timestamp));
+    }
+    // debug for net_input
+    if (!dump_resized_image_dir_.empty()) {
+      // dump_resized_image(net_input_value, dump_resized_image_dir_);
+    }
+    model_->RunSync(net_input_value.ptrs, net_output_value.ptrs);
 
-
+    if (profiler_) {
+      for (auto it : finfos)
+        profiler_->RecordProcessEnd("RUN MODEL", std::make_pair(it.first->stream_id, it.first->timestamp));
+    }
 
     this->net_input_res_->DeallingDone();
     this->net_output_res_->DeallingDone();
@@ -127,7 +139,6 @@ std::vector<std::shared_ptr<InferTask>> InferBatchingDoneStage::BatchingDone(con
 }
 
 
-
 std::vector<std::shared_ptr<InferTask>> D2HBatchingDoneStage::BatchingDone(const BatchingDoneInput& finfos) override {
   std::vector<InferTaskSptr> tasks;
   InferTaskSptr task;
@@ -136,17 +147,25 @@ std::vector<std::shared_ptr<InferTask>> D2HBatchingDoneStage::BatchingDone(const
   task = std::make_shared<InferTask>([net_output_res_ticket, cpu_output_res_ticket, this, finfos]() -> int {
     QueuingTicket mor_ticket = net_output_res_ticket;
     QueuingTicket cor_ticket = cpu_output_res_ticket;
-    IOResValue mlu_output_value = this->net_output_res_->WaitResourceByTicket(&mor_ticket);
+    IOResValue net_output_value = this->net_output_res_->WaitResourceByTicket(&mor_ticket);
     IOResValue cpu_output_value = this->cpu_output_res_->WaitResourceByTicket(&cor_ticket);
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+#ifdef UNIT_TEST
+    // std::this_thread::sleep_for(std::chrono::milliseconds(100));
     assert(finfos.size() == batchsize_);
-
-
 
     for (uint32_t bidx = 0; bidx < batchsize_; bidx++) {
       std::cout << "D2HBatchingDoneStage, bidx: " << bidx
-          << "; [" << finfos[bidx].first->batch_index << ", " << finfos[bidx].first->item_index << "] " << std::endl;
+          << "; [" << finfos[bidx].first->stream_id << ", " << finfos[bidx].first->timestamp << "] " << std::endl;
+    }
+#endif
+
+    for (int i = 0; i < model_->OutputNum(); i++) {
+      void* src_net = net_output_value.ptrs[i].get();
+      void* dst_cpu = cpu_output_value.ptrs[i].get();
+      auto output_data_type = model_->OutputDataType(i);
+      size_t data_size = net_output_value.datas[i].shape.DataCount() * data_type_size(output_data_type);
+      memop_->CopyToHost(src_net, dst_cpu, data_size);
     }
 
     this->net_output_res_->DeallingDone();
@@ -156,7 +175,6 @@ std::vector<std::shared_ptr<InferTask>> D2HBatchingDoneStage::BatchingDone(const
   tasks.push_back(task);
   return tasks;
 }
-
 
 
 std::vector<std::shared_ptr<InferTask>> PostprocessingBatchingDoneStage::BatchingDone(const BatchingDoneInput& finfos) override {
@@ -188,6 +206,15 @@ std::vector<std::shared_ptr<InferTask>> PostprocessingBatchingDoneStage::Batchin
 
     InferTaskSptr task =
         std::make_shared<InferTask>([cpu_output_res_ticket, cpu_output_res, this, finfo, bidx]() -> int {
+
+#ifdef UNIT_TEST
+        // std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        // CPU 后处理帧级并行
+        std::cout << "PostprocessingBatchingDoneStage, bidx: " << bidx
+              << "; [" << finfo.first->stream_id << ", " << finfo.first->timestamp << "] " << std::endl;
+        }
+#endif
+
           QueuingTicket cor_ticket = cpu_output_res_ticket;
           IOResValue cpu_output_value = cpu_output_res->WaitResourceByTicket(&cor_ticket);
           std::vector<float*> net_outputs;
@@ -297,6 +324,8 @@ std::vector<std::shared_ptr<InferTask>> ObjPostprocessingBatchingDoneStage::ObjB
         for (int bidx = 0; bidx < static_cast<int>(finfos.size()); ++bidx) {
           auto finfo = finfos[bidx];
           auto obj = objs[bidx];
+          // finfo.first: std::shared_ptr<FrameInfo>
+          // obj: std::shared_ptr<InferObject>
           batched_objs.push_back(std::make_pair(std::move(finfo.first), std::move(obj)));
         }
 

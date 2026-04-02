@@ -55,7 +55,9 @@ class SourceModule : public Module {
    *
    * @return No return value.
    */
-  explicit SourceModule(const std::string &name) : Module(name) { }
+  explicit SourceModule(const std::string &name) : Module(name) {
+    hasTransmit_.store(true);
+  }
   /**
    * @brief Destructs a source module.
    *

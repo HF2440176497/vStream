@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <sstream>
+#include <ostream>
 
 #include "cnstream_logging.hpp"
 
@@ -28,7 +30,9 @@ enum class DataType {
   INT32 
 };
 
-// note: 仿照 nvinfer1::TensorFormat 定义
+/**
+ * @brief 仿照 nvinfer1::TensorFormat 定义
+ */
 enum class TensorFormat {
   INVALID = -1,
   LINEAR,
@@ -68,6 +72,9 @@ const char* data_type_string(DataType dt) {
 }
 
 
+/**
+ * @brief 封装张量的形状信息, 只支持 NCHW 格式
+ */
 class TensorShape {
  public:
   TensorShape() = default;
@@ -90,6 +97,26 @@ class TensorShape {
   inline int C() const { return shape_[1]; }
   inline int H() const { return shape_[2]; }
   inline int W() const { return shape_[3]; }
+
+  std::string ToString() const {
+    if (shape_.empty()) {
+      return "TensorShape()";
+    }
+    std::stringstream ss;
+    ss << "TensorShape[";
+    for (int i = 0; i < shape_.size(); ++i) {
+      ss << shape_[i];
+      if (i < shape_.size() - 1) {
+        ss << " x ";
+      }
+    }
+    ss << "]";
+    return ss.str();
+  }
+
+  friend std::ostream& operator<<(std::ostream& os, const TensorShape& shape) {
+    return os << shape.ToString();
+  }
 
  private:
   std::vector<int> shape_;

@@ -32,11 +32,9 @@ class TrtModelLoader : public ModelLoader {
 
   bool IsValid() override { return engine_ != nullptr; }
 
-  nvinfer1::IExecutionContext* CreateExecutionContext();
+  bool RunSync(std::vector<std::shared_ptr<void>> inputs, std::vector<std::shared_ptr<void>> outputs) override;
 
-  // return dims of index
-  size_t GetInputDataBatchAlignSize(uint32_t index) const;
-  size_t GetOutputDataBatchAlignSize(uint32_t index) const;
+  nvinfer1::IExecutionContext* CreateExecutionContext();
 
 #ifdef UNIT_TEST
  public:
@@ -51,5 +49,6 @@ class TrtModelLoader : public ModelLoader {
   std::unique_ptr<nvinfer1::IRuntime> runtime_ = nullptr;
   std::unique_ptr<nvinfer1::ICudaEngine> engine_ = nullptr;
   std::unique_ptr<nvinfer1::IExecutionContext> context_ = nullptr;
+  cudaStream_t stream_ = nullptr;
 
 };  // end of TrtModelLoader

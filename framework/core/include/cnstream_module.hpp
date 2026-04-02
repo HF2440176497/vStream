@@ -225,7 +225,7 @@ class Module : private NonCopyable {
   ModuleProfiler* GetProfiler();
 
   // 改进后的 Pipeline 不需要此函数
-  // bool HasTransmit() const { return hasTransmit_.load(); }
+  bool HasTransmit() const { return hasTransmit_.load(); }
 
   /**
    * Each module registers its own parameters and descriptions.
@@ -273,9 +273,12 @@ class Module : private NonCopyable {
 
   int DoTransmitData(const std::shared_ptr<FrameInfo> data);
 
+  bool TransmitData(std::shared_ptr<FrameInfo> data);
+
   Pipeline *container_ = nullptr;  ///< The container.
   RwLock container_lock_;
   std::string name_;                      ///< The name of the module.
+  std::atomic<bool> hasTransmit_ {false};
 
 #ifdef UNIT_TEST
  public:  // NOLINT

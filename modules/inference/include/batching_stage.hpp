@@ -44,7 +44,7 @@ class IOBatchingStage : public BatchingStage {
  private:
   using BatchingStage::batchsize_;
   uint32_t batch_idx_ = 0;
-  std::shared_ptr<IOResource> output_res_ = NULL;
+  std::shared_ptr<IOResource> output_res_ = nullptr;
 };  // class IOBatchingStage
 
 
@@ -56,7 +56,7 @@ class CpuPreprocessingBatchingStage : public IOBatchingStage {
 
  private:
   void ProcessOneFrame(std::shared_ptr<FrameInfo> finfo, uint32_t batch_idx, const IOResValue& value) override;
-  std::shared_ptr<Preproc> preprocessor_;
+  std::shared_ptr<Preproc> preprocessor_ = nullptr;
 };  // class CpuPreprocessingBatchingStage
 
 

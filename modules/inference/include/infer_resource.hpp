@@ -36,7 +36,7 @@ namespace cnstream {
 template <typename RetT>
 class InferResource : public QueuingServer {
  public:
-  InferResource(ModelLoader* model, uint32_t batchsize) : model_(model), batchsize_(batchsize) {}
+  InferResource(ModelLoader* model) : model_(model) {}
   virtual ~InferResource() {}
   virtual void Init() {}
   virtual void Destroy() {}
@@ -50,7 +50,6 @@ class InferResource : public QueuingServer {
 
  protected:
   ModelLoader* model_ = nullptr;
-  const uint32_t batchsize_ = 0;
   RetT value_;
 };  // class InferResource
 
@@ -65,8 +64,8 @@ struct IOResValue {
     }
   };
   // size == input/output tensor num
-  std::vector<std::shared_ptr<void>> ptrs;  // RAII 内存，在 Resource 析构时自动释放
-  std::vector<IOResData> datas;
+  std::vector<std::shared_ptr<void>> ptrs {};  // RAII 内存，在 Resource 析构时自动释放
+  std::vector<IOResData> datas {};
 };  // struct IOResValue
 
 // InferResource 规定获取 value_ 的接口
@@ -77,15 +76,15 @@ CNSTREAM_REGISTER_EXCEPTION(IOResource);
 // 子类定义封装 IOResValue 的获取和析构方法
 class IOResource : public InferResource<IOResValue> {
  public:
-  IOResource(ModelLoader* model, uint32_t batchsize);
+  IOResource(ModelLoader* model);
   virtual ~IOResource();
 
-  void Init() override { value_ = Allocate(model_, batchsize_); }
-  void Destroy() override { Deallocate(model_, batchsize_, value_); }
+  void Init() override { value_ = Allocate(model_); }
+  void Destroy() override { Deallocate(model_, value_); }
 
  protected:
-  virtual IOResValue Allocate(ModelLoader* model, uint32_t batchsize) = 0;
-  virtual void Deallocate(ModelLoader* model, uint32_t batchsize, const IOResValue& value) = 0;
+  virtual IOResValue Allocate(ModelLoader* model) = 0;
+  virtual void Deallocate(ModelLoader* model, const IOResValue& value) = 0;
 
  protected:
   std::shared_ptr<MemOp> memop_ = nullptr;  // 平台相关的内存操作接口
@@ -93,42 +92,42 @@ class IOResource : public InferResource<IOResValue> {
 
 class CpuInputResource : public IOResource {
  public:
-  CpuInputResource(ModelLoader* model, uint32_t batchsize);
+  CpuInputResource(ModelLoader* model);
   ~CpuInputResource();
 
  protected:
-  IOResValue Allocate(ModelLoader* model, uint32_t batchsize) override;
-  void Deallocate(ModelLoader* model, uint32_t batchsize, const IOResValue& value) override;
+  IOResValue Allocate(ModelLoader* model) override;
+  void Deallocate(ModelLoader* model, const IOResValue& value) override;
 };  // class CpuInputResource
 
 class CpuOutputResource : public IOResource {
  public:
-  CpuOutputResource(ModelLoader* model, uint32_t batchsize);
+  CpuOutputResource(ModelLoader* model);
   ~CpuOutputResource();
 
  protected:
-  IOResValue Allocate(ModelLoader* model, uint32_t batchsize) override;
-  void Deallocate(ModelLoader* model, uint32_t batchsize, const IOResValue& value) override;
+  IOResValue Allocate(ModelLoader* model) override;
+  void Deallocate(ModelLoader* model, const IOResValue& value) override;
 };  // class CpuOutputResource
 
 class NetInputResource : public IOResource {
  public:
-  NetInputResource(ModelLoader* model, uint32_t batchsize);
+  NetInputResource(ModelLoader* model);
   ~NetInputResource();
 
  protected:
-  IOResValue Allocate(ModelLoader* model, uint32_t batchsize) override;
-  void Deallocate(ModelLoader* model, uint32_t batchsize, const IOResValue& value) override;
+  IOResValue Allocate(ModelLoader* model) override;
+  void Deallocate(ModelLoader* model, const IOResValue& value) override;
 };  // class NetInputResource
 
 class NetOutputResource : public IOResource {
  public:
-  NetOutputResource(ModelLoader* model, uint32_t batchsize);
+  NetOutputResource(ModelLoader* model);
   ~NetOutputResource();
 
  protected:
-  IOResValue Allocate(ModelLoader* model, uint32_t batchsize) override;
-  void Deallocate(ModelLoader* model, uint32_t batchsize, const IOResValue& value) override;
+  IOResValue Allocate(ModelLoader* model) override;
+  void Deallocate(ModelLoader* model, const IOResValue& value) override;
 };  // class NetOutputResource
 
 

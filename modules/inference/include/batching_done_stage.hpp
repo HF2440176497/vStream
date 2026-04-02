@@ -29,6 +29,7 @@
 #include <iostream>
 #include <cassert>
 
+#include "mem_op.hpp"
 #include "infer_task.hpp"
 #include "infer_resource.hpp"
 
@@ -74,11 +75,17 @@ class BatchingDoneStage {
     saving_infer_input_ = saving_infer_input;
     module_name_ = module_name;
   }
+
+  void SetProfiler(ModuleProfiler* profiler) {
+    profiler_ = profiler;
+  }
+
 #ifdef UNIT_TEST
  public:
 #else
  protected:
 #endif
+  ModuleProfiler* profiler_ = nullptr;
   bool saving_infer_input_ = false;
   std::string module_name_ = "";
   std::string dump_resized_image_dir_ = "";
@@ -97,18 +104,22 @@ class H2DBatchingDoneStage : public BatchingDoneStage {
                        std::shared_ptr<NetInputResource> net_input_res)
       : BatchingDoneStage(model, batchsize, dev_id), 
       cpu_input_res_(cpu_input_res), 
-      net_input_res_(net_input_res) {}
+      net_input_res_(net_input_res) {
+        if (model) {
+          memop_ = MemOpFactory::Instance().CreateMemOp(model->GetDeviceType(), model->GetDevId());
+        }
+      }
   std::vector<std::shared_ptr<InferTask>> BatchingDone(const BatchingDoneInput& finfos) override;
  private:
   std::shared_ptr<CpuInputResource> cpu_input_res_;
   std::shared_ptr<NetInputResource> net_input_res_;
+  std::shared_ptr<MemOp> memop_;
 };  // class H2DBatchingDoneStage
 
 
 class InferBatchingDoneStage : public BatchingDoneStage {
  public:
   InferBatchingDoneStage(ModelLoader* model,
-                         DataFormat model_input_format,
                          uint32_t batchsize,
                          int dev_id,
                          std::shared_ptr<NetInputResource> net_input_res,
@@ -116,7 +127,6 @@ class InferBatchingDoneStage : public BatchingDoneStage {
   ~InferBatchingDoneStage();
   std::vector<std::shared_ptr<InferTask>> BatchingDone(const BatchingDoneInput& finfos) override;
  private:
-  DataFormat model_input_format_;
   std::shared_ptr<NetInputResource> net_input_res_;
   std::shared_ptr<NetOutputResource> net_output_res_;
 };  // class InferBatchingDoneStage
@@ -130,13 +140,18 @@ class D2HBatchingDoneStage : public BatchingDoneStage {
                        std::shared_ptr<CpuOutputResource> cpu_output_res)
       : BatchingDoneStage(model, batchsize, dev_id), 
       net_output_res_(net_output_res), 
-      cpu_output_res_(cpu_output_res) {}
+      cpu_output_res_(cpu_output_res) {
+        if (model) {
+          memop_ = MemOpFactory::Instance().CreateMemOp(model->GetDeviceType(), model->GetDevId());
+        }
+      }
 
   std::vector<std::shared_ptr<InferTask>> BatchingDone(const BatchingDoneInput& finfos) override;
 
  private:
   std::shared_ptr<NetOutputResource> net_output_res_;
   std::shared_ptr<CpuOutputResource> cpu_output_res_;
+  std::shared_ptr<MemOp> memop_;
 };  // class D2HBatchingDoneStage
 
 class PostprocessingBatchingDoneStage : public BatchingDoneStage {

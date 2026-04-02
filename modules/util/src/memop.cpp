@@ -85,6 +85,14 @@ void MemOp::Copy(void* dst, const void* src, size_t size)  {
   memcpy(dst, src, size);
 }
 
+void MemOp::CopyFromHost(void* dst, const void* src, size_t size) {
+  memcpy(dst, src, size);
+}
+
+void MemOp::CopyToHost(void* dst, const void* src, size_t size) {
+  memcpy(dst, src, size);
+}
+
 int MemOp::GetDeviceId() const { return -1; }
 
 std::unique_ptr<CNSyncedMemory> MemOp::CreateSyncedMemory(size_t size) {

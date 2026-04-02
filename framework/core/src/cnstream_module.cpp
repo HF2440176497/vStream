@@ -113,6 +113,19 @@ int Module::DoProcess(std::shared_ptr<FrameInfo> data) {
   return DoTransmitData(data);  // DoTransmitData 借助 Pipeline 实现传输
 }
 
+/**
+ * @brief 调用 DoTransmitData（借助 Pipeline 向下游 module 队列传输数据）
+ */
+bool Module::TransmitData(std::shared_ptr<FrameInfo> data) {
+  if (!HasTransmit()) {
+    return true;
+  }
+  if (!DoTransmitData(data)) {
+    return true;
+  }
+  return false;
+}
+
 ModuleProfiler* Module::GetProfiler() {
   RwLockReadGuard guard(container_lock_);
   if (container_ && container_->IsProfilingEnabled())

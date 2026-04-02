@@ -35,136 +35,114 @@
 namespace cnstream {
 
 // Note: virtual functions should not be called in constructor
-IOResource::IOResource(ModelLoader* model, uint32_t batchsize)
-    : InferResource<IOResValue>(model, batchsize) {
+IOResource::IOResource(ModelLoader* model)
+    : InferResource<IOResValue>(model) {
 }
 
 IOResource::~IOResource() {}
 
-CpuInputResource::CpuInputResource(ModelLoader* model, uint32_t batchsize)
-    : IOResource(model, batchsize) {
+CpuInputResource::CpuInputResource(ModelLoader* model)
+    : IOResource(model) {
   memop_ = MemOpFactory::Instance().CreateMemOp(DevType::CPU, -1);
 }
 
 CpuInputResource::~CpuInputResource() {}
 
 
-IOResValue CpuInputResource::Allocate(ModelLoader* model, uint32_t batchsize) {
-  int input_num = model->InputNum();
-
+static IOResValue allocate_input_iovalue(ModelLoader* model, std::shared_ptr<MemOp> memop) {
+  if (!memop || !model) {
+    LOGE("InputResource Allocate input IOValue failed, memop or model is null");
+    return IOResValue();
+  }
   IOResValue value;
+  int input_num = model->InputNum();
   value.datas.resize(input_num);
   value.ptrs.resize(input_num);
 
-  for (int input_idx = 0; input_idx < input_num; ++input_idx) {
-    auto shape = model->InputShape(input_idx);
-    auto data_type = model->InputDataType(input_idx);  // 已确保为 FLOAT32
+  for (int idx = 0; idx < input_num; ++idx) {
+    auto shape = model->InputShape(idx);
+    auto data_type = model->InputDataType(idx);  // 已确保为 FLOAT32
     size_t data_size = shape.DataCount() * data_type_size(data_type);
     size_t batch_offset = (shape.DataCount() / shape.N()) * data_type_size(data_type);
-    value.ptrs[input_idx] = memop_->Allocate(data_size);
-    value.datas[input_idx].ptr = value.ptrs[input_idx].get();
-    value.datas[input_idx].shape = shape;
-    value.datas[input_idx].batch_offset = batch_offset;
-    value.datas[input_idx].batchsize = batchsize;
+
+    value.ptrs[idx] = memop->Allocate(data_size);
+    value.datas[idx].ptr = value.ptrs[idx].get();
+    value.datas[idx].shape = shape;
+    value.datas[idx].batch_offset = batch_offset;
+    value.datas[idx].batchsize = shape.N();
   }
   return value;
 }
 
-void CpuInputResource::Deallocate(ModelLoader* model, uint32_t batchsize,
-                                  const IOResValue& value) {
+static IOResValue allocate_output_iovalue(ModelLoader* model, std::shared_ptr<MemOp> memop) {
+  if (!memop || !model) {
+    LOGE("OutputResource Allocate output IOValue failed, memop or model is null");
+    return IOResValue();
+  }
+  int output_num = model->OutputNum();
+
+  for (int idx = 0; idx < output_num; ++idx) {
+    auto shape = model->OutputShape(idx);
+    auto data_type = model->OutputDataType(idx);  // 已确保为 FLOAT32
+    size_t data_size = shape.DataCount() * data_type_size(data_type);
+    size_t batch_offset = (shape.DataCount() / shape.N()) * data_type_size(data_type);
+
+    value.ptrs[idx] = memop->Allocate(data_size);
+    value.datas[idx].ptr = value.ptrs[idx].get();
+    value.datas[idx].shape = shape;
+    value.datas[idx].batch_offset = batch_offset;
+    value.datas[idx].batchsize = shape.N();
+  }
+  return value;
 }
 
-CpuOutputResource::CpuOutputResource(ModelLoader* model, uint32_t batchsize)
-    : IOResource(model, batchsize) {
+IOResValue CpuInputResource::Allocate(ModelLoader* model) {
+  return allocate_input_iovalue(model, memop_);
+}
+
+void CpuInputResource::Deallocate(ModelLoader* model, const IOResValue& value) {
+}
+
+CpuOutputResource::CpuOutputResource(ModelLoader* model)
+    : IOResource(model) {
   memop_ = MemOpFactory::Instance().CreateMemOp(DevType::CPU, -1);
 }
 
 CpuOutputResource::~CpuOutputResource() {}
 
-IOResValue CpuOutputResource::Allocate(ModelLoader* model, uint32_t batchsize) {
-  int output_num = model->OutputNum();
-  IOResValue value;
-  value.datas.resize(output_num);
-  value.ptrs.resize(output_num);
-
-  for (int output_idx = 0; output_idx < output_num; ++output_idx) {
-    auto shape = model->OutputShape(output_idx);
-    auto data_type = model->OutputDataType(output_idx);  // 已确保为 FLOAT32
-    size_t data_size = shape.DataCount() * data_type_size(data_type);
-    size_t batch_offset = (shape.DataCount() / shape.N()) * data_type_size(data_type);
-    value.ptrs[output_idx] = memop_->Allocate(data_size);
-    value.datas[output_idx].ptr = value.ptrs[output_idx].get();
-    value.datas[output_idx].shape = shape;
-    value.datas[output_idx].batch_offset = batch_offset;
-    value.datas[output_idx].batchsize = batchsize;
-  }
-  return value;
+IOResValue CpuOutputResource::Allocate(ModelLoader* model) {
+  return allocate_output_iovalue(model, memop_);
 }
 
-void CpuOutputResource::Deallocate(ModelLoader* model, uint32_t batchsize,
-                                   const IOResValue& value) {
+void CpuOutputResource::Deallocate(ModelLoader* model, const IOResValue& value) {
 }
 
-NetInputResource::NetInputResource(ModelLoader* model, uint32_t batchsize)
-    : IOResource(model, batchsize) {
+NetInputResource::NetInputResource(ModelLoader* model)
+    : IOResource(model) {
   memop_ = MemOpFactory::Instance().CreateMemOp(model->GetDeviceType(), model->GetDeviceId());
 }
 
 NetInputResource::~NetInputResource() {}
 
-IOResValue NetInputResource::Allocate(ModelLoader* model, uint32_t batchsize) {
-  int input_num = model->InputNum();
-  IOResValue value;
-  value.datas.resize(input_num);
-  value.ptrs.resize(input_num);
-
-  for (int input_idx = 0; input_idx < input_num; ++input_idx) {
-    auto shape = model->InputShape(input_idx);
-    auto data_type = model->InputDataType(input_idx);  // 已确保为 FLOAT32
-    size_t data_size = shape.DataCount() * data_type_size(data_type);
-    size_t batch_offset = (shape.DataCount() / shape.N()) * data_type_size(data_type);
-    value.ptrs[input_idx] = memop_->Allocate(data_size);
-    value.datas[input_idx].ptr = value.ptrs[input_idx].get();
-    value.datas[input_idx].shape = shape;
-    value.datas[input_idx].batch_offset = batch_offset;
-    value.datas[input_idx].batchsize = batchsize;
-  }
-  return value;
+IOResValue NetInputResource::Allocate(ModelLoader* model) {
+  return allocate_input_iovalue(model, memop_);
 }
 
-void NetInputResource::Deallocate(ModelLoader* model, uint32_t batchsize,
-                                  const IOResValue& value) {
+void NetInputResource::Deallocate(ModelLoader* model, const IOResValue& value) {
 }
 
-NetOutputResource::NetOutputResource(ModelLoader* model, uint32_t batchsize)
-    : IOResource(model, batchsize) {
+NetOutputResource::NetOutputResource(ModelLoader* model)
+    : IOResource(model) {
   memop_ = MemOpFactory::Instance().CreateMemOp(model->GetDeviceType(), model->GetDeviceId());
 }
 
 NetOutputResource::~NetOutputResource() {}
 
-IOResValue NetOutputResource::Allocate(ModelLoader* model, uint32_t batchsize) {
-  int output_num = model->OutputNum();
-  IOResValue value;
-  value.datas.resize(output_num);
-  value.ptrs.resize(output_num);
-
-  for (int output_idx = 0; output_idx < output_num; ++output_idx) {
-    auto shape = model->OutputShape(output_idx);
-    auto data_type = model->OutputDataType(output_idx);  // 已确保为 FLOAT32
-    size_t data_size = shape.DataCount() * data_type_size(data_type);
-    size_t batch_offset = (shape.DataCount() / shape.N()) * data_type_size(data_type);
-    value.ptrs[output_idx] = memop_->Allocate(data_size);
-    value.datas[output_idx].ptr = value.ptrs[output_idx].get();
-    value.datas[output_idx].shape = shape;
-    value.datas[output_idx].batch_offset = batch_offset;
-    value.datas[output_idx].batchsize = batchsize;
-  }
-  return value;
+IOResValue NetOutputResource::Allocate(ModelLoader* model) {
+  return allocate_output_iovalue(model, memop_);
 }
 
-void NetOutputResource::Deallocate(ModelLoader* model, uint32_t batchsize,
-                                   const IOResValue& value) {
+void NetOutputResource::Deallocate(ModelLoader* model, const IOResValue& value) {
 }
 
 }  // namespace cnstream

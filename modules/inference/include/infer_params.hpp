@@ -39,7 +39,7 @@ struct InferParams {
   float threshold = 0.0f;
   uint32_t infer_interval = 1;
   uint32_t batching_timeout = 3000;  // ms
-  DataFormat model_input_pixel_format = DataFormat::PIXEL_FORMAT_RGB24;
+  uint32_t trans_data_size = 20;  // queue size
   std::string func_name;
   std::string model_path;
   std::string preproc_name;

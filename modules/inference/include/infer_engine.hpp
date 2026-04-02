@@ -69,10 +69,10 @@ class InferEngine {
   void StageAssemble();
   void BatchingDone();
 
-  ModelLoader* model_;  // InferencePrivate we own this model_loader_
-  PreprocPtr preprocessor_;
-  PostprocPtr postprocessor_;
-  ObjPreprocPtr obj_preprocessor_;
+  ModelLoader*   model_;  // InferencePrivate we own this model_loader_
+  PreprocPtr     preprocessor_;
+  PostprocPtr    postprocessor_;
+  ObjPreprocPtr  obj_preprocessor_;
   ObjPostprocPtr obj_postprocessor_;
 
   uint32_t batchsize_ = 0;
@@ -81,14 +81,14 @@ class InferEngine {
   bool batching_by_obj_ = false;  // infer_param: obj_infer_
   std::string module_name_;
 
-  BatchingStagePtr batching_stage_ = nullptr;
-  ObjBatchingStagePtr obj_batching_stage_ = nullptr;
-  std::vector<BatchingDoneStagePtr> batching_done_stages_;
+  BatchingStagePtr                                    batching_stage_ = nullptr;
+  ObjBatchingStagePtr                                 obj_batching_stage_ = nullptr;
+  std::vector<BatchingDoneStagePtr>                   batching_done_stages_;
   std::shared_ptr<ObjPostprocessingBatchingDoneStage> obj_postproc_stage_ = nullptr;
 
-  CpuInputResourcePtr cpu_input_res_;
+  CpuInputResourcePtr  cpu_input_res_;
   CpuOutputResourcePtr cpu_output_res_;
-  NetInputResourcePtr net_input_res_;
+  NetInputResourcePtr  net_input_res_;
   NetOutputResourcePtr net_output_res_;
 
   InferThreadPoolPtr thread_pool_;
@@ -107,4 +107,4 @@ using InferEnginePtr = std::shared_ptr<InferEngine>;
 
 }  // namespace cnstream
 
-#endif  // MODULES_INFERENCE_TRT_SRC_INFER_ENGINE_HPP_
+#endif  // MODULES_INFERENCE_INFER_ENGINE_HPP_

@@ -11,9 +11,9 @@
 
 ## 依赖
 
-**必需**: gflags, glog, opencv, nlohmann/json
+**必需**: gflags, glog, opencv
 
-**可选**: libyuv, googletest
+**已包含在 3rdparty 目录**: nlohmann/json, libyuv, googletest
 
 ## 编译
 

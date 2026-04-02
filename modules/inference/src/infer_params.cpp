@@ -184,6 +184,15 @@ void InferParamManager::RegisterAll(ParamRegister *pregister) {
   };
   ASSERT(RegisterParam(pregister, param));
 
+  param.name = "trans_data_size";
+  param.desc_str = "Optional. The size of the trans_data_helper queue.";
+  param.default_value = "20";
+  param.type = "uint32";
+  param.parser = [](const std::string &value, InferParams *param_set) -> bool {
+    return STR2U32(value, &param_set->trans_data_size);
+  };
+  ASSERT(RegisterParam(pregister, param));
+
   // 当设置此标志位，会反射创建 obj 处理的相关对象 例如 obj_filter， ObjPreproc 
   param.name = "object_infer";
   param.desc_str =
@@ -227,21 +236,6 @@ void InferParamManager::RegisterAll(ParamRegister *pregister) {
   param.type = "string";
   param.parser = [](const std::string &value, InferParams *param_set) -> bool {
     param_set->dump_resized_image_dir = value;
-    return true;
-  };
-  ASSERT(RegisterParam(pregister, param));
-
-  param.name = "model_input_pixel_format";
-  param.desc_str = "Optional. The pixel format of the model input image. RGB24/BGR24 are supported.";
-  param.default_value = "RGB24";
-  param.type = "string";
-  param.parser = [](const std::string &value, InferParams *param_set) -> bool {
-    if ("RGB24" == value)
-      param_set->model_input_pixel_format = DataFormat::PIXEL_FORMAT_RGB24;
-    else if ("BGR24" == value)
-      param_set->model_input_pixel_format = DataFormat::PIXEL_FORMAT_BGR24;
-    else
-      return false;
     return true;
   };
   ASSERT(RegisterParam(pregister, param));
@@ -338,6 +332,7 @@ bool InferParamManager::RegisterParam(ParamRegister *pregister, const InferParam
 }
 
 /**
+ * @brief 解析来自 raw_params 的模型参数到 pout
  * invoked in Inference::Open
  */
 bool InferParamManager::ParseBy(const ModuleParamSet &raw_params, InferParams *pout) {

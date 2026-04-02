@@ -42,6 +42,22 @@ void CudaMemOp::Copy(void* dst, const void* src, size_t size) {
 }
 
 /**
+ * host to device
+ */
+void CudaMemOp::CopyFromHost(void* dst, const void* src, size_t size) {
+  CudaDeviceGuard guard(device_id_);
+  CHECK_CUDA_RUNTIME(cudaMemcpy(dst, src, size, cudaMemcpyHostToDevice));
+}
+
+/**
+ * device to host
+ */
+void CudaMemOp::CopyToHost(void* dst, const void* src, size_t size) {
+  CudaDeviceGuard guard(device_id_);
+  CHECK_CUDA_RUNTIME(cudaMemcpy(dst, src, size, cudaMemcpyDeviceToHost));
+}
+
+/**
  * @brief 此函数假设 dst_mem 分配的内存应当是“紧密排列”的，即 stride 等于 width * 3
  * 因此我们需注意: src_frame 中的对内存排列不做任何假设
  */

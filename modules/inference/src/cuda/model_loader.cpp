@@ -81,8 +81,8 @@ void TrtModelLoader::Logger::log(nvinfer1::Severity severity, const char* msg) n
 }
 
 
-TrtModelLoader::TrtModelLoader(int device_id) : ModelLoader(DevType::CUDA, device_id) {
-  cudaSetDevice(device_id_);
+TrtModelLoader::TrtModelLoader(int dev_id) : ModelLoader(DevType::CUDA, dev_id) {
+  cudaSetDevice(dev_id_);
 }
 
 bool TrtModelLoader::Init(const std::string& engine_path) {
@@ -183,7 +183,7 @@ bool TrtModelLoader::ParseBindings() {
   }
 
   // TODO: 目前只支持单个输入输出
-  if (input_names_.size() != 0 && input_names_.size() > 1) {
+  if (input_names_.size() > 1) {
       LOGW("WARNING: Model should has one input %d", input_names_.size());
       input_name_ = input_names_[input_ordered_index_];
       int index_ = bind_name_index_map_[input_name_];
@@ -193,7 +193,7 @@ bool TrtModelLoader::ParseBindings() {
       }
   }
 
-  if (output_names_.size() != 0 && output_names_.size() > 1) {
+  if (output_names_.size() > 1) {
       LOGW("WARNING: Model should has one output %d", output_names_.size());
       output_name_ = output_names_[output_ordered_index_];
       int index_ = bind_name_index_map_[output_name_];
@@ -203,35 +203,63 @@ bool TrtModelLoader::ParseBindings() {
       }
   }
 
+  int input_num = 0;
   for (auto& input_name : input_names_) {
     nvinfer1::Dims opt_dims;
     auto dims = engine_->getTensorShape(input_name.c_str());
-    LOGI(MODEL) << "----- input_name_" << input_name << "; dims: " << dims.d[0] << ", " << dims.d[1] << ", " << dims.d[2] << ", " << dims.d[3];
+    LOGI(MODEL) << "input_name [" << input_num++ << "]: " << input_name << "; dims: " << dims.d[0] << "x" << dims.d[1] << "x" << dims.d[2] << "x" << dims.d[3];
     
     // for dynamic input, get opt shape
-    if (dims.d[0] == -1 && input_name == input_name_) {
-      auto opt_profie_index = context_->getOptimizationProfile();
-      opt_dims = engine_->getProfileShape(input_name.c_str(), opt_profie_index, 
+    if (dims.d[0] == -1) {
+      auto opt_profile_index = context_->getOptimizationProfile();
+      opt_dims = engine_->getProfileShape(input_name.c_str(), 
+                                          opt_profile_index,
                                           nvinfer1::OptProfileSelector::kOPT);
+      context_->setInputTensorShape(input_name.c_str(), opt_dims);
     } else {  // static shape
       opt_dims = dims;
     }
     TensorShape input_shape(dims_to_vector(opt_dims));
     input_shapes_.push_back(input_shape);  // 对应 input_names_ 顺序
- }
+  }  // end of input_names_
+
+  int output_num = 0;
+  for (auto& output_name : output_names_) {
+    auto dims = engine_->getTensorShape(output_name.c_str());
+    if (dims.d[0] == -1) {
+      LOGF(MODEL) << "Model with dynamic output, index: " << output_num << " name: " << output_name;
+      return false;
+    }
+    LOGI(MODEL) << "output_name [" << output_num++ << "]: " << output_name << "; dims: " << dims.d[0] << "x" << dims.d[1] << "x" << dims.d[2] << "x" << dims.d[3];
+    TensorShape output_shape(dims_to_vector(dims));
+    output_shapes_.push_back(output_shape);  // 对应 output_names_ 顺序
+  }  // end of output_names_
   return true;
 }  // end of ParseBindings
 
+/**
+ * @brief 运行模型推理
+ * @note inputs outputs size == tensor num
+ * 在解析模型阶段，需要确保 tensor shape 已设置
+ */
+bool TrtModelLoader::RunSync(std::vector<std::shared_ptr<void>> inputs, std::vector<std::shared_ptr<void>> outputs) {
+  for (int i = 0; i < inputs.size(); ++i) {
+    context_->setInputTensorAddress(input_names_[i].c_str(), inputs[i].get());
+  }
+  for (int i = 0; i < outputs.size(); ++i) {
+    context_->setOutputTensorAddress(output_names_[i].c_str(), outputs[i].get());
+  }
+  bool execute_result = context_->enqueueV3(stream_);
+  if (!execute_result) {
+    auto code = cudaGetLastError();
+    LOGF(MODEL) << "execute fail, code: " << code << ", message: " << cudaGetErrorName(code) << ", " << cudaGetErrorString(code);
+    return false;
+  }
+  CHECK_CUDA_RUNTIME(cudaStreamSynchronize(stream_));
+  return true;
+}
 
 nvinfer1::IExecutionContext* TrtModelLoader::CreateExecutionContext() {
   if (!engine_) return nullptr;
   return engine_->createExecutionContext();
-}
-
-size_t TrtModelLoader::GetInputDataBatchAlignSize(uint32_t index) const {
-  return InputShape(index).DataCount() * data_type_size(DataType::FLOAT32);
-}
-
-size_t TrtModelLoader::GetOutputDataBatchAlignSize(uint32_t index) const {
-  return OutputShape(index).DataCount() * data_type_size(DataType::FLOAT32);
 }
