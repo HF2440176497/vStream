@@ -30,17 +30,16 @@ std::shared_ptr<InferTask> IOBatchingStage::Batching(std::shared_ptr<FrameInfo> 
 
 #ifdef UNIT_TEST
     // std::this_thread::sleep_for(std::chrono::milliseconds(800));
-
+    task->task_msg = "IOBatchingStage, bidx: " + std::to_string(bidx);
     std::cout << "IOBatchingStage, bidx: " << bidx
-        << "; [" << finfo.first->stream_id << ", " << finfo.first->timestamp << "] " << std::endl;
-  
+        << "; [" << finfo.first->stream_id << ", " << finfo.first->timestamp << "] " << std::endl; 
 #endif
 
     this->ProcessOneFrame(finfo, bidx, value);
     this->output_res_->DeallingDone();
     return 0;
   });
-  task->task_msg = "IOBatchingStage, bidx: " + std::to_string(bidx);
+  
   batch_idx_ = (batch_idx_ + 1) % batchsize_;
   return task;
 }

@@ -20,6 +20,8 @@
 
 #include "base.hpp"
 #include "cnstream_logging.hpp"
+#include "data_source_param.hpp"
+#include "cnstream_frame_va.hpp"
 
 extern int errno;
 
@@ -75,4 +77,77 @@ std::string readFile(const char* filename) {
     std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     file.close();
     return content;
+}
+
+/**
+ * @brief 创建一个测试用的 DecodeFrame
+ * @param fmt 图像格式
+ * @param width 图像宽度
+ * @param height 图像高度
+ * @return 返回一个指向测试用 DecodeFrame 的指针
+ */
+DecodeFrame* CreateTestDecodeFrame(DataFormat fmt, int width, int height) {
+  DecodeFrame* frame = new DecodeFrame(height, width, fmt);
+  frame->fmt = fmt;
+  frame->width = width;
+  frame->height = height;
+  frame->device_id = -1;
+  frame->planeNum = 0;
+
+  for (int i = 0; i < CN_MAX_PLANES; ++i) {
+    frame->plane[i] = nullptr;
+    frame->stride[i] = 0;
+  }
+
+  const uint8_t R = 10, G = 128, B = 242;
+  const uint8_t Y = 111;
+  const uint8_t U = 190;
+  const uint8_t V = 72;
+
+  size_t frame_size = 0;
+  if (fmt == DataFormat::PIXEL_FORMAT_BGR24 || 
+      fmt == DataFormat::PIXEL_FORMAT_RGB24) {
+    frame->planeNum = 1;
+    frame_size = width * height * 3;
+    frame->plane[0] = malloc(frame_size);
+    uint8_t* data = static_cast<uint8_t*>(frame->plane[0]);
+    for (int i = 0; i < width * height; ++i) {
+      if (fmt == DataFormat::PIXEL_FORMAT_BGR24) {
+        data[i * 3] = B;
+        data[i * 3 + 1] = G;
+        data[i * 3 + 2] = R;
+      } else {
+        data[i * 3] = R;
+        data[i * 3 + 1] = G;
+        data[i * 3 + 2] = B;
+      }
+    }
+  } else if (fmt == DataFormat::PIXEL_FORMAT_YUV420_NV12 ||
+             fmt == DataFormat::PIXEL_FORMAT_YUV420_NV21) {
+    frame->planeNum = 2;
+    frame_size = width * height * 3 / 2;
+    frame->plane[0] = malloc(width * height);
+    frame->plane[1] = malloc(width * height / 2);
+    memset(frame->plane[0], Y, width * height);
+    uint8_t* uv_data = static_cast<uint8_t*>(frame->plane[1]);
+    for (size_t i = 0; i < static_cast<size_t>(width * height / 2); i += 2) {
+      if (fmt == DataFormat::PIXEL_FORMAT_YUV420_NV12) {
+        uv_data[i] = U;
+        uv_data[i + 1] = V;
+      } else {
+        uv_data[i] = V;
+        uv_data[i + 1] = U;
+      }
+    }
+  }
+  return frame;
+}
+
+// 辅助函数：清理测试用的DecodeFrame
+void CleanupTestDecodeFrame(DecodeFrame* frame) {
+  if (frame) {
+    if (frame->plane[0]) free(frame->plane[0]);
+    if (frame->plane[1]) free(frame->plane[1]);
+    delete frame;
+  }
 }

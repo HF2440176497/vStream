@@ -173,6 +173,15 @@ InferEngine::ResultWaitingCard InferEngine::FeedData(std::shared_ptr<FrameInfo> 
   return card;
 }
 
+/**
+ * TODO: 简便起见，强制提交时 需要长度满足 batchsize_
+ */
+void InferEngine::ForceBatchingDone() {
+  if (batched_finfos_.size() == batchsize_) {
+    BatchingDone();
+  }
+}
+
 // 正常调用条件：batched_finfos_.size == batch_size_
 // 超时情况：Force submit, batched_finfos_ 数量不定
 void InferEngine::BatchingDone() {

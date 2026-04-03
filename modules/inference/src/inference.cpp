@@ -93,6 +93,11 @@ class InferencePrivate: public NonCopyable {
     auto dev_id = params.device_id;
     auto& factory = ModelLoaderFactory::Instance();
 
+    if (dev_type != DevType::CPU && dev_id == -1) {
+      LOGE(INFERENCER) << "[" << module_name_ << "] dev_type [" << dev_type << "] not CPU. but device_id is -1";
+      return false;
+    }
+
     // LoadEngine - ParBinding
     model_loader_ = factory.CreateModelLoader(dev_type, dev_id);
     if (!model_loader_) {

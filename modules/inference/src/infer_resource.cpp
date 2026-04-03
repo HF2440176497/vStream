@@ -68,7 +68,7 @@ static IOResValue allocate_input_iovalue(ModelLoader* model, std::shared_ptr<Mem
     value.ptrs[idx] = memop->Allocate(data_size);
     value.datas[idx].ptr = value.ptrs[idx].get();
     value.datas[idx].shape = shape;
-    value.datas[idx].batch_offset = batch_offset;
+    value.datas[idx].batch_offset = batch_offset;  // bytes
     value.datas[idx].batchsize = shape.N();
   }
   return value;
@@ -80,6 +80,9 @@ static IOResValue allocate_output_iovalue(ModelLoader* model, std::shared_ptr<Me
     return IOResValue();
   }
   int output_num = model->OutputNum();
+  IOResValue value;
+  value.datas.resize(output_num);
+  value.ptrs.resize(output_num);
 
   for (int idx = 0; idx < output_num; ++idx) {
     auto shape = model->OutputShape(idx);

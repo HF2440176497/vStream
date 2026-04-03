@@ -95,19 +95,6 @@ void InferParamManager::RegisterAll(ParamRegister *pregister) {
   };
   ASSERT(RegisterParam(pregister, param));
 
-  param.name = "func_name";
-  param.desc_str =
-      "Required. The function name that is defined in the offline model. "
-      "It could be found in Cambricon twins file. For most cases, it is \"subnet0\".";
-  param.default_value = "subnet0";
-  param.type = "string";
-  param.parser = [](const std::string &value, InferParams *param_set) -> bool {
-    if (value.empty()) return false;
-    param_set->func_name = value;
-    return true;
-  };
-  ASSERT(RegisterParam(pregister, param));
-
   param.name = "postproc_name";
   param.desc_str =
       "Required. The class name for postprocess. The class specified by this name "
@@ -136,8 +123,8 @@ void InferParamManager::RegisterAll(ParamRegister *pregister) {
   ASSERT(RegisterParam(pregister, param));
 
   param.name = "device_type";
-  param.desc_str = "Optional. The device type. CPU/CUDA/...";
-  param.default_value = "CPU";
+  param.desc_str = "Optional. The inference device type. CPU/CUDA/...";
+  param.default_value = "CUDA";
   param.type = "string";
   param.parser = [](const std::string &value, InferParams *param_set) -> bool {
     if (dev_type_map.find(value) == dev_type_map.end()) {
@@ -166,6 +153,7 @@ void InferParamManager::RegisterAll(ParamRegister *pregister) {
   };
   ASSERT(RegisterParam(pregister, param));
 
+  /** TODO: 需要设置为字典: key: class id, value: threshold. */
   param.name = "threshold";
   param.desc_str = "Optional. The threshold pass to postprocessing function.";
   param.default_value = "0";
@@ -216,17 +204,6 @@ void InferParamManager::RegisterAll(ParamRegister *pregister) {
   param.parser = [](const std::string &value, InferParams *param_set) -> bool {
     param_set->obj_filter_name = value;
     return true;
-  };
-  ASSERT(RegisterParam(pregister, param));
-
-  param.name = "keep_aspect_ratio";
-  param.desc_str =
-      "Optional. As the mlu is used for image preprocessing, the scale remains constant. "
-      "1/true/TRUE/True/0/false/FALSE/False these values are accepted.";
-  param.default_value = "false";
-  param.type = "bool";
-  param.parser = [](const std::string &value, InferParams *param_set) -> bool {
-    return STR2BOOL(value, &param_set->keep_aspect_ratio);
   };
   ASSERT(RegisterParam(pregister, param));
 

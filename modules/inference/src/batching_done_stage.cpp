@@ -189,7 +189,9 @@ std::vector<std::shared_ptr<InferTask>> PostprocessingBatchingDoneStage::Batchin
   return {};
 }
 
-
+/**
+ * @brief 帧级并行后处理
+ */
 std::vector<std::shared_ptr<InferTask>> PostprocessingBatchingDoneStage::BatchingDone(
     const BatchingDoneInput& finfos, const std::shared_ptr<CpuOutputResource>& cpu_output_res) {
   std::vector<InferTaskSptr> tasks;
@@ -212,7 +214,6 @@ std::vector<std::shared_ptr<InferTask>> PostprocessingBatchingDoneStage::Batchin
         // CPU 后处理帧级并行
         std::cout << "PostprocessingBatchingDoneStage, bidx: " << bidx
               << "; [" << finfo.first->stream_id << ", " << finfo.first->timestamp << "] " << std::endl;
-        }
 #endif
 
           QueuingTicket cor_ticket = cpu_output_res_ticket;
@@ -229,11 +230,16 @@ std::vector<std::shared_ptr<InferTask>> PostprocessingBatchingDoneStage::Batchin
           }
           cpu_output_res->DeallingDone();
           return 0;
-        });
+        });  // task
+    
+#ifdef UNIT_TEST
+    task->task_msg = "PostprocessingBatchingDoneStage, bidx: " + std::to_string(bidx);
+#endif
     tasks.push_back(task);
-  }
+  }  // end for bidx
   return tasks;
 }
+
 
 std::vector<std::shared_ptr<InferTask>> PostprocessingBatchingDoneStage::BatchingDone(
     const BatchingDoneInput& finfos, const std::shared_ptr<NetOutputResource>& net_output_res) {
@@ -339,5 +345,4 @@ std::vector<std::shared_ptr<InferTask>> ObjPostprocessingBatchingDoneStage::ObjB
 }
 
 
-
-}
+}  // namespace cnstream

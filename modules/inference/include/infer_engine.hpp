@@ -63,7 +63,7 @@ class InferEngine {
   ~InferEngine();
 
   ResultWaitingCard FeedData(std::shared_ptr<FrameInfo> frame_info);
-  void ForceBatchingDone() { BatchingDone(); }
+  void ForceBatchingDone();
 
  private:
   void StageAssemble();

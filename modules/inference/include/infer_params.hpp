@@ -40,7 +40,6 @@ struct InferParams {
   uint32_t infer_interval = 1;
   uint32_t batching_timeout = 3000;  // ms
   uint32_t trans_data_size = 20;  // queue size
-  std::string func_name;
   std::string model_path;
   std::string preproc_name;
   std::string postproc_name;
@@ -54,7 +53,7 @@ struct InferParams {
 struct InferParamDesc {
   std::string name;
   std::string desc_str;
-  std::string default_value;
+  std::string default_value;  // parser 负责解析为对应的类型
   std::string type;  // eg. bool
   std::function<bool(const std::string &value, InferParams *param_set)> parser = NULL;
   bool IsLegal() const {

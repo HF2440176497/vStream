@@ -250,7 +250,6 @@ bool InferParamsEQ(const InferParams &p1, const InferParams &p2) {
     p1.infer_interval == p2.infer_interval &&
     p1.batching_timeout == p2.batching_timeout &&
     p1.trans_data_size == p2.trans_data_size &&
-    p1.func_name == p2.func_name &&
     p1.model_path == p2.model_path &&
     p1.preproc_name == p2.preproc_name &&
     p1.postproc_name == p2.postproc_name &&
@@ -316,7 +315,6 @@ TEST(Inference, Param) {
     "infer_interval",
     "batching_timeout",
     "trans_data_size",
-    "func_name",
     "model_path",
     "preproc_name",
     "postproc_name",
@@ -340,7 +338,6 @@ TEST(Inference, Param) {
   expect_ret.infer_interval = 1;
   expect_ret.batching_timeout = 3;
   expect_ret.trans_data_size = 20;
-  expect_ret.func_name = "fake_name";
   expect_ret.model_path = "fake_path";
   expect_ret.preproc_name = "fake_name";
   expect_ret.postproc_name = "fake_name";
@@ -359,7 +356,6 @@ TEST(Inference, Param) {
   raw_params["infer_interval"] = std::to_string(expect_ret.infer_interval);
   raw_params["batching_timeout"] = std::to_string(expect_ret.batching_timeout);
   raw_params["trans_data_size"] = std::to_string(expect_ret.trans_data_size);
-  raw_params["func_name"] = expect_ret.func_name;
   raw_params["model_path"] = expect_ret.model_path;
   raw_params["preproc_name"] = expect_ret.preproc_name;
   raw_params["postproc_name"] = expect_ret.postproc_name;
@@ -433,6 +429,11 @@ TEST(Inference, custom_postproc_params_parse) {
   EXPECT_FALSE(manager.ParseBy(raw_params, &ret));
 }
 
+static const char *g_preproc_name = "PreprocClassification";
+static const char *g_postproc_name = "PostprocClassification";
+
+static constexpr int g_dev_id = 0;
+static constexpr std::string g_channel_id = "channel_1";
 
 TEST(Inference, Demo) {
   std::string model_path = GetExePath() + trt_yolov8_engine_path;
@@ -443,22 +444,68 @@ TEST(Inference, Demo) {
   std::thread th = std::thread(&GetResult, observer);
   ModuleParamSet param;
   param["model_path"] = model_path;
-  param["func_name"] = g_func_name;
+  param["preproc_name"] = g_preproc_name;
   param["postproc_name"] = g_postproc_name;
   param["device_id"] = std::to_string(g_dev_id);
-  param["batching_timeout"] = "30";
+  param["batching_timeout"] = "3000";
 
   ASSERT_TRUE(infer->Open(param));
 
+  /**
+   * 模拟在 CPU 上创建 dataframe
+   * 然后
+   */
+  auto memop = MemOpFactory::Instance().CreateMemOp(DevType::CPU, -1);
 
+  const int width = 1280, height = 720;
+  auto dec_frame = CreateTestDecodeFrame(DataFormat::PIXEL_FORMAT_RGB24, width, height);
 
+  size_t nbytes = width * height * sizeof(uint8_t) * 3;
+  size_t boundary = 1 << 16;
+  nbytes = (nbytes + boundary - 1) & ~(boundary - 1);  // align to 64kb
+
+  std::vector<std::shared_ptr<void>> frame_data_vec;
+  for (uint32_t i = 0; i < 32; i++) {
+    // fake data
+    std::shared_ptr<void> frame_data = memop->Allocate(nbytes);
+    frame_data_vec.push_back(frame_data);
+    void *planes[3] = {nullptr, nullptr, nullptr};
+    planes[0] = frame_data.get();                   // R plane
+    planes[1] = frame_data.get() + width * height;  // G plane
+    planes[2] = frame_data.get() + width * height * 2;  // B plane   
+
+    auto data = cnstream::FrameInfo::Create(g_channel_id);
+
+    std::shared_ptr<DataFrame> frame(new (std::nothrow) DataFrame());
+    data->collection.Add(kDataFrameTag, frame);  // add DataFrame member
+    data->collection.Add(kInferObjsTag, std::make_shared<InferObjs>());
+    data->timestamp = i;
+
+    // set DataFrame
+    frame->width_ = width;
+    frame->height_ = height;
+    void *ptr_cpu[3] = {planes[0], planes[1], planes[2]};
+    frame->stride_[0] = frame->stride_[1] = frame->stride_[2] = width;
+    frame->ctx_.dev_id = -1;
+    frame->ctx_.dev_type = DevType::CPU;
+    frame->fmt_ = DataFormat::PIXEL_FORMAT_RGB24;
+    frame->CopyToSyncMem(dec_frame);
+
+    int ret = infer->Process(data);
+    EXPECT_EQ(ret, 0);
+  }
+  // eos frame
+  auto data = cnstream::FrameInfo::Create(g_channel_id, true);
+  int ret = infer->Process(data);
+  EXPECT_EQ(ret, 0);
+
+  ASSERT_NO_THROW(infer->Close());
 
   if (th.joinable()) {
     th.join();
   }
+  CleanupTestDecodeFrame(dec_frame);
 
 }
-
-
 
 }  // namespace cnstream

@@ -50,4 +50,8 @@ std::pair<int, std::string> CreateTempFile(const std::string& filename_prefix);
  */
 std::string readFile(const char* filename);
 
+DecodeFrame* CreateTestDecodeFrame(DataFormat fmt, int width, int height);
+
+void CleanupTestDecodeFrame(DecodeFrame* frame);
+
 #endif
