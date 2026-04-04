@@ -17,7 +17,7 @@ TEST(CudaMemOpFactory, RegisterCudaMemOpCreator) {
 }
 
 template<typename T, typename U>
-std::unique_ptr<T> memop_dynamic_pointer_cast(std::unique_ptr<U>&& ptr) {
+std::unique_ptr<T> memop_unique_pointer_cast(std::unique_ptr<U>&& ptr) {
     if (!ptr) return nullptr;
     
     T* result = dynamic_cast<T*>(ptr.get());
@@ -33,7 +33,7 @@ TEST(CudaMemOp, CreateSyncedMemoryAndAllocate) {
   auto memop = factory.CreateMemOp(DevType::CUDA, 0);
   ASSERT_NE(memop, nullptr);
 
-  std::unique_ptr<CudaMemOp> cuda_memop = memop_dynamic_pointer_cast<CudaMemOp>(std::move(memop));
+  std::shared_ptr<CudaMemOp> cuda_memop = std::dynamic_pointer_cast<CudaMemOp>(memop);
   ASSERT_NE(cuda_memop, nullptr);
   
   size_t bytes = 64 * 4096;
@@ -167,7 +167,7 @@ void clear_decode_frame(DecodeFrame* src_frame) {
 TEST(CudaMemOp, ConvertImageFormat_BGR24_RGB24) {
   auto& factory = MemOpFactory::Instance();
   auto memop = factory.CreateMemOp(DevType::CUDA, 0);
-  std::unique_ptr<CudaMemOp> cuda_memop = memop_dynamic_pointer_cast<CudaMemOp>(std::move(memop));
+  std::shared_ptr<CudaMemOp> cuda_memop = std::dynamic_pointer_cast<CudaMemOp>(memop);
   ASSERT_NE(cuda_memop, nullptr);
 
   // 1. 填充到 frame_plane 显存）uniform data
@@ -214,7 +214,7 @@ TEST(CudaMemOp, ConvertImageFormat_BGR24_RGB24) {
 TEST(CudaMemOp, ConvertImageFormat_RGB24_BGR24) {
   auto& factory = MemOpFactory::Instance();
   auto memop = factory.CreateMemOp(DevType::CUDA, 0);
-  std::unique_ptr<CudaMemOp> cuda_memop = memop_dynamic_pointer_cast<CudaMemOp>(std::move(memop));
+  std::shared_ptr<CudaMemOp> cuda_memop = std::dynamic_pointer_cast<CudaMemOp>(memop);
   ASSERT_NE(cuda_memop, nullptr);
 
   int width = 640, height = 480;
@@ -259,7 +259,7 @@ TEST(CudaMemOp, ConvertImageFormat_RGB24_BGR24) {
 TEST(CudaMemOp, ConvertImageFormat_NV12_RGB24) {
   auto& factory = MemOpFactory::Instance();
   auto memop = factory.CreateMemOp(DevType::CUDA, 0);
-  std::unique_ptr<CudaMemOp> cuda_memop = memop_dynamic_pointer_cast<CudaMemOp>(std::move(memop));
+  std::shared_ptr<CudaMemOp> cuda_memop = std::dynamic_pointer_cast<CudaMemOp>(memop);
   ASSERT_NE(cuda_memop, nullptr);
 
   int width = 1920, height = 1080;

@@ -39,7 +39,7 @@
 namespace cnstream {
 
 
-std::vector<std::shared_ptr<InferTask>> H2DBatchingDoneStage::BatchingDone(const BatchingDoneInput& finfos) override {
+std::vector<std::shared_ptr<InferTask>> H2DBatchingDoneStage::BatchingDone(const BatchingDoneInput& finfos) {
   std::vector<InferTaskSptr> tasks;
   InferTaskSptr task;
 
@@ -83,17 +83,17 @@ std::vector<std::shared_ptr<InferTask>> H2DBatchingDoneStage::BatchingDone(const
 
 InferBatchingDoneStage::InferBatchingDoneStage(ModelLoader* model,
                                                uint32_t batchsize,
-                                               int dev_id,
+                                               int device_id,
                                                std::shared_ptr<NetInputResource> net_input_res,
                                                std::shared_ptr<NetOutputResource> net_output_res)
-    : BatchingDoneStage(model, batchsize, dev_id),
+    : BatchingDoneStage(model, batchsize, device_id),
       net_input_res_(net_input_res),
       net_output_res_(net_output_res) {
 }
 
 InferBatchingDoneStage::~InferBatchingDoneStage() {}
 
-std::vector<std::shared_ptr<InferTask>> InferBatchingDoneStage::BatchingDone(const BatchingDoneInput& finfos) override {
+std::vector<std::shared_ptr<InferTask>> InferBatchingDoneStage::BatchingDone(const BatchingDoneInput& finfos) {
   std::vector<InferTaskSptr> tasks;
   InferTaskSptr task;
 
@@ -139,7 +139,7 @@ std::vector<std::shared_ptr<InferTask>> InferBatchingDoneStage::BatchingDone(con
 }
 
 
-std::vector<std::shared_ptr<InferTask>> D2HBatchingDoneStage::BatchingDone(const BatchingDoneInput& finfos) override {
+std::vector<std::shared_ptr<InferTask>> D2HBatchingDoneStage::BatchingDone(const BatchingDoneInput& finfos) {
   std::vector<InferTaskSptr> tasks;
   InferTaskSptr task;
   QueuingTicket net_output_res_ticket = net_output_res_->PickUpNewTicket();
@@ -177,7 +177,7 @@ std::vector<std::shared_ptr<InferTask>> D2HBatchingDoneStage::BatchingDone(const
 }
 
 
-std::vector<std::shared_ptr<InferTask>> PostprocessingBatchingDoneStage::BatchingDone(const BatchingDoneInput& finfos) override {
+std::vector<std::shared_ptr<InferTask>> PostprocessingBatchingDoneStage::BatchingDone(const BatchingDoneInput& finfos) {
   if (cpu_output_res_ != nullptr) {
     return BatchingDone(finfos, cpu_output_res_);
   } else if (net_output_res_ != nullptr) {

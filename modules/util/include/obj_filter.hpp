@@ -71,6 +71,8 @@ class ObjFilter : virtual public ReflexObjectEx<ObjFilter> {
   virtual bool Filter(const FrameInfoPtr& finfo, const InferObjectPtr& pobj) = 0;
 };  // class ObjFilter
 
+using ObjFilterPtr = std::shared_ptr<ObjFilter>;
+
 }  // namespace cnstream
 
 #endif  // ifndef MODULES_UTIL_OBJ_FILTER_HPP_

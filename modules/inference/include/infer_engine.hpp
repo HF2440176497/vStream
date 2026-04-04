@@ -39,9 +39,11 @@
 #include "obj_batching_stage.hpp"
 #include "postproc.hpp"
 #include "preproc.hpp"
-#include "model_loader.hpp"
+#include "obj_filter.hpp"
 
 namespace cnstream {
+
+class ModelLoader;
 
 class InferEngine {
  public:
@@ -77,26 +79,29 @@ class InferEngine {
 
   uint32_t batchsize_ = 0;
   uint32_t batching_timeout_ = 0;
-  int dev_id_ = 0;
+  int device_id_ = 0;
   bool batching_by_obj_ = false;  // infer_param: obj_infer_
   std::string module_name_;
 
-  BatchingStagePtr                                    batching_stage_ = nullptr;
-  ObjBatchingStagePtr                                 obj_batching_stage_ = nullptr;
-  std::vector<BatchingDoneStagePtr>                   batching_done_stages_;
-  std::shared_ptr<ObjPostprocessingBatchingDoneStage> obj_postproc_stage_ = nullptr;
+  std::shared_ptr<BatchingStage>                                    batching_stage_ = nullptr;
+  std::shared_ptr<ObjBatchingStage>                                 obj_batching_stage_ = nullptr;
+  std::vector<std::shared_ptr<BatchingDoneStage>>                   batching_done_stages_;
+  std::shared_ptr<ObjPostprocessingBatchingDoneStage>               obj_postproc_stage_ = nullptr;
+  std::shared_ptr<ObjFilter>                                        obj_filter_ = nullptr;
 
-  CpuInputResourcePtr  cpu_input_res_;
-  CpuOutputResourcePtr cpu_output_res_;
-  NetInputResourcePtr  net_input_res_;
-  NetOutputResourcePtr net_output_res_;
+  std::shared_ptr<CpuInputResource>  cpu_input_res_ = nullptr;
+  std::shared_ptr<CpuOutputResource> cpu_output_res_ = nullptr;
+  std::shared_ptr<NetInputResource>  net_input_res_ = nullptr;
+  std::shared_ptr<NetOutputResource> net_output_res_ = nullptr;
 
-  InferThreadPoolPtr thread_pool_;
+  std::shared_ptr<InferThreadPool> thread_pool_ = nullptr;
   std::function<void(const std::string& err_msg)> error_func_;
 
   BatchingDoneInput batched_finfos_;
-  std::vector<void*> batched_objs_;
+  std::vector<std::shared_ptr<InferObject>> batched_objs_;
   uint32_t cached_frame_cnt_ = 0;  // ++ on FeedData
+  std::string dump_resized_image_dir_;
+  bool saving_infer_input_ = false;
 
   std::condition_variable cv_;
   std::thread timeout_thread_;

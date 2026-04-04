@@ -27,7 +27,8 @@
 #include <thread>
 #include <utility>
 
-#include "inferencer.hpp"
+#include "inference.hpp"
+#include "infer_engine.hpp"
 #include "infer_trans_data_helper.hpp"
 
 namespace cnstream {

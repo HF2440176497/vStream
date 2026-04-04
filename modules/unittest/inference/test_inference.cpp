@@ -2,7 +2,7 @@
 
 #include "base.hpp"
 #include "data_source_param.hpp"
-#include "model_loader_base.hpp"
+#include "model_loader.hpp"
 #include "tensor.hpp"
 #include "affine_trans.hpp"
 
@@ -13,10 +13,10 @@
 
 static const std::string trt_yolov8_engine_path = "test.engine";
 
-static const int dev_id = 0;
+static const int device_id = 0;
 
-#ifdef NVIDIA
-#include "cuda/model_loader.hpp"
+#ifdef VSTREAM_USE_CUDA
+#include "cuda/model_loader_trt.hpp"
 
 #else
 
@@ -37,11 +37,11 @@ class ModelLoaderTest : public testing::Test {
     auto& factory = ModelLoaderFactory::Instance();
     factory.PrintRegisteredCreators();
 
-#ifdef NVIDIA
-    memop_ = factory.CreateMemOp(DevType::CUDA, dev_id);
+#ifdef VSTREAM_USE_CUDA
+    memop_ = factory.CreateMemOp(DevType::CUDA, device_id);
     ASSERT_NE(memop_, nullptr);
 
-    auto model_loader_unique = factory.CreateModelLoader(DevType::CUDA, dev_id);
+    auto model_loader_unique = factory.CreateModelLoader(DevType::CUDA, device_id);
     ASSERT_NE(model_loader_unique, nullptr);
     model_loader_ = model_loader_unique.get();
 
@@ -72,12 +72,12 @@ class ModelLoaderTest : public testing::Test {
 
 TEST_F(ModelLoaderTest, Create) {
 
-#ifdef NVIDIA
+#ifdef VSTREAM_USE_CUDA
 
-  ModelLoader* trt_model_loader = dynamic_cast<TrtModelLoader*>(model_loader_);
+  ModelLoader* trt_model_loader = dynamic_cast<ModelLoaderTrt*>(model_loader_);
   ASSERT_NE(trt_model_loader, nullptr);
 
-  ASSERT_EQ(trt_model_loader->GetDeviceId(), dev_id);
+  ASSERT_EQ(trt_model_loader->GetDeviceId(), device_id);
   ASSERT_EQ(trt_model_loader->GetDeviceType(), DevType::CUDA);
 
   std::string model_path = GetExePath() + trt_yolov8_engine_path;
@@ -186,7 +186,7 @@ TEST_F(ModelLoaderTest, Run) {
   std::tuple<int, int> to{dst_w, dst_h};
   trans.compute(from, to);
 
-  Norm norm = Norm::alpha_beta(1 / 255.0f, 0.0f);   // 缩放为 1/255 ，并非最大最小归一化
+  auto norm = Norm::alpha_beta(1 / 255.0f, 0.0f);   // 缩放为 1/255 ，并非最大最小归一化
 
   /* 输出内存是紧密排列的 */
   void* one_input_data = i_value.datas[input_index].ptr;  // raw input data
@@ -432,7 +432,7 @@ TEST(Inference, custom_postproc_params_parse) {
 static const char *g_preproc_name = "PreprocClassification";
 static const char *g_postproc_name = "PostprocClassification";
 
-static constexpr int g_dev_id = 0;
+static constexpr int g_device_id = 0;
 static constexpr std::string g_channel_id = "channel_1";
 
 TEST(Inference, Demo) {
@@ -446,7 +446,7 @@ TEST(Inference, Demo) {
   param["model_path"] = model_path;
   param["preproc_name"] = g_preproc_name;
   param["postproc_name"] = g_postproc_name;
-  param["device_id"] = std::to_string(g_dev_id);
+  param["device_id"] = std::to_string(g_device_id);
   param["batching_timeout"] = "3000";
 
   ASSERT_TRUE(infer->Open(param));
@@ -486,8 +486,8 @@ TEST(Inference, Demo) {
     frame->height_ = height;
     void *ptr_cpu[3] = {planes[0], planes[1], planes[2]};
     frame->stride_[0] = frame->stride_[1] = frame->stride_[2] = width;
-    frame->ctx_.dev_id = -1;
-    frame->ctx_.dev_type = DevType::CPU;
+    frame->ctx_.device_id = -1;
+    frame->ctx_.device_type = DevType::CPU;
     frame->fmt_ = DataFormat::PIXEL_FORMAT_RGB24;
     frame->CopyToSyncMem(dec_frame);
 

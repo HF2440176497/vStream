@@ -29,10 +29,15 @@
 #include <iostream>
 #include <cassert>
 
-#include "mem_op.hpp"
+#include "profiler/module_profiler.hpp"
+#include "memop.hpp"
+#include "memop_factory.hpp"
 #include "infer_task.hpp"
 #include "infer_resource.hpp"
 
+#include "model_loader.hpp"
+
+namespace cnstream {
 
 class Postproc;
 class ObjPostproc;
@@ -44,7 +49,6 @@ class NetOutputResource;
 class InferTask;
 class FrameInfo;
 class InferObject;
-class ModelLoader;  // model interface
 
 struct AutoSetDone {
   explicit AutoSetDone(const std::shared_ptr<std::promise<void>>& p,
@@ -62,8 +66,8 @@ using BatchingDoneInput = std::vector<std::pair<std::shared_ptr<FrameInfo>, std:
 class BatchingDoneStage {
  public:
   BatchingDoneStage() = default;
-  BatchingDoneStage(ModelLoader* model, uint32_t batchsize, int dev_id)
-      : model_(model), batchsize_(batchsize), dev_id_(dev_id) {}
+  BatchingDoneStage(ModelLoader* model, uint32_t batchsize, int device_id)
+      : model_(model), batchsize_(batchsize), device_id_(device_id) {}
   virtual ~BatchingDoneStage() {}
   virtual std::vector<std::shared_ptr<InferTask>> BatchingDone(const BatchingDoneInput& finfos) = 0;
 
@@ -91,7 +95,7 @@ class BatchingDoneStage {
   std::string dump_resized_image_dir_ = "";
   ModelLoader* model_;
   uint32_t batchsize_ = 0;
-  int dev_id_ = 0;
+  int device_id_ = 0;
 };  // class BatchingDoneStage
 
 
@@ -99,14 +103,14 @@ class H2DBatchingDoneStage : public BatchingDoneStage {
  public:
   H2DBatchingDoneStage(ModelLoader* model,
                        uint32_t batchsize,
-                       int dev_id,
+                       int device_id,
                        std::shared_ptr<CpuInputResource> cpu_input_res, 
                        std::shared_ptr<NetInputResource> net_input_res)
-      : BatchingDoneStage(model, batchsize, dev_id), 
+      : BatchingDoneStage(model, batchsize, device_id), 
       cpu_input_res_(cpu_input_res), 
       net_input_res_(net_input_res) {
         if (model) {
-          memop_ = MemOpFactory::Instance().CreateMemOp(model->GetDeviceType(), model->GetDevId());
+          memop_ = MemOpFactory::Instance().CreateMemOp(model->GetDeviceType(), model->GetDeviceId());
         }
       }
   std::vector<std::shared_ptr<InferTask>> BatchingDone(const BatchingDoneInput& finfos) override;
@@ -121,7 +125,7 @@ class InferBatchingDoneStage : public BatchingDoneStage {
  public:
   InferBatchingDoneStage(ModelLoader* model,
                          uint32_t batchsize,
-                         int dev_id,
+                         int device_id,
                          std::shared_ptr<NetInputResource> net_input_res,
                          std::shared_ptr<NetOutputResource> net_output_res);
   ~InferBatchingDoneStage();
@@ -135,14 +139,14 @@ class D2HBatchingDoneStage : public BatchingDoneStage {
  public:
   D2HBatchingDoneStage(ModelLoader* model,
                        uint32_t batchsize,
-                       int dev_id,
+                       int device_id,
                        std::shared_ptr<NetOutputResource> net_output_res,
                        std::shared_ptr<CpuOutputResource> cpu_output_res)
-      : BatchingDoneStage(model, batchsize, dev_id), 
+      : BatchingDoneStage(model, batchsize, device_id), 
       net_output_res_(net_output_res), 
       cpu_output_res_(cpu_output_res) {
         if (model) {
-          memop_ = MemOpFactory::Instance().CreateMemOp(model->GetDeviceType(), model->GetDevId());
+          memop_ = MemOpFactory::Instance().CreateMemOp(model->GetDeviceType(), model->GetDeviceId());
         }
       }
 
@@ -158,19 +162,19 @@ class PostprocessingBatchingDoneStage : public BatchingDoneStage {
  public:
   PostprocessingBatchingDoneStage(ModelLoader* model,
                                   uint32_t batchsize,
-                                  int dev_id, 
+                                  int device_id, 
                                   std::shared_ptr<Postproc> postprocessor,
                                   std::shared_ptr<CpuOutputResource> cpu_output_res)
-      : BatchingDoneStage(model, batchsize, dev_id), 
+      : BatchingDoneStage(model, batchsize, device_id), 
       postprocessor_(postprocessor), 
       cpu_output_res_(cpu_output_res) {}
 
   PostprocessingBatchingDoneStage(ModelLoader* model,
                                   uint32_t batchsize,
-                                  int dev_id, 
+                                  int device_id, 
                                   std::shared_ptr<Postproc> postprocessor,
                                   std::shared_ptr<NetOutputResource> net_output_res)
-      : BatchingDoneStage(model, batchsize, dev_id), 
+      : BatchingDoneStage(model, batchsize, device_id), 
       postprocessor_(postprocessor), 
       net_output_res_(net_output_res) {}
 
@@ -181,22 +185,22 @@ class PostprocessingBatchingDoneStage : public BatchingDoneStage {
                                                        const std::shared_ptr<NetOutputResource> &net_output_res);
  private:
   std::shared_ptr<Postproc> postprocessor_ = nullptr;
-  std::shared_ptr<IOResource> cpu_output_res_ = nullptr;
-  std::shared_ptr<IOResource> net_output_res_ = nullptr;
+  std::shared_ptr<CpuOutputResource> cpu_output_res_ = nullptr;
+  std::shared_ptr<NetOutputResource> net_output_res_ = nullptr;
 };  // class PostprocessingBatchingDoneStage
 
 
 class ObjPostprocessingBatchingDoneStage : public BatchingDoneStage {
  public:
-  ObjPostprocessingBatchingDoneStage(ModelLoader* model, uint32_t batchsize, int dev_id,
+  ObjPostprocessingBatchingDoneStage(ModelLoader* model, uint32_t batchsize, int device_id,
                                      std::shared_ptr<ObjPostproc> postprocessor,
                                      std::shared_ptr<CpuOutputResource> cpu_output_res)
-      : BatchingDoneStage(model, batchsize, dev_id), postprocessor_(postprocessor), cpu_output_res_(cpu_output_res) {}
+      : BatchingDoneStage(model, batchsize, device_id), postprocessor_(postprocessor), cpu_output_res_(cpu_output_res) {}
 
-  ObjPostprocessingBatchingDoneStage(ModelLoader* model, uint32_t batchsize, int dev_id,
+  ObjPostprocessingBatchingDoneStage(ModelLoader* model, uint32_t batchsize, int device_id,
                                      std::shared_ptr<ObjPostproc> postprocessor,
                                      std::shared_ptr<NetOutputResource> net_output_res)
-      : BatchingDoneStage(model, batchsize, dev_id), postprocessor_(postprocessor), net_output_res_(net_output_res) {}
+      : BatchingDoneStage(model, batchsize, device_id), postprocessor_(postprocessor), net_output_res_(net_output_res) {}
 
   std::vector<std::shared_ptr<InferTask>> BatchingDone(const BatchingDoneInput& finfos) override { return {}; }
 
@@ -215,6 +219,7 @@ class ObjPostprocessingBatchingDoneStage : public BatchingDoneStage {
   std::shared_ptr<NetOutputResource> net_output_res_ = nullptr;
 };  // class ObjPostprocessingBatchingDoneStage
 
+}  // namespace cnstream
 
 
 #endif  // MODULES_INFERENCE_SRC_BATCHING_DONE_STAGE_HPP_

@@ -30,7 +30,7 @@ TEST(Collection, ANY) {
   int value = std::any_cast<int>(data[key_num]);
 
   ASSERT_EQ(value, 100);
-  ASSERT_EQ(data[key_str], std::string("hello"));
+  ASSERT_EQ(std::any_cast<std::string>(data[key_str]), std::string("hello"));
 
   std::any a0;
   ASSERT_FALSE(a0.has_value());
@@ -87,7 +87,7 @@ TEST(Collection, Object) {
   std::shared_ptr<FrameInfoObj> frame_info = std::make_shared<FrameInfoObj>();
   collection.Add(key_obj_1, frame_info);
   ASSERT_TRUE(collection.HasValue(key_obj_1));
-  ASSERT_EQ(collection.Get<FrameInfoObj>(key_obj_1), frame_info);
+  ASSERT_EQ(collection.Get<std::shared_ptr<FrameInfoObj>>(key_obj_1), frame_info);
 
 }
 

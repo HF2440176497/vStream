@@ -16,7 +16,7 @@
 #include <opencv2/imgproc.hpp>
 #include <opencv2/highgui.hpp>
 
-#ifdef NVIDIA
+#ifdef VSTREAM_USE_CUDA
 #include "cuda/inspect_mem.hpp"
 #endif
 
@@ -27,7 +27,7 @@ static std::string test_pipeline_video_json = "pipeline_base_video.json";
 static std::vector<std::string> expected_nodes = {"DataSource", "InferenceProcess"};
 
 static bool has_save_frame_mat = false;
-static std::string save_file = "image/test_save.jpg";
+static std::string save_file = "save_image/test_source_save.jpg";
 
 // 在测试实例中，定义出这个 virtual module
 class InferenceProcess: public Module, public ModuleCreator<InferenceProcess> {
@@ -56,8 +56,8 @@ class InferenceProcess: public Module, public ModuleCreator<InferenceProcess> {
         return -1;
       }
       std::cout << "--- frame datafmt: " << DataFormat2Str(frame->GetFmt()) << std::endl;
-      std::cout << "--- frame devtype: " << DevType2Str(frame->GetCtx().dev_type) << std::endl;
-      std::cout << "--- frame devid: " << frame->GetCtx().dev_id << std::endl;
+      std::cout << "--- frame devtype: " << DevType2Str(frame->GetCtx().device_type) << std::endl;
+      std::cout << "--- frame devid: " << frame->GetCtx().device_id << std::endl;
       
       std::cout << "--- frame image height: " << frame->GetHeight() << std::endl;  
       std::cout << "--- frame image width: " << frame->GetWidth() << "; stride: " << frame->GetStride(0) << std::endl;

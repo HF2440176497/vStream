@@ -75,9 +75,9 @@ enum class DevType {
  */
 struct DevContext {
   DevContext() = default;
-  DevContext(DevType type, int id) : dev_type(type), dev_id(id) {}
-  DevType dev_type = DevType::INVALID; /*!< Device type. The default value is ``INVALID``.*/
-  int dev_id = -1;                /*!< Ordinal device ID. */
+  DevContext(DevType type, int id) : device_type(type), device_id(id) {}
+  DevType device_type = DevType::INVALID; /*!< Device type. The default value is ``INVALID``.*/
+  int device_id = -1;                /*!< Ordinal device ID. */
 };
 
 inline std::string DevType2Str(DevType type) {
@@ -88,7 +88,7 @@ inline std::string DevType2Str(DevType type) {
   }
 }
 
-inline std::unordered_map<std::string, DevType> dev_type_map = {
+inline std::unordered_map<std::string, DevType> device_type_map = {
   {"CPU", DevType::CPU},
   {"CUDA", DevType::CUDA}
 };
@@ -184,7 +184,7 @@ struct DecodeFrame {
   int32_t height;
   int32_t width; 
   
-  DevType dev_type = DevType::INVALID;
+  DevType device_type = DevType::INVALID;
   int32_t device_id = -1;
   
   DataFormat fmt;
@@ -230,7 +230,7 @@ inline const std::string KEY_STREAM_URL = "stream_url";
  * @brief DataSourceParam is a structure for private usage.
  */
 struct DataSourceParam {
-  int  device_id_ = -1;                                 /*! DataFrame 的 dev_id 直接来自 decode_frame  */
+  int  device_id_ = -1;                                 /*! DataFrame 的 device_id 直接来自 decode_frame  */
   size_t  interval_ = 1;                                /*!< The interval of outputting one frame. It outputs one frame every n (interval_) frames. */
   OutputType output_type_ = OutputType::OUTPUT_CPU;     /*!< The output type */
   DecoderType decoder_type_ = DecoderType::DECODER_CPU; /*!< The decoder type. */

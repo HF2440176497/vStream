@@ -30,6 +30,7 @@
 
 #include "inference.hpp"
 #include "infer_resource.hpp"
+#include "model_loader.hpp"
 
 
 namespace cnstream {

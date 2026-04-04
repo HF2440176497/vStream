@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <sstream>
 #include <ostream>
+#include <memory>
 
 #include "cnstream_logging.hpp"
 
@@ -42,6 +43,18 @@ enum class TensorFormat {
   HWC8
 };
 
+const char* data_type_string(DataType dt) {
+  switch(dt){
+    case DataType::UINT8: return "UInt8";
+    case DataType::INT8: return "Int8";
+    case DataType::FLOAT16: return "Float16";
+    case DataType::FLOAT32: return "Float32";
+    case DataType::INT16: return "Int16";
+    case DataType::INT32: return "Int32";
+    default: return "Unknow";
+  }
+}
+
 int data_type_size(DataType dt) {
   switch (dt) {
     case DataType::UINT8: return sizeof(uint8_t);
@@ -58,19 +71,6 @@ int data_type_size(DataType dt) {
     }
   }
 }
-
-const char* data_type_string(DataType dt) {
-  switch(dt){
-    case DataType::UINT8: return "UInt8";
-    case DataType::INT8: return "Int8";
-    case DataType::FLOAT16: return "Float16";
-    case DataType::FLOAT32: return "Float32";
-    case DataType::INT16: return "Int16";
-    case DataType::INT32: return "Int32";
-    default: return "Unknow";
-  }
-}
-
 
 /**
  * @brief 封装张量的形状信息, 只支持 NCHW 格式

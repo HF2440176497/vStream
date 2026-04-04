@@ -307,11 +307,11 @@ struct InferObjs : public NonCopyable {
 };
 
 /**
- * @struct InferData
+ * @struct OneInferData
  *
- * @brief InferData is a structure holding the information of raw inference input & outputs.
+ * @brief OneInferData is a structure holding the information of raw inference input & outputs.
  */
-struct InferData {
+struct OneInferData {
   // infer input
   DataFormat input_fmt_;               /*!< The input image's pixel format.*/
   int input_width_;                      /*!< The input image's width.*/
@@ -328,11 +328,11 @@ struct InferData {
 /**
  * @struct InferData
  *
- * @brief InferData is a structure holding a map between module name and InferData.
+ * @brief InferData is a structure holding a map between module name and OneInferData.
  */
 struct InferData : public NonCopyable {
-  std::map<std::string, std::vector<std::shared_ptr<InferData>>> datas_map_;
-  /*!< The map between module name and InferData.*/
+  std::map<std::string, std::vector<std::shared_ptr<OneInferData>>> datas_map_;
+  /*!< The map between module name and OneInferData.*/
   std::mutex mutex_; /*!< Inference data mutex.*/
 };
 

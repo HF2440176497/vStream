@@ -6,6 +6,9 @@
 
 #include <opencv2/opencv.hpp>
 
+#include "cnstream_logging.hpp"
+
+namespace cnstream {
 
 struct AffineMat {
   float v0, v1, v2;
@@ -330,4 +333,6 @@ inline void save_float_image_chw_cpu(float* src, int width, int height, const st
     if (!cv::imwrite(save_path, img_uint8)) {
         throw std::runtime_error("Failed to save image: " + save_path);
     }
+}
+
 }

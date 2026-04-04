@@ -28,7 +28,8 @@ else (FFMPEG_LIBRARIES AND FFMPEG_INCLUDE_DIR)
             PATHS ${FFMPEG_ROOT_DIR}/include
             /usr/include/ffmpeg
             /usr/local/include
-   	    /usr/include/x86_64-linux-gnu            
+   	    /usr/include/x86_64-linux-gnu
+            /usr/include/aarch64-linux-gnu
     )
 
     find_library(

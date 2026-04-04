@@ -10,7 +10,7 @@
 #include "base.hpp"
 #include "cnstream_logging.hpp"
 
-#ifdef NVIDIA
+#ifdef VSTREAM_USE_CUDA
 #include "cuda/cnstream_syncmem_cuda.hpp"
 #endif
 
@@ -26,7 +26,7 @@ const int CNSyncedMemoryTest::kTestSize;
 
 namespace cnstream {
 
-#ifdef NVIDIA
+#ifdef VSTREAM_USE_CUDA
 
 /**
  * 在 CPU 上设置数据 —— 转移到 CUDA —— 转移回 CPU 并验证
@@ -73,9 +73,9 @@ TEST_F(CNSyncedMemoryTest, DeviceContext) {
   if (device_count == 0) {
     GTEST_SKIP() << "No CUDA devices found, skipping device context test";
   }
-  const int dev_id = 0; // Use first CUDA device
-  CNSyncedMemoryCuda mem(kTestSize, dev_id);
-  ASSERT_EQ(mem.GetDevId(), dev_id) << "Device ID mismatch";
+  const int device_id = 0; // Use first CUDA device
+  CNSyncedMemoryCuda mem(kTestSize, device_id);
+  ASSERT_EQ(mem.GetDevId(), device_id) << "Device ID mismatch";
 
   float* cpu_data = (float*)(mem.GetMutableCpuData());
   ASSERT_NE(cpu_data, nullptr) << "Failed to get mutable CPU data";

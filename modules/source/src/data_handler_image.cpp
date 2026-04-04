@@ -135,7 +135,7 @@ void ImageHandlerImpl::Loop() {
   while (running_.load()) {
     // 每次循环创建新的 DecodeFrame
     DecodeFrame frame(image_.rows, image_.cols, DataFormat::PIXEL_FORMAT_BGR24);
-    frame.dev_type = DevType::CPU;
+    frame.device_type = DevType::CPU;
     frame.device_id = -1;
     frame.planeNum = 1;  // BGR格式使用1个平面
 

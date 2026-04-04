@@ -30,13 +30,14 @@
 
 #include "infer_task.hpp"
 
+namespace cnstream {
 
 class InferThreadPool {
  public:
-  InferThreadPool() {}
-  ~InferThreadPool() {}
+  InferThreadPool() = default;
+  ~InferThreadPool() = default;
 
-  void Init(size_t thread_num);
+  void Init(int device_id, size_t thread_num);
   void Destroy();
 
   void SubmitTask(const InferTaskSptr& task);
@@ -47,6 +48,7 @@ class InferThreadPool {
   InferTaskSptr PopTask();
 
   void TaskLoop();
+  int device_id_ = -1;
   std::vector<std::thread> threads_;
   std::queue<InferTaskSptr> task_q_;
   size_t max_tnum_ = 20;
@@ -56,6 +58,8 @@ class InferThreadPool {
   volatile bool running_ = false;
   std::function<void(const std::string& err_msg)> error_func_ = nullptr;
 };  // class InferThreadPool
+
+}  // namespace cnstream
 
 
 #endif  // INFER_THREAD_POOL_HPP_

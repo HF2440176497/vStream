@@ -14,15 +14,15 @@ static bool RegisterCudaMemOp() {
   auto& factory = MemOpFactory::Instance();
   bool result = true;
   result &= factory.RegisterMemOpCreator(DevType::CUDA,
-    [](int dev_id) {
-      return std::make_shared<CudaMemOp>(dev_id);
+    [](int device_id) {
+      return std::make_shared<CudaMemOp>(device_id);
     });
   return result;
 }
 
 static bool cuda_memops_registered = RegisterCudaMemOp();
 
-CudaMemOp::CudaMemOp(int dev_id) : device_id_(dev_id) {}
+CudaMemOp::CudaMemOp(int device_id) : device_id_(device_id) {}
 
 CudaMemOp::~CudaMemOp() {}
 

@@ -21,10 +21,10 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Platform options
-option(NVIDIA "Enable NVIDIA CUDA platform support" ON)
+option(VSTREAM_USE_CUDA "Enable NVIDIA CUDA platform support" ON)
 
-if (NVIDIA)
-  add_definitions(-DNVIDIA)
+if (VSTREAM_USE_CUDA)
+  add_definitions(-DVSTREAM_USE_CUDA)
   set(CMAKE_CUDA_STANDARD 17)
 endif()
 
@@ -71,6 +71,8 @@ if(build_tests)
     set(has_built_gtest TRUE)
   endif()
 endif()
+
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/backward-cpp)
 
 add_subdirectory(framework)
 if(build_modules)

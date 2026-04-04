@@ -32,8 +32,10 @@ InferEngine::InferEngine(const InferOptions& options)
       postprocessor_(options.postprocessor()),
       obj_preprocessor_(options.obj_preprocessor()),
       obj_postprocessor_(options.obj_postprocessor()),
+      obj_filter_(options.obj_filter()),
+      dump_resized_image_dir_(options.dump_resized_image_dir()),
       batching_timeout_(options.batching_timeout()),
-      dev_id_(options.dev_id()),
+      device_id_(options.device_id()),
       batching_by_obj_(options.batching_by_obj()),
       module_name_(options.module_name()),
       error_func_(options.error_handler()) {
@@ -41,8 +43,8 @@ InferEngine::InferEngine(const InferOptions& options)
   batchsize_ = model_->get_batch_size();
 
   thread_pool_ = std::make_shared<InferThreadPool>();
-  thread_pool_->SetErrorHandleFunc(error_func);
-  thread_pool_->Init(dev_id_, batchsize_ * 3 + 4);
+  thread_pool_->SetErrorHandleFunc(error_func_);
+  thread_pool_->Init(device_id_, batchsize_ * 3 + 4);
 
   cpu_input_res_ = std::make_shared<CpuInputResource>(model_);
   cpu_output_res_ = std::make_shared<CpuOutputResource>(model_);
@@ -92,23 +94,23 @@ void InferEngine::StageAssemble() {
         std::make_shared<CpuPreprocessingBatchingStage>(model_, batchsize_, preprocessor_, cpu_input_res_);
   }
 
-  auto h2d_stage = std::make_shared<H2DBatchingDoneStage>(model_, batchsize_, dev_id_, cpu_input_res_, net_input_res_);
+  auto h2d_stage = std::make_shared<H2DBatchingDoneStage>(model_, batchsize_, device_id_, cpu_input_res_, net_input_res_);
   batching_done_stages_.push_back(h2d_stage);
 
   auto infer_stage =
-      std::make_shared<InferBatchingDoneStage>(model_, batchsize_, dev_id_, net_input_res_, net_output_res_);
+      std::make_shared<InferBatchingDoneStage>(model_, batchsize_, device_id_, net_input_res_, net_output_res_);
   batching_done_stages_.push_back(infer_stage);
 
   auto d2h_stage =
-      std::make_shared<D2HBatchingDoneStage>(model_, batchsize_, dev_id_, net_output_res_, cpu_output_res_);
+      std::make_shared<D2HBatchingDoneStage>(model_, batchsize_, device_id_, net_output_res_, cpu_output_res_);
   batching_done_stages_.push_back(d2h_stage);
 
   if (batching_by_obj_) {
-      obj_postproc_stage_ = std::make_shared<ObjPostprocessingBatchingDoneStage>(model_, batchsize_, dev_id_,
+      obj_postproc_stage_ = std::make_shared<ObjPostprocessingBatchingDoneStage>(model_, batchsize_, device_id_,
                                                                                  obj_postprocessor_, cpu_output_res_);
   } else {
     auto postproc_stage =
-        std::make_shared<PostprocessingBatchingDoneStage>(model_, batchsize_, dev_id_, postprocessor_, cpu_output_res_);
+        std::make_shared<PostprocessingBatchingDoneStage>(model_, batchsize_, device_id_, postprocessor_, cpu_output_res_);
     batching_done_stages_.push_back(postproc_stage);
   }
 }
@@ -125,23 +127,24 @@ InferEngine::ResultWaitingCard InferEngine::FeedData(std::shared_ptr<FrameInfo> 
     if (!frame_info->collection.HasValue(kInferObjsTag)) {
       return card;
     }
+    // objs_holder: std::vector<inferobjptr>, mutex
     InferObjsPtr objs_holder = frame_info->collection.Get<InferObjsPtr>(kInferObjsTag);
-    objs_holder->mutex.lock();
+    objs_holder->mutex_.lock();
     std::vector<std::shared_ptr<InferObject>> objs = objs_holder->objs_;
-    objs_holder->mutex.unlock();
+    objs_holder->mutex_.unlock();
 
     for (int obj_idx = 0; obj_idx < objs.size(); ++obj_idx) {
-      auto& obj = objs[obj_idx];
+      auto& obj = objs[obj_idx];  // shared_ptr<InferObject>
 
       if (obj_filter_) {
-        if (!obj_filter_->Filter(frame_info, obj_idx)) continue;
+        if (!obj_filter_->Filter(frame_info, obj)) continue;
       }
 
-      InferTaskSptr task = obj_batching_stage_->Batching(frame_info, obj_idx);
+      InferTaskSptr task = obj_batching_stage_->Batching(frame_info, obj);
       thread_pool_->SubmitTask(task);
 
       batched_finfos_.push_back(std::make_pair(frame_info, auto_set_done));
-      batched_objs_.push_back(obj_idx);
+      batched_objs_.push_back(obj);
 
       if (batched_finfos_.size() == batchsize_) {
         BatchingDone();

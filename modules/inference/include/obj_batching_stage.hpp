@@ -66,7 +66,7 @@ class IOObjBatchingStage : public ObjBatchingStage {
  private:
   using ObjBatchingStage::batchsize_;
   uint32_t batch_idx_ = 0;
-  std::shared_ptr<IOResource> output_res_ = NULL;
+  std::shared_ptr<IOResource> output_res_ = nullptr;
 };  // class IOObjBatchingStage
 
 class CpuPreprocessingObjBatchingStage : public IOObjBatchingStage {
@@ -79,7 +79,7 @@ class CpuPreprocessingObjBatchingStage : public IOObjBatchingStage {
  private:
   void ProcessOneObject(std::shared_ptr<FrameInfo> finfo, std::shared_ptr<InferObject> obj, uint32_t batch_idx,
                         const IOResValue& value) override;
-  std::shared_ptr<ObjPreproc> preprocessor_;
+  std::shared_ptr<ObjPreproc> preprocessor_ = nullptr;
 };  // class CpuPreprocessingObjBatchingStage
 
 }  // namespace cnstream

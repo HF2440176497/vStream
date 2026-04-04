@@ -126,23 +126,23 @@ size_t DataFrame::GetBytes() const {
 }
 
 /**
- * @brief 每次调用查找已注册的 MemOp 创建器，根据当前 dev_type 和 dev_id 创建 MemOp
+ * @brief 每次调用查找已注册的 MemOp 创建器，根据当前 device_type 和 device_id 创建 MemOp
  * 调用处：CopyToSyncMem(dec_frame)
  */
 std::shared_ptr<MemOp> DataFrame::CreateMemOp() {
-  auto dev_type = this->ctx_.dev_type;
-  int dev_id = this->ctx_.dev_id;
-  std::shared_ptr<MemOp> memop = MemOpFactory::Instance().CreateMemOp(dev_type, dev_id);  // inside mutex_ lock
+  auto device_type = this->ctx_.device_type;
+  int device_id = this->ctx_.device_id;
+  std::shared_ptr<MemOp> memop = MemOpFactory::Instance().CreateMemOp(device_type, device_id);  // inside mutex_ lock
   if (!memop) {
-    LOGF(FRAME) << "CreateMemOp: failed to create MemOp from " << static_cast<int>(dev_type) << " with dev_id " << dev_id;
+    LOGF(FRAME) << "CreateMemOp: failed to create MemOp from " << static_cast<int>(device_type) << " with device_id " << device_id;
     return nullptr;
   }
   return memop;
 }
 
 void DataFrame::CopyToSyncMem(DecodeFrame* dec_frame) {
-  if (this->ctx_.dev_type == DevType::INVALID) {
-    LOGF(FRAME) << "CopyToSyncMem: dev_type is INVALID";
+  if (this->ctx_.device_type == DevType::INVALID) {
+    LOGF(FRAME) << "CopyToSyncMem: device_type is INVALID";
     return;
   }
   if (DataFormat::PIXEL_FORMAT_RGB24 != this->fmt_ && DataFormat::PIXEL_FORMAT_BGR24 != this->fmt_) {

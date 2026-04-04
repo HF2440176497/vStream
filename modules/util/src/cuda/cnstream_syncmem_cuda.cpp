@@ -9,15 +9,15 @@ CNSyncedMemoryCuda::CNSyncedMemoryCuda(size_t size) : CNSyncedMemory(size) {
   own_dev_data_[DevType::CUDA] = false;
 }
 
-CNSyncedMemoryCuda::CNSyncedMemoryCuda(size_t size, int dev_id) : CNSyncedMemory(size) {
+CNSyncedMemoryCuda::CNSyncedMemoryCuda(size_t size, int device_id) : CNSyncedMemory(size) {
   std::lock_guard<std::mutex> lock(mutex_);
   int device_count = 0;
   CHECK_CUDA_RUNTIME(cudaGetDeviceCount(&device_count));
-  if (dev_id < 0 || dev_id >= device_count) {
-    LOGF(FRAME) << "Invalid CUDA device id: " << dev_id << ", available devices: " << device_count;
-    dev_id = 0;
+  if (device_id < 0 || device_id >= device_count) {
+    LOGF(FRAME) << "Invalid CUDA device id: " << device_id << ", available devices: " << device_count;
+    device_id = 0;
   }
-  dev_id_ = dev_id;
+  device_id_ = device_id;
   own_dev_data_[DevType::CPU] = false;
   own_dev_data_[DevType::CUDA] = false;
 }
@@ -27,8 +27,8 @@ CNSyncedMemoryCuda::~CNSyncedMemoryCuda() {
   if (0 == size_) return;
   if (cuda_ptr_ && own_dev_data_[DevType::CUDA]) {
     // Set device before freeing memory
-    if (dev_id_ >= 0) {
-      CHECK_CUDA_RUNTIME(cudaSetDevice(dev_id_));
+    if (device_id_ >= 0) {
+      CHECK_CUDA_RUNTIME(cudaSetDevice(device_id_));
     }
     CHECK_CUDA_RUNTIME(cudaFree(cuda_ptr_));
   }
@@ -46,7 +46,7 @@ void CNSyncedMemoryCuda::SetData(void* data) {
 
 void CNSyncedMemoryCuda::ToCpu() {
   if (0 == size_) return;
-  CHECK_CUDA_RUNTIME(cudaSetDevice(dev_id_));
+  CHECK_CUDA_RUNTIME(cudaSetDevice(device_id_));
   switch (head_) {
     case SyncedHead::UNINITIALIZED:
       if (cuda_ptr_ or cpu_ptr_) {
@@ -81,7 +81,7 @@ void CNSyncedMemoryCuda::ToCpu() {
 void CNSyncedMemoryCuda::ToCuda() {
   if (0 == size_) return;
   // Set device if specified
-  CHECK_CUDA_RUNTIME(cudaSetDevice(dev_id_));
+  CHECK_CUDA_RUNTIME(cudaSetDevice(device_id_));
   switch (head_) {
     case SyncedHead::UNINITIALIZED:
       if (cuda_ptr_ or cpu_ptr_) {  // 不应该存在已分配的 CUDA 内存
@@ -125,7 +125,7 @@ void CNSyncedMemoryCuda::SetCudaData(void* data) {
       LOGE(FRAME) << "CNSyncedMemoryCuda::SetCudaData ERROR, cuda_ptr_ should not be NULL.";
       return;
     }
-    CHECK_CUDA_RUNTIME(cudaSetDevice(dev_id_));
+    CHECK_CUDA_RUNTIME(cudaSetDevice(device_id_));
     CHECK_CUDA_RUNTIME(cudaFree(cuda_ptr_));
   }
   cuda_ptr_ = data;

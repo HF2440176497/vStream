@@ -72,7 +72,7 @@ class CNSyncedMemory : private NonCopyable {
  public:
   struct StatusInfo {
     size_t size = 0;
-    int dev_id = -1;
+    int device_id = -1;
     SyncedHead head = SyncedHead::UNINITIALIZED;
     bool own_cpu_data = false;
   };
@@ -101,7 +101,7 @@ class CNSyncedMemory : private NonCopyable {
   StatusInfo GetStatusInfo() const {
     StatusInfo info;
     info.size = size_;
-    info.dev_id = dev_id_;
+    info.device_id = device_id_;
     info.head = head_;
     info.own_cpu_data = (cpu_ptr_ != nullptr);
     return info;
@@ -120,7 +120,7 @@ class CNSyncedMemory : private NonCopyable {
     }
     std::ostringstream oss;
     oss << "[SIZE=" << info.size
-        << ", DEV=" << info.dev_id
+        << ", DEV=" << info.device_id
         << ", HEAD=" << head_str
         << ", OWN_CPU=" << std::boolalpha << info.own_cpu_data << "]";
     return oss.str();
@@ -143,7 +143,7 @@ public:
   SyncedHead head_ = SyncedHead::UNINITIALIZED;  ///< Identifies which device data is synchronized on.
   size_t size_ = 0;
 
-  int dev_id_ = -1;
+  int device_id_ = -1;
   mutable std::mutex mutex_;
 };  // class CNSyncedMemory
 

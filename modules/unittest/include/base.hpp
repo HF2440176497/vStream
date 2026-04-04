@@ -25,6 +25,8 @@
 #include <nlohmann/json.hpp>
 #include <opencv2/opencv.hpp>
 
+#include "data_source_param.hpp"
+
 #define PATH_MAX_LENGTH 1024
 
 /**
@@ -50,8 +52,21 @@ std::pair<int, std::string> CreateTempFile(const std::string& filename_prefix);
  */
 std::string readFile(const char* filename);
 
+namespace cnstream {
+
+/**
+ * @brief 创建一个测试的 DecodeFrame
+ * @param fmt 图像格式
+ * @param width 图像宽度
+ * @param height 图像高度
+ */
 DecodeFrame* CreateTestDecodeFrame(DataFormat fmt, int width, int height);
 
+/**
+ * @brief 配合 CreateTestDecodeFrame 使用，清理测试的 DecodeFrame
+ */
 void CleanupTestDecodeFrame(DecodeFrame* frame);
+
+}
 
 #endif

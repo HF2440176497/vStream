@@ -5,21 +5,23 @@
 #include "affine_trans.hpp"
 #include "base.hpp"
 
-static const std::string image_path = "test.jpg";
+static const std::string image_path = "test_image.png";
 
 static const int dst_w = 640;
 static const int dst_h = 640;
 
-static const std::string output_path_resize = "affine_resize.jpg";
-static const std::string output_path_resize_swap = "affine_resize_swap.jpg";
-static const std::string output_path_resize_swap_norm = "affine_resize_swap_norm.jpg";
+static const std::string output_path_resize = "save_image/test_affine_resize.jpg";
+static const std::string output_path_resize_swap = "save_image/test_affine_resize_swap.jpg";
+static const std::string output_path_resize_swap_norm = "save_image/test_affine_resize_swap_norm.jpg";
+
+namespace cnstream {
 
 TEST(AffineTrans, preprocess) {
   cv::Mat image = cv::imread(image_path, cv::IMREAD_COLOR);
   EXPECT_TRUE(!image.empty());
   
   size_t expected = image.total() * image.elemSize();
-  size_t actual = image.dataEnd - image.data;
+  size_t actual = image.dataend - image.data;
 
   if (image.isContinuous()) {
     std::cout << "AffineTrans: image is continuous" << std::endl;
@@ -38,7 +40,7 @@ TEST(AffineTrans, preprocess) {
   std::tuple<int, int> to{dst_w, dst_h};
   trans.compute(from, to);
 
-  Normalize norm = Norm::alpha_beta(1 / 255.0f, 0.0f);
+  auto norm = Norm::alpha_beta(1 / 255.0f, 0.0f);
 
   float* output = new float[dst_w * dst_h * 3];
   resize_cpu(image.data, src_w, src_h, image.step, output, dst_w, dst_h, 114.0f, trans.get_d2s());  // output: CHW BGR
@@ -61,5 +63,6 @@ TEST(AffineTrans, postprocess) {
 
 }
 
+}  // namespace cnstream
 
 

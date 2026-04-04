@@ -29,6 +29,7 @@
 
 #include <stdexcept>
 
+namespace cnstream {
 
 class InferTask;
 using InferTaskSptr = std::shared_ptr<InferTask>;
@@ -88,5 +89,7 @@ class InferTask {
   std::shared_future<int> statem_;  // 关联 promise_，用于等待任务完成
   std::vector<std::shared_future<int>> pre_task_statem_;
 };  // class InferTask
+
+}  // namespace cnstream
 
 #endif  // INFER_TASK_HPP_

@@ -330,7 +330,7 @@ int VideoHandlerImpl::decode_write() {
 
       // 传输到 CPU 的格式 NV12 or NV21
       DecodeFrame frame(s_frame_->height, s_frame_->width, nv_fmt);
-      frame.dev_type = DevType::CPU;
+      frame.device_type = DevType::CPU;
       frame.planeNum = 2;
       frame.pts = s_frame_->pts;
 
@@ -373,7 +373,7 @@ int VideoHandlerImpl::decode_write() {
       }
 
       DecodeFrame frame(p_frame->height, p_frame->width, DataFormat::PIXEL_FORMAT_YUV420_NV12);
-      frame.dev_type = DevType::CUDA;
+      frame.device_type = DevType::CUDA;
       frame.device_id = device_id_;
       frame.planeNum = 2;
       frame.pts = p_frame->pts;

@@ -5,11 +5,15 @@ if(NOT DEFINED VSTREAM_ROOT_PATH)
         CACHE INTERNAL "Top-level directory of this project")
 endif()
 
+set(MODULES_3RDPARTY_LIBS "")
+set(MODULES_DEPENDENCIES "")
+
 # ---[ gflags
 include(${VSTREAM_ROOT_PATH}/cmake/FindGFlags.cmake)
 if(GFLAGS_FOUND)
   message(STATUS "Using installed GFlags for modules unittest")
   include_directories(${GFLAGS_INCLUDE_DIRS})
+  list(APPEND MODULES_3RDPARTY_LIBS ${GFLAGS_LIBRARIES})
 else()
   message(FATAL_ERROR "GFlags not found! Please ensure GFlags is installed and set GFLAGS_ROOT_DIR or CMAKE_PREFIX_PATH")
 endif()
@@ -19,6 +23,7 @@ include(${VSTREAM_ROOT_PATH}/cmake/FindGlog.cmake)
 if(GLOG_FOUND)
   message(STATUS "Using installed GLog for modules unittest")
   include_directories(${GLOG_INCLUDE_DIRS})
+  list(APPEND MODULES_3RDPARTY_LIBS ${GLOG_LIBRARIES})
 else()
   message(FATAL_ERROR "GLog not found! Please ensure GLog is installed and set GLOG_ROOT_DIR or CMAKE_PREFIX_PATH")
 endif()
@@ -31,7 +36,7 @@ include(${VSTREAM_ROOT_PATH}/cmake/HaveFrameworkTarget.cmake)
 have_framework_target(${VSTREAM_ROOT_PATH})
 if(HAVE_FRAMEWORK_TARGET)
   include_directories(${VSTREAM_ROOT_PATH}/framework/core/include)
-  list(APPEND DEPENDENCIES vstream_core)
+  list(APPEND MODULES_DEPENDENCIES vstream_core)
 else()
   message(FATAL_ERROR "framework target not found")
 endif()
@@ -42,14 +47,8 @@ endif()
 
 option(build_util "build module util" ON)
 option(build_source "build module source" ON)
-option(build_inference "build module inference" OFF)
+option(build_inference "build module inference" ON)
 option(build_va "build stream_va" ON)
-
-# ---[ 3rdparty
-set(MODULES_3RDPARTY_LIBS "")
-set(MODULES_DEPENDENCIES "")
-
-list(APPEND MODULES_3RDPARTY_LIBS ${GLOG_LIBRARIES} ${GFLAGS_LIBRARIES})
 
 # ---[ opencv
 include(${VSTREAM_ROOT_PATH}/cmake/FindOpenCV.cmake)
@@ -103,7 +102,7 @@ endif()
 file(GLOB srcs ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)
 file(GLOB util_src ${CMAKE_CURRENT_SOURCE_DIR}/util/src/*.cpp)
 
-if(NVIDIA)
+if(VSTREAM_USE_CUDA)
   enable_language(CUDA)
   find_package(CUDAToolkit REQUIRED)
   file(GLOB util_cuda_src ${CMAKE_CURRENT_SOURCE_DIR}/util/src/cuda/*.cpp 
@@ -128,15 +127,30 @@ if(NVIDIA)
     CUDA::nppitc
   )
     
-  message(STATUS "NVIDIA platform enabled - adding CUDA sources")
+  message(STATUS "VSTREAM_USE_CUDA enabled - adding CUDA sources")
 endif()
 
 list(APPEND srcs ${util_src})
 
+if(VSTREAM_USE_CUDA)
+  include(${VSTREAM_ROOT_PATH}/cmake/FindTensorRT.cmake)
+  if(TENSORRT_FOUND)
+    list(APPEND MODULES_3RDPARTY_LIBS ${TENSORRT_LIBRARIES})
+    include_directories(${TENSORRT_INCLUDE_DIR})
+  endif()
+endif()
+
+
 # 递归添加模块的源文件: 要求每个 module 目录都是 include src 目录结构
 foreach(module ${module_list})
-  file(GLOB_RECURSE module_src ${CMAKE_CURRENT_SOURCE_DIR}/${module}/*.cpp)
-  list(APPEND srcs ${module_src})
+  file(GLOB ${module}_srcs ${CMAKE_CURRENT_SOURCE_DIR}/${module}/src/*.cpp)
+
+  if (VSTREAM_USE_CUDA)
+    file(GLOB ${module}_cuda_srcs ${CMAKE_CURRENT_SOURCE_DIR}/${module}/src/cuda/*.cpp)
+    list(APPEND ${module}_srcs ${${module}_cuda_srcs})
+  endif()
+
+  list(APPEND srcs ${${module}_srcs})
 endforeach()
 
 
@@ -145,22 +159,22 @@ if(build_util)
   file(GLOB util_common_src ${CMAKE_CURRENT_SOURCE_DIR}/util/src/*.cpp)
   list(APPEND util_obj_srcs ${util_common_src})
 
-  if(NVIDIA)
+  if(VSTREAM_USE_CUDA)
     file(GLOB util_cuda_src ${CMAKE_CURRENT_SOURCE_DIR}/util/src/cuda/*.cpp 
           ${CMAKE_CURRENT_SOURCE_DIR}/util/src/cuda/*.cu)
     list(APPEND util_obj_srcs ${util_cuda_src})
-    message(STATUS "Util module: NVIDIA platform sources added")
+    message(STATUS "Util module: VSTREAM_USE_CUDA platform sources added")
   endif()
 
-  add_library(modules_util OBJECT ${util_obj_srcs})
-  target_include_directories(modules_util PRIVATE
+  add_library(vstream_modules_util OBJECT ${util_obj_srcs})
+  target_include_directories(vstream_modules_util PRIVATE
       ${CMAKE_CURRENT_SOURCE_DIR}
       ${CMAKE_CURRENT_SOURCE_DIR}/util/include
   )
-  add_dependencies(modules_util ${MODULES_DEPENDENCIES})
-  target_link_libraries(modules_util ${MODULES_DEPENDENCIES} ${MODULES_3RDPARTY_LIBS} rt dl pthread)
-  add_custom_target(util DEPENDS modules_util)
-  message(STATUS "Util module enabled - targets: modules_util, util")
+  add_dependencies(vstream_modules_util ${MODULES_DEPENDENCIES})
+  target_link_libraries(vstream_modules_util ${MODULES_DEPENDENCIES} ${MODULES_3RDPARTY_LIBS} rt dl pthread)
+  add_custom_target(util DEPENDS vstream_modules_util)
+  message(STATUS "Util module enabled - targets: vstream_modules_util, util")
 endif()
 
 if(build_va)

@@ -79,6 +79,8 @@ std::string readFile(const char* filename) {
     return content;
 }
 
+namespace cnstream {
+
 /**
  * @brief 创建一个测试用的 DecodeFrame
  * @param fmt 图像格式
@@ -151,3 +153,5 @@ void CleanupTestDecodeFrame(DecodeFrame* frame) {
     delete frame;
   }
 }
+
+}  // namespace cnstream

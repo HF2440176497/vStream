@@ -10,7 +10,7 @@
 #include "postproc.hpp"
 
 #include "cnstream_frame.hpp"
-#include "model_loader_base.hpp"
+#include "model_loader.hpp"
 
 #include "reflex_object.h"
 

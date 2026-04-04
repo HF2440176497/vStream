@@ -33,13 +33,14 @@
 #include <utility>
 #include <vector>
 
-#include "model_loader.hpp"
 #include "reflex_object.h"
 
 #include "cnstream_frame.hpp"
 #include "cnstream_frame_va.hpp"
 
 namespace cnstream {
+
+class ModelLoader;
 
 /**
  * @class Postproc

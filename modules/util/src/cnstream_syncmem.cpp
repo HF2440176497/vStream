@@ -68,7 +68,7 @@ void CNSyncedMemory::SetCpuData(void* data) {
 
 int CNSyncedMemory::GetDevId() const {
   std::lock_guard<std::mutex> lock(mutex_);
-  return dev_id_;
+  return device_id_;
 }
 
 const void* CNSyncedMemory::GetCpuData() {

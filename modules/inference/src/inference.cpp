@@ -20,7 +20,6 @@
 
 
 
-
 #include <map>
 #include <memory>
 #include <sstream>
@@ -38,7 +37,7 @@
 #include "preproc.hpp"
 
 #include "cnstream_frame_va.hpp"
-#include "inferencer.hpp"
+#include "inference.hpp"
 #include "infer_params.hpp"
 
 #include "profiler/module_profiler.hpp"
@@ -89,20 +88,20 @@ class InferencePrivate: public NonCopyable {
     LOGI(INFERENCER) << "[" << module_name_ << "] load model [path: " << model_path << "]";
 
     // TODO: 未来由 Pipeline 参数透传到此，以此为准来检验 data 中是否相同
-    auto dev_type = params.device_type;
-    auto dev_id = params.device_id;
+    auto device_type = params.device_type;
+    auto device_id = params.device_id;
     auto& factory = ModelLoaderFactory::Instance();
 
-    if (dev_type != DevType::CPU && dev_id == -1) {
-      LOGE(INFERENCER) << "[" << module_name_ << "] dev_type [" << dev_type << "] not CPU. but device_id is -1";
+    if (device_type != DevType::CPU && device_id == -1) {
+      LOGE(INFERENCER) << "[" << module_name_ << "] device_type [" << DevType2Str(device_type) << "] not CPU. but device_id is -1";
       return false;
     }
 
     // LoadEngine - ParBinding
-    model_loader_ = factory.CreateModelLoader(dev_type, dev_id);
+    model_loader_ = factory.CreateModelLoader(device_type, device_id);
     if (!model_loader_) {
-      LOGE(INFERENCER) << "[" << module_name_ << "] create model loader failed. dev_type: "
-                 << dev_type << ", dev_id: " << dev_id;
+      LOGE(INFERENCER) << "[" << module_name_ << "] create model loader failed. device_type: "
+                 << DevType2Str(device_type) << ", device_id: " << device_id;
       return false;
     }
 
@@ -271,9 +270,9 @@ bool Inference::Open(ModuleParamSet raw_params) {
   } else {
     if (GetProfiler()) {
       if (!params.preproc_name.empty()) {
-        GetProfiler()->RegisterProcessName("RUN PREPROC");
+        GetProfiler()->RegisterProcess("RUN PREPROC");
       }
-      GetProfiler()->RegisterProcessName("RUN MODEL");
+      GetProfiler()->RegisterProcess("RUN MODEL");
     }
   }
 

@@ -19,14 +19,14 @@ class CNSyncedMemoryCuda : public CNSyncedMemory {
 public:
   struct StatusInfoCuda {
     size_t size = 0;
-    int dev_id = -1;
+    int device_id = -1;
     SyncedHead head = SyncedHead::UNINITIALIZED;
     bool own_cpu_data = false;
     bool own_cuda_data = false;
   };
 
   explicit CNSyncedMemoryCuda(size_t size);
-  explicit CNSyncedMemoryCuda(size_t size, int dev_id);
+  explicit CNSyncedMemoryCuda(size_t size, int device_id);
   ~CNSyncedMemoryCuda() override;
 
 public:
@@ -47,7 +47,7 @@ public:
   StatusInfoCuda GetStatusInfoCuda() const {
     StatusInfoCuda info;
     info.size = GetSize();
-    info.dev_id = GetDevId();
+    info.device_id = GetDevId();
     info.head = GetHead();
     info.own_cpu_data = (cpu_ptr_ != nullptr);
     info.own_cuda_data = (cuda_ptr_ != nullptr);
@@ -67,7 +67,7 @@ public:
     }
     std::ostringstream oss;
     oss << "[SIZE=" << info.size
-        << ", DEV=" << info.dev_id
+        << ", DEV=" << info.device_id
         << ", HEAD=" << head_str
         << ", OWN_CPU=" << std::boolalpha << info.own_cpu_data
         << ", OWN_CUDA=" << info.own_cuda_data << "]";

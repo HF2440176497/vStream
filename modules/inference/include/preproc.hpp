@@ -33,12 +33,13 @@
 #include <utility>
 #include <vector>
 
-#include "model_loader.hpp"
 #include "cnstream_frame.hpp"
 #include "cnstream_frame_va.hpp"
 #include "reflex_object.h"
 
 namespace cnstream {
+
+class ModelLoader;
 
 /**
  * @class Preproc

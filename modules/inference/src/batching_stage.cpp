@@ -5,8 +5,11 @@
 #include <thread>
 
 #include "infer_task.hpp"
+#include "preproc.hpp"
 #include "batching_stage.hpp"
 
+
+namespace cnstream {
 
 std::shared_ptr<InferTask> IOBatchingStage::Batching(std::shared_ptr<FrameInfo> finfo) {
   bool reserve_ticket = false;
@@ -30,21 +33,28 @@ std::shared_ptr<InferTask> IOBatchingStage::Batching(std::shared_ptr<FrameInfo> 
 
 #ifdef UNIT_TEST
     // std::this_thread::sleep_for(std::chrono::milliseconds(800));
-    task->task_msg = "IOBatchingStage, bidx: " + std::to_string(bidx);
     std::cout << "IOBatchingStage, bidx: " << bidx
-        << "; [" << finfo.first->stream_id << ", " << finfo.first->timestamp << "] " << std::endl; 
+        << "; [" << finfo->stream_id << ", " << finfo->timestamp << "] " << std::endl; 
 #endif
 
     this->ProcessOneFrame(finfo, bidx, value);
     this->output_res_->DeallingDone();
     return 0;
   });
+
+#ifdef UNIT_TEST
+  task->task_msg = "IOBatchingStage, bidx: " + std::to_string(bidx);
+#endif
   
   batch_idx_ = (batch_idx_ + 1) % batchsize_;
   return task;
 }
 
 
+/**
+ * @note 
+ * 
+ */
 CpuPreprocessingBatchingStage::CpuPreprocessingBatchingStage(ModelLoader* model,
                                                              uint32_t batchsize, std::shared_ptr<Preproc> preprocessor,
                                                              std::shared_ptr<CpuInputResource> cpu_input_res)
@@ -71,3 +81,5 @@ void CpuPreprocessingBatchingStage::ProcessOneFrame(std::shared_ptr<FrameInfo> f
   }
   preprocessor_->Execute(cpu_outputs, model_, finfo);
 }
+
+}  // namespace cnstream

@@ -12,7 +12,7 @@ foreach(demo_source ${DEMO_SOURCES})
     target_link_libraries(${demo_name} ${TOOLS_3RDPARTY_LIBS} ${TOOLS_DEPENDENCIES} rt dl pthread)
 endforeach()
 
-if(NVIDIA)
+if(VSTREAM_USE_CUDA)
   add_subdirectory(cuda)
   add_subdirectory(trt)
 endif()

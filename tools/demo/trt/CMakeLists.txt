@@ -22,42 +22,15 @@ list(APPEND TOOLS_DEMO_TRT_3RDPARTY_LIBS
   CUDA::nvml
 )
 
-set(TENSORRT_ROOT $ENV{TENSORRT_ROOT})
-if(NOT TENSORRT_ROOT)
-    set(TENSORRT_ROOT "/usr" CACHE PATH "TensorRT root directory")
+if(NOT DEFINED TENSORRT_FOUND OR NOT TENSORRT_FOUND)
+  include(${VSTREAM_ROOT_PATH}/cmake/FindTensorRT.cmake)
 endif()
 
-# trt include
-find_path(TENSORRT_INCLUDE_DIR NvInfer.h
-    HINTS ${TENSORRT_ROOT} ${CUDA_TOOLKIT_ROOT_DIR}
-    PATH_SUFFIXES include include/x86_64-linux-gnu
-)
-
-# trt lib
-find_library(TENSORRT_LIB nvinfer
-    HINTS ${TENSORRT_ROOT} ${CUDA_TOOLKIT_ROOT_DIR}
-    PATH_SUFFIXES lib lib64 lib/x86_64-linux-gnu
-)
-
-find_library(TENSORRT_ONNXPARSER_LIB nvonnxparser
-    HINTS ${TENSORRT_ROOT} ${CUDA_TOOLKIT_ROOT_DIR}
-    PATH_SUFFIXES lib lib64 lib/x86_64-linux-gnu
-)
-
-find_library(TENSORRT_PLUGIN_LIB nvinfer_plugin
-    HINTS ${TENSORRT_ROOT} ${CUDA_TOOLKIT_ROOT_DIR}
-    PATH_SUFFIXES lib lib64 lib/x86_64-linux-gnu
-)
-
-
-if(NOT TENSORRT_INCLUDE_DIR OR NOT TENSORRT_LIB)
-    message(FATAL_ERROR "TensorRT not found! Please set TENSORRT_ROOT environment variable or cmake option.")
+if(TENSORRT_FOUND)
+  list(APPEND TOOLS_DEMO_TRT_3RDPARTY_LIBS ${TENSORRT_LIBRARIES})
+  include_directories(${TENSORRT_INCLUDE_DIR})
 else()
-    list(APPEND TOOLS_DEMO_TRT_3RDPARTY_LIBS 
-      ${TENSORRT_LIB}
-      ${TENSORRT_ONNXPARSER_LIB}
-      ${TENSORRT_PLUGIN_LIB}
-    )
+  message(FATAL_ERROR "TensorRT not found. Can not complie trt_demo")
 endif()
 
 # Source files

@@ -29,21 +29,21 @@ class MemOpFactory {
 
   /**
    * @brief 注册MemOp创建函数
-   * @param src_dev_type 源设备类型
-   * @param dst_dev_type 目标设备类型
+   * @param src_device_type 源设备类型
+   * @param dst_device_type 目标设备类型
    * @param creator 创建MemOp实例的函数
    * @return 注册是否成功
    */
-  bool RegisterMemOpCreator(DevType dev_type,
-                           std::function<std::shared_ptr<MemOp>(int dev_id)> creator);
+  bool RegisterMemOpCreator(DevType device_type,
+                           std::function<std::shared_ptr<MemOp>(int device_id)> creator);
 
   /**
    * @brief 根据设备类型创建MemOp实例
-   * @param dev_type 设备类型
-   * @param dev_id 设备ID，默认值为-1
+   * @param device_type 设备类型
+   * @param device_id 设备ID，默认值为-1
    * @return 返回创建的MemOp实例，如果不支持该设备类型则返回nullptr
    */
-  std::shared_ptr<MemOp> CreateMemOp(DevType dev_type, int dev_id);
+  std::shared_ptr<MemOp> CreateMemOp(DevType device_type, int device_id);
 
  private:
   MemOpFactory();
@@ -62,12 +62,12 @@ class MemOpFactory {
  private:
   struct DevTypeHash {
     template <typename T>
-    std::size_t operator()(const T& dev_type) const {
-      return static_cast<std::size_t>(dev_type);
+    std::size_t operator()(const T& device_type) const {
+      return static_cast<std::size_t>(device_type);
     }
   };
 
-  std::unordered_map<DevType, std::function<std::shared_ptr<MemOp>(int dev_id)>, DevTypeHash> creators_ {};
+  std::unordered_map<DevType, std::function<std::shared_ptr<MemOp>(int device_id)>, DevTypeHash> creators_ {};
   std::mutex mutex_;
 };
 

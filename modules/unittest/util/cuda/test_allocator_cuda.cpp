@@ -9,17 +9,17 @@
 namespace cnstream {
 
 TEST(CudaAllocator, CudaMemAlloc) {
-  int dev_id = -1;
-  cudaGetDevice(&dev_id);
-  std::cout << " CudaMemAlloc use dev_id: " << dev_id << std::endl;
+  int device_id = -1;
+  cudaGetDevice(&device_id);
+  std::cout << " CudaMemAlloc use device_id: " << device_id << std::endl;
   
-  auto allocator = std::make_shared<CudaAllocator>(dev_id);
+  auto allocator = std::make_shared<CudaAllocator>(device_id);
   std::shared_ptr<void> mem = cnMemAlloc(4000, allocator);  // align to 4096 bytes
   ASSERT_NE(mem, nullptr);
   void* ptr = mem.get();
   ASSERT_NE(ptr, nullptr);
 
-  EXPECT_EQ(allocator->device_id_, dev_id);
+  EXPECT_EQ(allocator->device_id_, device_id);
   EXPECT_EQ(allocator->size_, 4096);
 
   auto mem2 = cnMemAlloc(4097, allocator);
@@ -33,14 +33,14 @@ TEST(CudaAllocator, CudaMemAlloc) {
  * 直接使用 cnCudaMemAlloc 全局函数，得到 RAII 管理的内存
  */
 TEST(CudaAllocator, CudaMemAllocLoop) {
-  int dev_id = -1;
-  cudaGetDevice(&dev_id);
-  std::cout << " CudaMemAllocLoop use dev_id: " << dev_id << std::endl;
+  int device_id = -1;
+  cudaGetDevice(&device_id);
+  std::cout << " CudaMemAllocLoop use device_id: " << device_id << std::endl;
   
-  GPUInspect inspect(dev_id);
+  GPUInspect inspect(device_id);
   // 循环申请释放内存，查看内存使用
   for (int i = 0; i < 5000; ++i) {
-    std::shared_ptr<void> cur_mem = cnCudaMemAlloc(4000, dev_id);
+    std::shared_ptr<void> cur_mem = cnCudaMemAlloc(4000, device_id);
     ASSERT_NE(cur_mem, nullptr);
     if (i % 500 == 0 && i > 500) {
       std::cout << "Inspect CudaMemAllocLoop: " << i << " : CUDA Info: " << inspect.GetBriefInfo() << std::endl;

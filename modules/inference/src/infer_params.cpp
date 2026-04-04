@@ -127,10 +127,10 @@ void InferParamManager::RegisterAll(ParamRegister *pregister) {
   param.default_value = "CUDA";
   param.type = "string";
   param.parser = [](const std::string &value, InferParams *param_set) -> bool {
-    if (dev_type_map.find(value) == dev_type_map.end()) {
+    if (device_type_map.find(value) == device_type_map.end()) {
       return false;
     }
-    param_set->device_type = dev_type_map[value];
+    param_set->device_type = device_type_map[value];
     return true;
   };
   ASSERT(RegisterParam(pregister, param));

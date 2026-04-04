@@ -15,7 +15,7 @@ static bool RegisterMemOp() {
   auto& factory = MemOpFactory::Instance();
   bool result = true;
   result &= factory.RegisterMemOpCreator(DevType::CPU, 
-    [](int dev_id) {
+    [](int device_id) {
       return std::make_shared<MemOp>();
     });
   return result;

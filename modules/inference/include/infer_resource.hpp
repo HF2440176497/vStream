@@ -22,16 +22,17 @@
 #define MODULES_INFERENCE_INFER_RESOURCE_HPP_
 
 
-#include "model_loader.hpp"
-
 #include <memory>
 #include <vector>
 
 #include "cnstream_frame_va.hpp"
 #include "exception.hpp"
 #include "queuing_server.hpp"
+#include "tensor.hpp"
 
 namespace cnstream {
+
+class ModelLoader;
 
 template <typename RetT>
 class InferResource : public QueuingServer {

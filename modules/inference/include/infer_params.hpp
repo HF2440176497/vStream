@@ -28,7 +28,6 @@
 
 #include "cnstream_config.hpp"
 #include "cnstream_frame_va.hpp"
-#include "model_loader.hpp"
 
 namespace cnstream {
 
@@ -62,7 +61,7 @@ struct InferParamDesc {
 };  // struct InferParamDesc
 
 struct InferParamDescLessCompare {
-  bool operator() (const InferParamDesc &p1, const InferParamDesc &p2) {
+  bool operator() (const InferParamDesc &p1, const InferParamDesc &p2) const {
     return p1.name < p2.name;
   }
 };  // struct InferParamDescLessCompare

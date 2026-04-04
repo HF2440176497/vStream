@@ -30,6 +30,10 @@
 #include <thread>
 #include <utility>
 
+#include "infer_engine.hpp"
+
+namespace cnstream {
+
 class Inference;
 class FrameInfo;
 
@@ -38,19 +42,20 @@ class InferTransDataHelper {
   explicit InferTransDataHelper(Inference* infer, int batchsize);
   ~InferTransDataHelper();
 
-  void SubmitData(const std::pair<std::shared_ptr<FrameInfo>, ResultWaitingCard>& data);
+  void SubmitData(const std::pair<std::shared_ptr<FrameInfo>, InferEngine::ResultWaitingCard>& data);
 
  private:
   void Loop();
   std::mutex mtx_;
   std::condition_variable cond_not_full_;
   std::condition_variable cond_not_empty_;
-  std::queue<std::pair<std::shared_ptr<FrameInfo>, ResultWaitingCard>> queue_;
+  std::queue<std::pair<std::shared_ptr<FrameInfo>, InferEngine::ResultWaitingCard>> queue_;
   std::thread th_;
   std::atomic<bool> running_;
   Inference* infer_ = nullptr;
   int batchsize_ = 1;
 };  // class InferTransDataHelper
 
+}  // namespace cnstream
 
 #endif  // MODULES_INFERENCE_SRC_INFER_TRANS_DATA_HELPER_HPP_

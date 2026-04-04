@@ -1,21 +1,36 @@
 # vStream
 
-高性能视频结构化分析框架，采用模块化流水线设计。
+> 高性能视频结构化分析框架，采用模块化流水线设计。
 
-## 特性
+## ✨ 特性
 
-- 模块化架构 - 基于流水线的插件式设计
-- JSON 配置 - 动态构建处理流水线
-- 多线程并行 - 提高处理效率
-- 可选 CUDA 加速
+| 特性 | 描述 |
+|:---:|:---|
+| 🧩 模块化架构 | 基于流水线的插件式设计 |
+| 📝 JSON 配置 | 动态构建处理流水线 |
+| ⚡ 多线程并行 | 提高处理效率 |
+| 🚀 CUDA 加速 | 可选的 GPU 加速支持 |
 
-## 依赖
+---
 
-**必需**: gflags, glog, opencv
+## 📦 依赖
 
-**已包含在 3rdparty 目录**: nlohmann/json, libyuv, googletest
+### 必需依赖
 
-## 编译
+`gflags` · `glog` · `opencv`
+
+### 已包含的第三方库
+
+| 库 | 版本 |
+|:---|:---:|
+| nlohmann/json | 3.11.3 |
+| libyuv | stable |
+| googletest | 1.15.2 |
+| pybind11 | 2.13.6 |
+
+---
+
+## 🔨 编译
 
 ```bash
 mkdir build && cd build
@@ -23,7 +38,9 @@ cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_MODULES=ON -DBUILD_TESTS=ON
 make -j$(nproc)
 ```
 
-## 使用
+---
+
+## 📖 使用
 
 ### 1. JSON 配置
 
@@ -78,35 +95,41 @@ class MyModule : public cnstream::Module, public cnstream::ModuleCreator<MyModul
 REGISTER_MODULE(MyModule);
 ```
 
-## 项目结构
+---
+
+## 📁 项目结构
 
 ```
 vStream/
 ├── framework/core/       # 核心框架 (Pipeline, Module, FrameInfo, Connector)
 ├── modules/              # 功能模块 (source, util, unittest)
-├── 3rdparty/            # 第三方库 (libyuv, googletest, json)
+├── 3rdparty/             # 第三方库 (libyuv, googletest, json)
 ├── tools/                # 工具程序
 ├── samples/              # 示例程序
 └── CMakeLists.txt
 ```
 
-## 已完成
+---
 
-- Pipeline 流水线管理
-- Module 模块基类
-- SourceModule 数据源
-- FrameInfo 帧信息
-- Connector 模块连接器
-- EventBus 事件总线
-- JSON 配置解析
+## ✅ 已完成
 
-## 待开发
+- [x] Pipeline 流水线管理
+- [x] Module 模块基类
+- [x] SourceModule 数据源
+- [x] FrameInfo 帧信息
+- [x] Connector 模块连接器
+- [x] EventBus 事件总线
+- [x] JSON 配置解析
 
-- Inference 推理模块
-- VideoSource 视频源
-- Python 绑定
-- Encoder/Render 模块
+## 🚧 待开发
 
-## 参考
+- [ ] Inference 推理模块
+- [ ] VideoSource 视频源
+- [ ] Python 绑定
+- [ ] Encoder/Render 模块
+
+---
+
+## 📚 参考
 
 [CNStream](https://github.com/Cambricon/CNStream)
