@@ -9,7 +9,7 @@
 #include "cnstream_logging.hpp"
 #include "cnstream_pipeline.hpp"
 
-static std::string test_pipeline_json = "pipeline.json";
+static std::string test_pipeline_json = "pipeline_config.json";
 
 namespace cnstream {
 
@@ -143,7 +143,7 @@ TEST_F(ConfigFileLoad, BaseInitGraph) {
 
   // Graph 只包含 Modudle SubGraphNode
   std::vector<std::string> expected_heads {"decoder"};
-  std::vector<std::string> expected_nodes {"decoder", "Inference", "InferenceClass", "sort_h", "osd"};
+  std::vector<std::string> expected_nodes {"decoder", "InferenceYolo", "InferenceClass", "sort_h", "osd"};
 
   // Init 过程会依赖 module_configs 因此我们首先检查
   // 应当和 pipeline.json 的配置对应

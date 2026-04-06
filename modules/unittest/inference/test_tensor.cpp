@@ -132,8 +132,7 @@ TEST(Tensor, ResizeWithVector) {
 TEST(Tensor, ResizeWithArray) {
   auto data = std::make_shared<void*>(nullptr);
   Tensor tensor(DataType::FLOAT32, TensorFormat::LINEAR, data);
-  int dims[] = {1, 256, 14, 14};
-  tensor.resize(4, dims);
+  tensor.resize({1, 256, 14, 14});
   EXPECT_EQ(tensor.ndims(), 4);
   EXPECT_EQ(tensor.numel(), 1 * 256 * 14 * 14);
 }

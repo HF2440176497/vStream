@@ -43,7 +43,7 @@ enum class TensorFormat {
   HWC8
 };
 
-const char* data_type_string(DataType dt) {
+inline const char* data_type_string(DataType dt) {
   switch(dt){
     case DataType::UINT8: return "UInt8";
     case DataType::INT8: return "Int8";
@@ -55,7 +55,7 @@ const char* data_type_string(DataType dt) {
   }
 }
 
-int data_type_size(DataType dt) {
+inline int data_type_size(DataType dt) {
   switch (dt) {
     case DataType::UINT8: return sizeof(uint8_t);
     case DataType::INT8: return sizeof(int8_t);
@@ -125,6 +125,7 @@ class TensorShape {
 
 /**
  * @brief 封装张量的信息 但是不负责管理生命周期
+ * @note Tensor 应该是与平台 dev 无关的
  */
 class Tensor {
  public:
@@ -182,6 +183,10 @@ class Tensor {
   Tensor& resize(int dim_size, _Args... dim_size_args) {
     const int dim_size_array[] = {dim_size, dim_size_args...};
     return resize(sizeof...(dim_size_args) + 1, dim_size_array);
+  }
+
+  Tensor& resize(std::initializer_list<int> dims) {
+    return resize(dims.size(), dims.begin());  // const int*
   }
 
   Tensor& resize(int ndims, const int* dims);

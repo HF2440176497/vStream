@@ -7,7 +7,7 @@
 namespace cnstream {
 
 
-static std::string test_pipeline_json = "pipeline.json";
+static std::string test_pipeline_json = "pipeline_config.json";
 
 // 在测试实例中，定义出这个 virtual module
 class InferenceProcess: public Module, public ModuleCreator<InferenceProcess> {

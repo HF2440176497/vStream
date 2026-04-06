@@ -123,8 +123,8 @@ int Tensor::width() const {
 
 const char* Tensor::descriptor() const {
   char* descriptor_ptr = (char*)descriptor_string_;
-  snprintf(descriptor_ptr, sizeof(descriptor_string_), "Tensor:%p, %s, %s, CUDA:%d", data_.get(),
-           data_type_string(dtype_), shape_string_);
+  snprintf(descriptor_ptr, sizeof(descriptor_string_), "Tensor:%p, %s, %s", 
+          data_.get(), data_type_string(dtype_), shape_string_);
   return descriptor_ptr;
 }
 

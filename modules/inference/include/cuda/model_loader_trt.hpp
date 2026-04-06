@@ -19,17 +19,27 @@
 
 #include "model_loader.hpp"
 
+namespace cnstream {
+
+struct TrtDeleter {
+  template<typename T>
+  void operator()(T* ptr) const {
+    if (ptr) {
+      delete ptr;
+    }
+  }
+};
+
 /**
  * @brief 模型加载器, 进行实际的模型加载和解析
  */
 class ModelLoaderTrt : public ModelLoader {
 
-  class Logger : public nvinfer1::ILogger {
-  public:
-    void log(Severity severity, const char* msg) noexcept override;
-  };
-
  public:
+  class Logger : public nvinfer1::ILogger {
+   public:
+    void log(nvinfer1::ILogger::Severity severity, const char* msg) noexcept override;
+  };
   ModelLoaderTrt(int device_id = 0);
   ~ModelLoaderTrt();
 
@@ -51,11 +61,13 @@ class ModelLoaderTrt : public ModelLoader {
   bool ParseBindings();
 
   ModelLoaderTrt::Logger logger_;
-  std::unique_ptr<nvinfer1::IRuntime> runtime_ = nullptr;
-  std::unique_ptr<nvinfer1::ICudaEngine> engine_ = nullptr;
-  std::unique_ptr<nvinfer1::IExecutionContext> context_ = nullptr;
+  std::unique_ptr<nvinfer1::IRuntime, TrtDeleter> runtime_ = nullptr;
+  std::unique_ptr<nvinfer1::ICudaEngine, TrtDeleter> engine_ = nullptr;
+  std::unique_ptr<nvinfer1::IExecutionContext, TrtDeleter> context_ = nullptr;
   cudaStream_t stream_ = nullptr;
 
 };  // end of ModelLoaderTrt
+
+}  // end of inference
 
 #endif  // MODULES_INFERENCE_SRC_MODEL_LOADER_TRT_HPP_

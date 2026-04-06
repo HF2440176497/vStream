@@ -2,6 +2,9 @@
 #include "tensor.hpp"
 #include "cuda/model_loader_trt.hpp"
 
+#include "common.hpp"
+#include "cuda/cuda_check.hpp"
+
 namespace cnstream {
 
 static bool RegisterModelLoader() {
@@ -38,7 +41,7 @@ static DataType trt_dtype_to_tensor_dtype(nvinfer1::DataType dtype) {
     case nvinfer1::DataType::kINT32:
       return DataType::INT32;
     default:
-      return DataType::UNKNOWN;
+      return DataType::INVALID;
   }
 }
 
@@ -60,21 +63,69 @@ static TensorFormat trt_format_to_tensor_format(nvinfer1::TensorFormat format) {
   }
 }
 
-void ModelLoaderTrt::Logger::log(nvinfer1::Severity severity, const char* msg) noexcept {
+static std::string trt_dtype_to_str(nvinfer1::DataType dtype) {
+  switch (dtype) {
+    case nvinfer1::DataType::kFLOAT:
+      return "FLOAT32";
+    case nvinfer1::DataType::kHALF:
+      return "FLOAT16";
+    case nvinfer1::DataType::kUINT8:
+      return "UINT8";
+    case nvinfer1::DataType::kINT8:
+      return "INT8";
+    case nvinfer1::DataType::kINT32:
+      return "INT32";
+    default:
+      return "INVALID";
+  }
+}
+
+static std::string trt_format_to_str(nvinfer1::TensorFormat format) {
+  switch (format) {
+    case nvinfer1::TensorFormat::kLINEAR:
+      return "LINEAR";
+    case nvinfer1::TensorFormat::kCHW2:
+      return "CHW2";
+    case nvinfer1::TensorFormat::kCHW4:
+      return "CHW4";
+    case nvinfer1::TensorFormat::kCHW32:
+      return "CHW32";
+    case nvinfer1::TensorFormat::kHWC8:
+      return "HWC8";
+    default:
+      return "INVALID";
+  }
+}
+
+static std::string trt_io_mode_to_str(nvinfer1::TensorIOMode io_mode) {
+  switch (io_mode) {
+    case nvinfer1::TensorIOMode::kINPUT:
+      return "INPUT";
+    case nvinfer1::TensorIOMode::kOUTPUT:
+      return "OUTPUT";
+    default:
+      return "INVALID";
+  }
+}
+
+
+
+void ModelLoaderTrt::Logger::log(nvinfer1::ILogger::Severity severity, const char* msg) noexcept {
   switch (severity) {
-    case nvinfer1::Severity::kINTERNAL_ERROR:
+    case nvinfer1::ILogger::Severity::kINTERNAL_ERROR:
       std::cerr << "[TRT][INTERNAL_ERROR] " << msg << std::endl;
       break;
-    case nvinfer1::Severity::kERROR:
+    case nvinfer1::ILogger::Severity::kERROR:
       std::cerr << "[TRT][ERROR] " << msg << std::endl;
       break;
-    case nvinfer1::Severity::kWARNING:
+    case nvinfer1::ILogger::Severity::kWARNING:
       std::cout << "[TRT][WARNING] " << msg << std::endl;
       break;
-    case nvinfer1::Severity::kINFO:
+    case nvinfer1::ILogger::Severity::kINFO:
       std::cout << "[TRT][INFO] " << msg << std::endl;
       break;
-    case nvinfer1::Severity::kVERBOSE:
+    case nvinfer1::ILogger::Severity::kVERBOSE:
+      std::cout << "[TRT][VERBOSE] " << msg << std::endl;
       break;
     default:
       break;
@@ -113,21 +164,20 @@ bool ModelLoaderTrt::LoadEngine(const std::string& engine_path) {
     LOGF(MODEL) << "Failed to load model file: " << engine_path;
     return false;
   }
-  runtime_ = std::unique_ptr<IRuntime, decltype(trt_deleter)>(createInferRuntime(logger_), trt_deleter);
+  runtime_ = std::unique_ptr<nvinfer1::IRuntime, TrtDeleter>(nvinfer1::createInferRuntime(logger_));
   if (runtime_ == nullptr) {
     LOGF(MODEL) << "Failed to create TensorRT runtime";
     return false;
   }
 
-  // before release runtime_, all ICudaEngine instance should be destroyed
-  engine_ = std::unique_ptr<ICudaEngine, decltype(trt_deleter)>(runtime_->deserializeCudaEngine(model_data.data(), model_data.size()),
-                                                                trt_deleter);
+  engine_ = std::unique_ptr<nvinfer1::ICudaEngine, TrtDeleter>(
+      runtime_->deserializeCudaEngine(model_data.data(), model_data.size()));
   if (engine_ == nullptr) {
     LOGF(MODEL) << "Failed to deserialize TensorRT engine";
     return false;
   }
 
-  context_ = std::unique_ptr<IExecutionContext, decltype(trt_deleter)>(engine_->createExecutionContext(), trt_deleter);
+  context_ = std::unique_ptr<nvinfer1::IExecutionContext, TrtDeleter>(engine_->createExecutionContext());
   if (context_ == nullptr) {
     LOGF(MODEL) << "Failed to create TensorRT execution context";
     return false;
@@ -160,7 +210,7 @@ bool ModelLoaderTrt::ParseBindings() {
     nvinfer1::DataType dtype = engine_->getTensorDataType(bind_name);
     DataType data_type = trt_dtype_to_tensor_dtype(dtype);
     if (data_type != DataType::FLOAT32) {
-      LOGE(MODEL) << "Unsupported data type: " << dtype << " for tensor: " << bind_name;
+      LOGE(MODEL) << "Unsupported data type: " << trt_dtype_to_str(dtype) << " for tensor: " << bind_name;
       continue;
     }
     nvinfer1::TensorIOMode io_mode = engine_->getTensorIOMode(bind_name);
@@ -171,13 +221,13 @@ bool ModelLoaderTrt::ParseBindings() {
       output_names_.push_back(bind_name);
       output_data_types_.push_back(data_type);
     } else {
-      LOGW(MODEL) << "WARNING: Unsupport IO mode: " << io_mode << " for tensor: " << bind_name;
+      LOGW(MODEL) << "WARNING: Unsupport IO mode: " << trt_io_mode_to_str(io_mode) << " for tensor: " << bind_name;
       continue;
     }
     auto trt_format = engine_->getTensorFormat(bind_name);
     auto format = trt_format_to_tensor_format(trt_format);
     if (format != TensorFormat::LINEAR) {
-      LOGE(MODEL) << "Unsupported format: " << trt_format << " for tensor: " << bind_name;
+      LOGE(MODEL) << "Unsupported format: " << trt_format_to_str(trt_format) << " for tensor: " << bind_name;
       continue;
     }
     bind_name_index_map_[bind_name] = i;
@@ -185,7 +235,7 @@ bool ModelLoaderTrt::ParseBindings() {
 
   // TODO: 目前只支持单个输入输出
   if (input_names_.size() > 1) {
-      LOGW("WARNING: Model should has one input %d", input_names_.size());
+      LOGW(MODEL) << "Model should has one input " << input_names_.size();
       input_name_ = input_names_[input_ordered_index_];
       int index_ = bind_name_index_map_[input_name_];
       if (index_ != input_ordered_index_) {
@@ -195,7 +245,7 @@ bool ModelLoaderTrt::ParseBindings() {
   }
 
   if (output_names_.size() > 1) {
-      LOGW("WARNING: Model should has one output %d", output_names_.size());
+      LOGW(MODEL) << "Model should has one output " << output_names_.size();
       output_name_ = output_names_[output_ordered_index_];
       int index_ = bind_name_index_map_[output_name_];
       if (index_ != output_ordered_index_) {
@@ -216,7 +266,7 @@ bool ModelLoaderTrt::ParseBindings() {
       opt_dims = engine_->getProfileShape(input_name.c_str(), 
                                           opt_profile_index,
                                           nvinfer1::OptProfileSelector::kOPT);
-      context_->setInputTensorShape(input_name.c_str(), opt_dims);
+      context_->setInputShape(input_name.c_str(), opt_dims);
     } else {  // static shape
       opt_dims = dims;
     }

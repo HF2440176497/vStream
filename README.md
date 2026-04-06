@@ -114,19 +114,24 @@ vStream/
 ## ✅ 已完成
 
 - [x] Pipeline 流水线管理
+- [x] JSON 配置解析
 - [x] Module 模块基类
-- [x] SourceModule 数据源
-- [x] FrameInfo 帧信息
 - [x] Connector 模块连接器
 - [x] EventBus 事件总线
-- [x] JSON 配置解析
+- [x] SourceModule 数据源模块
+- [x] Inference 推理模块
 
 ## 🚧 待开发
-
-- [ ] Inference 推理模块
-- [ ] VideoSource 视频源
 - [ ] Python 绑定
 - [ ] Encoder/Render 模块
+
+## 📌 适配模型
+
+### CUDA 平台
+- [x] YOLOv5 检测
+- [x] YOLOv8 检测
+
+
 
 ---
 

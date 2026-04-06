@@ -22,9 +22,9 @@
 
 namespace cnstream {
 
-static std::string test_pipeline_json = "pipeline_base.json";
-static std::string test_pipeline_video_json = "pipeline_base_video.json";
-static std::vector<std::string> expected_nodes = {"DataSource", "InferenceProcess"};
+static std::string test_pipeline_json = "pipeline_source_base.json";
+static std::string test_pipeline_video_json = "pipeline_source_video.json";
+static std::vector<std::string> expected_nodes = {"DataSource", "ProcessOne", "ProcessTwo", "ProcessThree"};
 
 static bool has_save_frame_mat = false;
 static std::string save_file = "save_image/test_source_save.jpg";

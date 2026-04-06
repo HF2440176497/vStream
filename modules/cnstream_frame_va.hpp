@@ -76,7 +76,7 @@ class DataFrame : public NonCopyable {
 #else
  private:
 #endif
-  mutable std::mutex mtx_;
+  mutable std::mutex mtx_;  // protect mat_
   cv::Mat mat_;
 
   DevContext ctx_;
@@ -87,6 +87,11 @@ class DataFrame : public NonCopyable {
   int stride_[CN_MAX_PLANES];
   
   friend class SourceRender;
+
+#ifdef UNIT_TEST
+  std::map<std::string, uint64_t> frame_count_map_;  // just for test
+#endif
+
 };  // class DataFrame
 
 

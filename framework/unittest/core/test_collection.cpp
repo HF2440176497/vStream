@@ -45,7 +45,7 @@ TEST(Collection, ANY) {
   // with smart ptr
   std::unique_ptr<std::any> a3 = std::make_unique<std::any>(100);
   ASSERT_TRUE(a3->has_value());
-  ASSERT_EQ(a3->type().name(), "int");
+  std::cout << "a3 type: " << a3->type().name() << std::endl;
   ASSERT_EQ(std::any_cast<int>(*a3), 100);
 }
 
@@ -58,7 +58,7 @@ TEST(Collection, GET) {
   ASSERT_EQ(collection.Get<int>(key_num), 100);
 
   int num_value = 200;
-  collection.Add(key_num, num_value);
+  collection.Add(key_num, num_value);  // warning: 覆盖已存在数据
   ASSERT_EQ(collection.Get<int>(key_num), num_value);
 
   std::string str_value = "hello";

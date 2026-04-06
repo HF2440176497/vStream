@@ -6,7 +6,7 @@
 #include "base.hpp"
 #include "cnstream_config.hpp"
 
-static std::string test_pipeline_json = "pipeline.json";
+static std::string test_pipeline_json = "pipeline_config.json";
 
 TEST(JSON, ReadFile) {
     std::string json_str = readFile(test_pipeline_json.c_str());
@@ -28,14 +28,14 @@ TEST(JSON, ReadFile2Str) {
     EXPECT_FALSE(json_str.empty()) << "Read json file failed";
     nlohmann::json doc = nlohmann::json::parse(json_str);
 
-    std::string infer_name = "Inference";
-    EXPECT_TRUE(doc.contains(infer_name)) << "Json file has no Inference field";
-    const nlohmann::json& inferencer = doc[infer_name];
-    EXPECT_TRUE(inferencer.is_object()) << "Inference field is not object";
+    std::string inference_name = "InferenceYolo";
+    EXPECT_TRUE(doc.contains(inference_name)) << "Json file has no InferenceYolo field";
+    const nlohmann::json& inference = doc[inference_name];
+    EXPECT_TRUE(inference.is_object()) << "InferenceYolo field is not object";
     
-    std::string inferencer_str = inferencer.dump();
-    EXPECT_TRUE(!inferencer_str.empty()) << "Inference field is empty";
-    LOGI(COREUNITEST) << "Inference field: " << inferencer_str << std::endl;
+    std::string inference_str = inference.dump();
+    EXPECT_TRUE(!inference_str.empty()) << "InferenceYolo field is empty";
+    LOGI(COREUNITEST) << "Inference field: " << inference_str << std::endl;
 }
 
 /**
@@ -61,26 +61,28 @@ TEST(CoreConfig, ModuleConfig) {
     EXPECT_FALSE(json_str.empty()) << "Read json file failed";
     nlohmann::json doc = nlohmann::json::parse(json_str);
 
-    std::string infer_name = "Inference";
-    EXPECT_TRUE(doc.contains(infer_name)) << "Json file has no Inference field";
-    const nlohmann::json& inferencer = doc[infer_name];
-    EXPECT_TRUE(inferencer.is_object()) << "Inference field is not object";
+    std::string inference_name = "InferenceYolo";
+    EXPECT_TRUE(doc.contains(inference_name)) << "Json file has no InferenceYolo field";
+    const nlohmann::json& inference = doc[inference_name];
+    EXPECT_TRUE(inference.is_object()) << "InferenceYolo field is not object";
     
-    std::string inferencer_str = inferencer.dump();
+    std::string inference_str = inference.dump();
 
     // CMoudleConfig
-    cnstream::CNModuleConfig inferencer_config;
-    inferencer_config.config_root_dir = "./";
-    EXPECT_TRUE(inferencer_config.ParseByJSONStr(inferencer_str));
-    EXPECT_TRUE(inferencer_config.name.empty());
-    EXPECT_EQ(inferencer_config.className, "cnstream::InferenceProcess");
-    EXPECT_EQ(inferencer_config.next.size(), 1);  // next_modules 
+    cnstream::CNModuleConfig inference_config;
+    inference_config.config_root_dir = "./";
+    EXPECT_TRUE(inference_config.ParseByJSONStr(inference_str));
+    EXPECT_TRUE(inference_config.name.empty());
 
-    LOGI(COREUNITEST) << "Inference next modules: ";
-    for (const auto& elem : inferencer_config.next) {
+    // className 是自定义指定的， 后续再通过 ModuleFactory 创建模块
+    EXPECT_EQ(inference_config.className, "cnstream::Inference");
+    EXPECT_EQ(inference_config.next.size(), 1);  // next_modules 
+
+    LOGI(COREUNITEST) << "InferenceYolo next modules: ";
+    for (const auto& elem : inference_config.next) {
         LOGI(COREUNITEST) << "module: " << elem << " ";
     }
-    EXPECT_EQ(inferencer_config.config_root_dir, inferencer_config.parameters[CNS_JSON_DIR_PARAM_NAME]);
+    EXPECT_EQ(inference_config.config_root_dir, inference_config.parameters[CNS_JSON_DIR_PARAM_NAME]);
 }
 
 /**

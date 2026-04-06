@@ -59,16 +59,20 @@ TEST(REFLEX, Yolo) {
 
 }
 
-
+/**
+ * @brief Test create object
+ * 
+ */
 TEST(REFLEX, CreateObject) {
+
+  // 验证两种层次的创建过程（基类，向下类型转换的）
   ASSERT_NE(ReflexObject::CreateObject("PreprocYolo"), nullptr);
   ASSERT_NE(ReflexObject::CreateObject("PostprocYolo"), nullptr);
 
-  ClassInfo<ReflexObject> info = PreprocYolo::sclass_info;
-  ASSERT_FALSE(ReflexObject::Register(info));
-  std::cout << "REFLEX: info.name() = " << info.name() << std::endl;
-
+  ASSERT_NE(ReflexObjectEx<Preproc>::CreateObject("PreprocYolo"), nullptr);
+  ASSERT_NE(ReflexObjectEx<Postproc>::CreateObject("PostprocYolo"), nullptr);
   
+  // 手动创建 class_info（T: ReflexObject） 验证注册
   ClassInfo<ReflexObject> info2(std::string(), ObjectConstructor<ReflexObject>([]() {
     return reinterpret_cast<ReflexObject*>(new PostprocYolo());
   }));

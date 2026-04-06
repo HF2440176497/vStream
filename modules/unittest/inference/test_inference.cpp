@@ -1,21 +1,34 @@
 
 
 #include "base.hpp"
+#include "memop.hpp"
+#include "memop_factory.hpp"
 #include "data_source_param.hpp"
-#include "model_loader.hpp"
+#include "cnstream_frame_va.hpp"
+
+#include "common.hpp"
 #include "tensor.hpp"
+#include "infer_params.hpp"
+#include "infer_resource.hpp"
+#include "model_loader.hpp"
+#include "inference.hpp"
+
 #include "affine_trans.hpp"
+#include "cnstream_queue.hpp"
+#include "cnstream_logging.hpp"
 
 #include <iostream>
 #include <opencv2/opencv.hpp>
 
-#include "cnstream_logging.hpp"
 
 static const std::string trt_yolov8_engine_path = "test.engine";
 
 static const int device_id = 0;
 
 #ifdef VSTREAM_USE_CUDA
+
+#include "cuda/cuda_check.hpp"
+#include "cuda/memop_cuda.hpp"
 #include "cuda/model_loader_trt.hpp"
 
 #else
@@ -38,7 +51,7 @@ class ModelLoaderTest : public testing::Test {
     factory.PrintRegisteredCreators();
 
 #ifdef VSTREAM_USE_CUDA
-    memop_ = factory.CreateMemOp(DevType::CUDA, device_id);
+    memop_ = MemOpFactory::Instance().CreateMemOp(DevType::CUDA, device_id);
     ASSERT_NE(memop_, nullptr);
 
     auto model_loader_unique = factory.CreateModelLoader(DevType::CUDA, device_id);
@@ -63,6 +76,7 @@ class ModelLoaderTest : public testing::Test {
   ModelLoader* model_loader_ = nullptr;
   cv::Mat      input_image_;
   std::string  image_file_;
+  std::shared_ptr<MemOp> memop_ = nullptr;
 
   std::shared_ptr<void> input_mem_ = nullptr;  /** net_one_input */
   std::shared_ptr<void> output_mem_ = nullptr; /** net_one_output */
@@ -189,7 +203,7 @@ TEST_F(ModelLoaderTest, Run) {
   auto norm = Norm::alpha_beta(1 / 255.0f, 0.0f);   // 缩放为 1/255 ，并非最大最小归一化
 
   /* 输出内存是紧密排列的 */
-  void* one_input_data = i_value.datas[input_index].ptr;  // raw input data
+  float* one_input_data = (float*)i_value.datas[input_index].ptr;  // raw input data
   resize_cpu(input_image_.data, src_w, src_h, input_image_.step, one_input_data, dst_w, dst_h, 114.0f, trans.get_d2s());
   swap_channel_cpu(one_input_data, dst_w, dst_h, dst_w * dst_h, ChannelsArrange::BGR);
   normalize_cpu(one_input_data, dst_w, dst_h, dst_w * dst_h, norm, ChannelsArrange::RGB); 
@@ -264,12 +278,12 @@ bool InferParamsEQ(const InferParams &p1, const InferParams &p2) {
 
 class InferObserver : public IModuleObserver {
  public:
-  void notify(std::shared_ptr<CNFrameInfo> data) override {
+  void notify(std::shared_ptr<FrameInfo> data) override {
     output_frame_queue_.Push(data);
   }
 
-  std::shared_ptr<CNFrameInfo> GetOutputFrame() {
-    std::shared_ptr<CNFrameInfo> output_frame = nullptr;
+  std::shared_ptr<FrameInfo> GetOutputFrame() {
+    std::shared_ptr<FrameInfo> output_frame = nullptr;
     output_frame_queue_.WaitAndTryPop(output_frame, std::chrono::milliseconds(100));
     return output_frame;
   }
@@ -433,7 +447,7 @@ static const char *g_preproc_name = "PreprocClassification";
 static const char *g_postproc_name = "PostprocClassification";
 
 static constexpr int g_device_id = 0;
-static constexpr std::string g_channel_id = "channel_1";
+static const std::string g_channel_id = "channel_1";
 
 TEST(Inference, Demo) {
   std::string model_path = GetExePath() + trt_yolov8_engine_path;
@@ -470,9 +484,11 @@ TEST(Inference, Demo) {
     std::shared_ptr<void> frame_data = memop->Allocate(nbytes);
     frame_data_vec.push_back(frame_data);
     void *planes[3] = {nullptr, nullptr, nullptr};
-    planes[0] = frame_data.get();                   // R plane
-    planes[1] = frame_data.get() + width * height;  // G plane
-    planes[2] = frame_data.get() + width * height * 2;  // B plane   
+
+    uint8_t *frame_data_uint8 = (uint8_t *)frame_data.get();
+    planes[0] = (void *)frame_data_uint8;                   // R plane
+    planes[1] = (void *)(frame_data_uint8 + width * height);  // G plane
+    planes[2] = (void *)(frame_data_uint8 + width * height * 2);  // B plane   
 
     auto data = cnstream::FrameInfo::Create(g_channel_id);
 
@@ -493,7 +509,8 @@ TEST(Inference, Demo) {
 
     int ret = infer->Process(data);
     EXPECT_EQ(ret, 0);
-  }
+  }  // end for
+  
   // eos frame
   auto data = cnstream::FrameInfo::Create(g_channel_id, true);
   int ret = infer->Process(data);

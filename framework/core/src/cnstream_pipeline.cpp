@@ -247,7 +247,8 @@ bool Pipeline::ProvideData(const Module* module, const std::shared_ptr<FrameInfo
   // data can only created by root nodes.
   // 非根节点时，module_mask 标记了已经过的节点，在后续 TransmitData - MarkPassed 中会被更新
   // 根节点时，module_mask 标记的所有 module 中不会经过节点
-  // 两种节点的设置都会在后续的 TransmitData 中，这里要求只有根节点才能创建 modules_mask_ 为 0 的全新数据
+  // 两种节点的 mask 的设置都会在后续的 TransmitData 中，
+  // 在TransmitData 之前判断：只有根节点才能创建 modules_mask_ 为 0 的全新数据
   if (!data->GetModulesMask() && module->context_->parent_nodes_mask) {
     LOGE(CORE) << "Provide data to pipeline [" << GetName() << "] failed, "
         << "Data created by module named [" << module->GetName() << "]. "
@@ -450,8 +451,9 @@ void Pipeline::OnPassThrough(NodeContext* context, const std::shared_ptr<FrameIn
 }
 
 /**
- * @note: 数据传输的核心函数，在 Module 处理完后
- * 仅在 Pipeline::ProvideData 中调用
+ * @note: 数据传输的核心函数，在 Module 处理完后；仅在 Pipeline::ProvideData 中调用
+ * @note: 目前的设计：DoProcess 失败，则不会调用 ProvideData
+ * 因此也就不会调用 data->MarkPassed，其余获取到相同 data 的节点也不会向后传输
  */
 void Pipeline::TransmitData(NodeContext* context, const std::shared_ptr<FrameInfo>& data) {
   if (data->IsInvalid()) {

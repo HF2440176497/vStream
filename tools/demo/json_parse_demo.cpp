@@ -67,7 +67,7 @@ bool parse_from_file(std::string json_file, json& data) {
 
 
 int main(int argc, char* argv[]) {
-  std::string json_file = "pipeline.json";
+  std::string json_file = "pipeline_config.json";
   json j;
   if (!parse_from_file(json_file, j)) {
     return 1;
