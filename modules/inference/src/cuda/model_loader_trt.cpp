@@ -133,15 +133,18 @@ void ModelLoaderTrt::Logger::log(nvinfer1::ILogger::Severity severity, const cha
 }
 
 
-ModelLoaderTrt::ModelLoaderTrt(int device_id) : ModelLoader(DevType::CUDA, device_id) {
+ModelLoaderTrt::ModelLoaderTrt(int device_id) : ModelLoader(device_id) {
+  device_type_ = DevType::CUDA;
   cudaSetDevice(device_id_);
 }
 
-bool ModelLoaderTrt::Init(const std::string& engine_path) {
+bool ModelLoaderTrt::Init(const std::string& engine_path, const InferParams& params) {
   if (engine_path.empty()) {
     LOGF(MODEL) << "Empty engine path";
     return false;
-  }
+  }    
+  // Set input ordered index
+  SetInputOrderedIndex(params.input_ordered_index, params.output_ordered_index);
   return LoadEngine(engine_path);
 }
 
@@ -235,7 +238,7 @@ bool ModelLoaderTrt::ParseBindings() {
 
   // TODO: 目前只支持单个输入输出
   if (input_names_.size() > 1) {
-      LOGW(MODEL) << "Model should has one input " << input_names_.size();
+      LOGW(MODEL) << "Model with " << input_names_.size() << " inputs, choose input index: " << input_ordered_index_;
       input_name_ = input_names_[input_ordered_index_];
       int index_ = bind_name_index_map_[input_name_];
       if (index_ != input_ordered_index_) {
@@ -245,7 +248,7 @@ bool ModelLoaderTrt::ParseBindings() {
   }
 
   if (output_names_.size() > 1) {
-      LOGW(MODEL) << "Model should has one output " << output_names_.size();
+      LOGW(MODEL) << "Model with " << output_names_.size() << " outputs, choose output index: " << output_ordered_index_;
       output_name_ = output_names_[output_ordered_index_];
       int index_ = bind_name_index_map_[output_name_];
       if (index_ != output_ordered_index_) {

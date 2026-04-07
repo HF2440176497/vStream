@@ -291,8 +291,6 @@ inline void normalize_cpu(float* src, int width, int height, int channel_stride,
 /**
  * @brief 保存 CHW 格式的图像为 opencv 格式 ( HWC BGR )
  * @param order 表示输入数据的通道排列顺序，RGB 时会处理为 BGR 
- * @param normalize 是否对图像进行归一化处理, 仅支持最大归一化范围 [0, 255] 范围
- * @note 仅用于输出调试，不代表模型输入，因为最小最大归一化导致了图像的范围变化
  */
 inline void save_float_image_chw_cpu(float* src, int width, int height, const std::string& save_path, 
                                      ChannelsArrange order = ChannelsArrange::BGR, bool normalize = false) {
@@ -325,8 +323,7 @@ inline void save_float_image_chw_cpu(float* src, int width, int height, const st
     cv::Mat img_uint8;
 
     if (normalize) {
-        cv::normalize(img_float, img_float, 0, 255, cv::NORM_MINMAX);
-        img_float.convertTo(img_uint8, CV_8UC3);
+        img_float.convertTo(img_uint8, CV_8UC3, 255.0);
     } else {
         img_float.convertTo(img_uint8, CV_8UC3);
     }

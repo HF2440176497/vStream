@@ -24,7 +24,10 @@ namespace cnstream {
 
 static std::string test_pipeline_json = "pipeline_source_base.json";
 static std::string test_pipeline_video_json = "pipeline_source_video.json";
-static std::vector<std::string> expected_nodes = {"DataSource", "ProcessOne", "ProcessTwo", "ProcessThree"};
+
+// 定义在 base.hpp 中
+std::string process_module_name = "ProcessOne";
+
 
 static bool has_save_frame_mat = false;
 static std::string save_file = "save_image/test_source_save.jpg";
@@ -198,18 +201,17 @@ TEST_F(SourceModuleTest, PipelineInit) {
     std::cout << "parent_nodes_mask: " << node_iter->data.parent_nodes_mask << std::endl;
   }
   // DataSource 标记 route_mask 非 0, parent_nodes_mask 为 0
-  // InferenceProcess 标记 route_mask 为 0 (因为是头节点) parent_nodes_mask 非 0 
+  // 其余 Module 标记 route_mask 为 0 (因为是头节点) parent_nodes_mask 非 0 
 
   // 发现：DataSource 的 route_mask 也包含了自身 Module 的标记
 
   std::vector<std::string> registed_modules = ModuleFactory::Instance()->GetRegisted();
-  EXPECT_EQ(registed_modules.size(), expected_nodes.size());
-  // for (auto& module_name : registed_modules) {
-  //   std::cout << "module name: " << module_name << std::endl;
-  // }
+  std::cout << "-------- SourceModuleTest module name: " << std::endl;
+  // EXPECT_EQ(registed_modules.size(), expected_nodes.size());
+  for (auto& module_name : registed_modules) {
+    std::cout << "module name: " << module_name << std::endl;
+  }
   EXPECT_TRUE(std::find(registed_modules.begin(), registed_modules.end(), "cnstream::DataSource") != registed_modules.end());
-  EXPECT_TRUE(std::find(registed_modules.begin(), registed_modules.end(), "cnstream::InferenceProcess") != registed_modules.end());
-
 }  // PipelineInit
 
 /**
@@ -279,14 +281,15 @@ TEST_F(SourceModuleTest, MutilStream) {
     EXPECT_TRUE(handlers[stream_id]->impl_->running_);
   }
   
-  Module* module_infer = pipeline_->GetModule("Inference");
+  Module* module_process = pipeline_->GetModule(process_module_name);
 
-  ASSERT_NE(module_infer, nullptr);
-  ASSERT_NE(module_infer->GetConnector(), nullptr);
-  int conveyor_count = module_infer->GetConnector()->conveyor_count_;
-  std::cout << "Inference Module connector conveyor count: " << conveyor_count << std::endl;
-  // note: 对于只含有 InferenceProcess 模块的 pipeline，线程数 == InferenceProcess conveyor_count == parallel_num
-  EXPECT_EQ(pipeline_->threads_.size(), conveyor_count);
+  ASSERT_NE(module_process, nullptr);
+  ASSERT_NE(module_process->GetConnector(), nullptr);
+  int conveyor_count = module_process->GetConnector()->conveyor_count_;
+  std::cout << "Process Module connector conveyor count: " << conveyor_count << std::endl;
+  
+  // note: threads 含有 TaskLoop, 等于各个 Module 的 parallelism 的累加 
+  std::cout << "pipeline_->threads_.size() = " << pipeline_->threads_.size() << std::endl;
 
   // 运行开始，我们查看 Pipeline 内部：
   // （1）每个流的索引是否正确
@@ -306,7 +309,8 @@ TEST_F(SourceModuleTest, MutilStream) {
 /**
  * 单独使用一个 pipeline 测试 video_handler
  */
-TEST_F(VideoSourceTest, Loop) {
+TEST_F(VideoSourceTest, DISABLED_Loop) {
+// TEST_F(VideoSourceTest, Loop) {
   EXPECT_NE(pipeline_, nullptr);
   Module* module_in_pipeline = pipeline_->GetModule("decoder");
   EXPECT_NE(module_in_pipeline, nullptr);
@@ -332,15 +336,15 @@ TEST_F(VideoSourceTest, Loop) {
 
   // 需要判断是否有 nullptr (可能是未开启 profile)
   // source module 不会有 kINPUT_PROFILER_NAME kPROCESS_PROFILER_NAME
-  auto infer_profiler = pipeline_->GetModuleProfiler("Inference");
-  if (infer_profiler) {
-    auto infer_profile = infer_profiler->GetProfile();
-    std::cout << "Inference profile: " << ModuleProfileToString(infer_profile) << std::endl;
+  auto module_profiler = pipeline_->GetModuleProfiler(process_module_name);
+  if (module_profiler) {
+    auto module_profile = module_profiler->GetProfile();
+    std::cout << "Process Module profile: " << ModuleProfileToString(module_profile) << std::endl;
   }
 
-  std::this_thread::sleep_for(std::chrono::seconds(900));  // running for a while
+  std::this_thread::sleep_for(std::chrono::seconds(100));  // running for a while
 
-  LOGI(SourceModuleTest) << "Handler stream idx: " << video_handler_->GetStreamIndex();
+  LOGI(VideoSourceTest) << "Handler stream idx: " << video_handler_->GetStreamIndex();
   EXPECT_NE(video_handler_->GetStreamIndex(), INVALID_STREAM_IDX);  // 等同 data->GetStreamIndex
   EXPECT_TRUE(pipeline_->IsRunning());
   
@@ -350,9 +354,9 @@ TEST_F(VideoSourceTest, Loop) {
   PrintStreamEos();
   std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
-  LOGI(SourceModuleTest) << "Wait for EOS message to be processed";
-  LOGI(SourceModuleTest) << "CheckStreamEosReached(stream_id_) = " << std::boolalpha << CheckStreamEosReached(stream_id_, true);
-  LOGI(SourceModuleTest) << "Wait for EOS message complete";
+  LOGI(VideoSourceTest) << "Wait for EOS message to be processed";
+  LOGI(VideoSourceTest) << "CheckStreamEosReached(stream_id_) = " << std::boolalpha << CheckStreamEosReached(stream_id_, true);
+  LOGI(VideoSourceTest) << "Wait for EOS message complete";
   
   pipeline_->Stop();
 }

@@ -95,6 +95,24 @@ void InferParamManager::RegisterAll(ParamRegister *pregister) {
   };
   ASSERT(RegisterParam(pregister, param));
 
+  param.name = "input_ordered_index";
+  param.desc_str = "Optional. The index of the input tensor in the model. Default is 0.";
+  param.default_value = "0";
+  param.type = "uint32";
+  param.parser = [](const std::string &value, InferParams *param_set) -> bool {
+    return STR2U32(value, &param_set->input_ordered_index);
+  };
+  ASSERT(RegisterParam(pregister, param));
+
+  param.name = "output_ordered_index";
+  param.desc_str = "Optional. The index of the output tensor in the model. Default is 0.";
+  param.default_value = "0";
+  param.type = "uint32";
+  param.parser = [](const std::string &value, InferParams *param_set) -> bool {
+    return STR2U32(value, &param_set->output_ordered_index);
+  };
+  ASSERT(RegisterParam(pregister, param));
+
   param.name = "postproc_name";
   param.desc_str =
       "Required. The class name for postprocess. The class specified by this name "
@@ -124,7 +142,7 @@ void InferParamManager::RegisterAll(ParamRegister *pregister) {
 
   param.name = "device_type";
   param.desc_str = "Optional. The inference device type. CPU/CUDA/...";
-  param.default_value = "CUDA";
+  param.default_value = "cpu";
   param.type = "string";
   param.parser = [](const std::string &value, InferParams *param_set) -> bool {
     if (device_type_map.find(value) == device_type_map.end()) {

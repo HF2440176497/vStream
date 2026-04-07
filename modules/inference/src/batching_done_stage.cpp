@@ -176,7 +176,9 @@ std::vector<std::shared_ptr<InferTask>> D2HBatchingDoneStage::BatchingDone(const
   return tasks;
 }
 
-
+/**
+ * @brief 根据构造时的 res_ 成员选择后处理函数
+ */
 std::vector<std::shared_ptr<InferTask>> PostprocessingBatchingDoneStage::BatchingDone(const BatchingDoneInput& finfos) {
   if (cpu_output_res_ != nullptr) {
     return BatchingDone(finfos, cpu_output_res_);
@@ -220,7 +222,7 @@ std::vector<std::shared_ptr<InferTask>> PostprocessingBatchingDoneStage::Batchin
           IOResValue cpu_output_value = cpu_output_res->WaitResourceByTicket(&cor_ticket);
           std::vector<float*> net_outputs;
 
-          // net_outputs 长度 == output tensor num，例如 == 1
+          // net_outputs 长度 == output tensor num
           for (size_t output_idx = 0; output_idx < cpu_output_value.datas.size(); ++output_idx) {
             // bidx 指明了在当前 batch 中的 index
             net_outputs.push_back(reinterpret_cast<float*>(cpu_output_value.datas[output_idx].Offset(bidx)));

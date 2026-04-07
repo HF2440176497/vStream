@@ -1,8 +1,6 @@
 
 // Test reflection
 
-#include <iostream>
-
 #include "base.hpp"
 
 #include "cnstream_logging.hpp"

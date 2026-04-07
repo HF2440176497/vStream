@@ -45,7 +45,6 @@ if(build_tests)
   add_definitions(-DUNIT_TEST)
 endif()
 
-option(build_util "build module util" ON)
 option(build_source "build module source" ON)
 option(build_inference "build module inference" ON)
 option(build_va "build stream_va" ON)
@@ -140,7 +139,6 @@ if(VSTREAM_USE_CUDA)
   endif()
 endif()
 
-
 # 递归添加模块的源文件: 要求每个 module 目录都是 include src 目录结构
 foreach(module ${module_list})
   file(GLOB ${module}_srcs ${CMAKE_CURRENT_SOURCE_DIR}/${module}/src/*.cpp)
@@ -153,29 +151,22 @@ foreach(module ${module_list})
   list(APPEND srcs ${${module}_srcs})
 endforeach()
 
+# 前后处理模块
+set(proc_common_srcs "")
+file(GLOB proc_common_pre_src ${CMAKE_CURRENT_SOURCE_DIR}/proc/preproc/*.cpp)
+file(GLOB proc_common_post_src ${CMAKE_CURRENT_SOURCE_DIR}/proc/postproc/*.cpp)
+list(APPEND proc_common_srcs ${proc_common_pre_src} ${proc_common_post_src})
 
-if(build_util)
-  set(util_obj_srcs "")
-  file(GLOB util_common_src ${CMAKE_CURRENT_SOURCE_DIR}/util/src/*.cpp)
-  list(APPEND util_obj_srcs ${util_common_src})
+list(APPEND srcs ${proc_common_srcs})
 
-  if(VSTREAM_USE_CUDA)
-    file(GLOB util_cuda_src ${CMAKE_CURRENT_SOURCE_DIR}/util/src/cuda/*.cpp 
-          ${CMAKE_CURRENT_SOURCE_DIR}/util/src/cuda/*.cu)
-    list(APPEND util_obj_srcs ${util_cuda_src})
-    message(STATUS "Util module: VSTREAM_USE_CUDA platform sources added")
-  endif()
-
-  add_library(vstream_modules_util OBJECT ${util_obj_srcs})
-  target_include_directories(vstream_modules_util PRIVATE
-      ${CMAKE_CURRENT_SOURCE_DIR}
-      ${CMAKE_CURRENT_SOURCE_DIR}/util/include
-  )
-  add_dependencies(vstream_modules_util ${MODULES_DEPENDENCIES})
-  target_link_libraries(vstream_modules_util ${MODULES_DEPENDENCIES} ${MODULES_3RDPARTY_LIBS} rt dl pthread)
-  add_custom_target(util DEPENDS vstream_modules_util)
-  message(STATUS "Util module enabled - targets: vstream_modules_util, util")
+if (VSTREAM_USE_CUDA)
+  set(proc_cuda_srcs "")
+  file(GLOB proc_cuda_pre_src ${CMAKE_CURRENT_SOURCE_DIR}/proc/cuda/preproc/*.cpp)
+  file(GLOB proc_cuda_post_src ${CMAKE_CURRENT_SOURCE_DIR}/proc/cuda/postproc/*.cpp)
+  list(APPEND proc_cuda_srcs ${proc_cuda_pre_src} ${proc_cuda_post_src})
+  list(APPEND srcs ${proc_cuda_srcs})
 endif()
+
 
 if(build_va)
   add_library(vstream_va SHARED ${srcs})

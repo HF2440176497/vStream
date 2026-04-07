@@ -85,7 +85,7 @@ class InferEngine {
 
   std::shared_ptr<BatchingStage>                                    batching_stage_ = nullptr;
   std::shared_ptr<ObjBatchingStage>                                 obj_batching_stage_ = nullptr;
-  std::vector<std::shared_ptr<BatchingDoneStage>>                   batching_done_stages_;
+  std::vector<std::shared_ptr<BatchingDoneStage>>                   batching_done_stages_;  // note: include postproc_stage, but obj_postproc_stage not included
   std::shared_ptr<ObjPostprocessingBatchingDoneStage>               obj_postproc_stage_ = nullptr;
   std::shared_ptr<ObjFilter>                                        obj_filter_ = nullptr;
 

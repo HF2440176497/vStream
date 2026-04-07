@@ -105,11 +105,16 @@ class InferencePrivate: public NonCopyable {
       return false;
     }
 
-    if (!model_loader_->Init(model_path)) {
+    if (!model_loader_->Init(model_path, params)) {
       LOGE(INFERENCER) << "[" << module_name_ << "] init model failed. path: " << model_path;
       return false;
     }
-    trans_data_size_ = params.trans_data_size;
+
+    if (params.trans_data_size > 0) {
+      trans_data_size_ = params.trans_data_size;
+    } else {
+      LOGW(INFERENCER) << "[" << module_name_ << "] trans_data_size is 0. use default:" << trans_data_size_;
+    }
 
     if (params.object_infer) {
       LOGI(INFERENCER) << "[" << module_name_ << "] inference mode: inference with objects.";

@@ -51,10 +51,6 @@ std::shared_ptr<InferTask> IOBatchingStage::Batching(std::shared_ptr<FrameInfo> 
 }
 
 
-/**
- * @note 
- * 
- */
 CpuPreprocessingBatchingStage::CpuPreprocessingBatchingStage(ModelLoader* model,
                                                              uint32_t batchsize, std::shared_ptr<Preproc> preprocessor,
                                                              std::shared_ptr<CpuInputResource> cpu_input_res)

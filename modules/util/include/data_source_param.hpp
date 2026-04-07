@@ -89,7 +89,9 @@ inline std::string DevType2Str(DevType type) {
 }
 
 inline std::unordered_map<std::string, DevType> device_type_map = {
+  {"cpu", DevType::CPU},
   {"CPU", DevType::CPU},
+  {"cuda", DevType::CUDA},
   {"CUDA", DevType::CUDA}
 };
 

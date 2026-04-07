@@ -40,10 +40,10 @@ class ModelLoaderTrt : public ModelLoader {
    public:
     void log(nvinfer1::ILogger::Severity severity, const char* msg) noexcept override;
   };
-  ModelLoaderTrt(int device_id = 0);
+  ModelLoaderTrt(int device_id);
   ~ModelLoaderTrt();
 
-  bool Init(const std::string& engine_path) override;
+  bool Init(const std::string& engine_path, const InferParams& params) override;
 
   bool IsValid() override { return engine_ != nullptr; }
 

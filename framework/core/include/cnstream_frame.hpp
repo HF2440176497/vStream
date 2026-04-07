@@ -134,6 +134,9 @@ class FrameInfo : private NonCopyable {
    */
   uint32_t GetStreamIndex() const { return channel_idx; }
 
+  std::string GetStreamId() const { return stream_id; }
+  int64_t GetTimestamp() const { return timestamp; }
+
   std::string stream_id;  /*!< The data stream aliases where this frame is located to. */
   int64_t timestamp = -1; /*!< The time stamp of this frame. */
   size_t flags = 0;       /*!< The mask for this frame, ``DataFrameFlag``. */

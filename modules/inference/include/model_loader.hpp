@@ -9,26 +9,32 @@
 
 #include "data_source_param.hpp"
 #include "tensor.hpp"
+#include "infer_params.hpp"
 
 namespace cnstream {
 
 class ModelLoader {
  public:
-  ModelLoader(DevType device_type, int device_id = 0):
-    device_type_(device_type), device_id_(device_id) {};
+  ModelLoader(int device_id = -1): device_id_(device_id) {
+    device_type_ = DevType::CPU;
+  }
   virtual ~ModelLoader() = default;
   virtual bool IsValid() = 0;
-  virtual bool Init(const std::string& engine_path) = 0;
+  virtual bool Init(const std::string& engine_path, const InferParams& params) = 0;
+  virtual void SetInputOrderedIndex(int input_index, int output_index) {
+    input_ordered_index_ = input_index;
+    output_ordered_index_ = output_index;
+  }
 
- public:
+  public:
   int GetDeviceId() const { return device_id_; }
   DevType GetDeviceType() const { return device_type_; }
 
   /** 单输入模型，获取对应的信息 */
   uint32_t get_batch_size() const { return input_shapes_[input_ordered_index_].N(); }
-  uint32_t get_channel_size() const { return input_shapes_[input_ordered_index_].C(); }
-  uint32_t get_height_size() const { return input_shapes_[input_ordered_index_].H(); }
-  uint32_t get_width_size() const { return input_shapes_[input_ordered_index_].W(); }
+  uint32_t get_channel() const { return input_shapes_[input_ordered_index_].C(); }
+  uint32_t get_height() const { return input_shapes_[input_ordered_index_].H(); }
+  uint32_t get_width() const { return input_shapes_[input_ordered_index_].W(); }
 
   uint32_t InputNum() const { return static_cast<uint32_t>(input_shapes_.size()); }
   uint32_t OutputNum() const { return static_cast<uint32_t>(output_shapes_.size()); }
@@ -104,10 +110,10 @@ class ModelLoader {
   std::vector<std::string>   output_names_;
   
   std::map<std::string, int> bind_name_index_map_{};  // bind_name - index
-  std::string                input_name_;             // frist input name
-  std::string                output_name_;            // frist output name
-  int                        input_ordered_index_ = 0;
-  int                        output_ordered_index_ = 0;
+  std::string                input_name_;             // one input name
+  std::string                output_name_;            // one output name
+  uint32_t                   input_ordered_index_;
+  uint32_t                   output_ordered_index_;
 };
 
 
