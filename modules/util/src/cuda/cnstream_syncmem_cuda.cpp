@@ -12,9 +12,11 @@ CNSyncedMemoryCuda::CNSyncedMemoryCuda(size_t size) : CNSyncedMemory(size) {
 CNSyncedMemoryCuda::CNSyncedMemoryCuda(size_t size, int device_id) : CNSyncedMemory(size) {
   std::lock_guard<std::mutex> lock(mutex_);
   int device_count = 0;
+  int tmp_id;
+  CHECK_CUDA_RUNTIME(cudaGetDevice(&tmp_id));
   CHECK_CUDA_RUNTIME(cudaGetDeviceCount(&device_count));
   if (device_id < 0 || device_id >= device_count) {
-    LOGF(FRAME) << "Invalid CUDA device id: " << device_id << ", available devices: " << device_count;
+    LOGE(FRAME) << "Invalid CUDA device id: " << device_id << ", available devices: " << device_count;
     device_id = 0;
   }
   device_id_ = device_id;

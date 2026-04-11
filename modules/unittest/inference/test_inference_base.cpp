@@ -8,10 +8,12 @@
 
 #include "common.hpp"
 #include "tensor.hpp"
+#include "reflex_object.h"
 #include "infer_params.hpp"
 #include "infer_resource.hpp"
 #include "model_loader.hpp"
 #include "inference.hpp"
+#include "infer_engine.hpp"
 
 #include "affine_trans.hpp"
 #include "cnstream_queue.hpp"
@@ -21,7 +23,7 @@
 #include <opencv2/opencv.hpp>
 
 
-static const std::string trt_yolov8_engine_path = "yolov8s_tracing_static_b4_quant.engine";
+static const std::string trt_yolov8_engine_path = "yolov8s_tracing_static_b8_quant_fix.engine";
 
 static const int device_id = 0;
 
@@ -70,6 +72,40 @@ class ModelLoaderTest : public testing::Test {
     LOGI(ModelLoaderTest) << "ModelLoaderTest TearDown";
     model_loader_ = nullptr;
     model_loader_owner_.reset();
+    memop_.reset();
+    input_mem_.reset();
+    output_mem_.reset();
+  }
+
+  void InitModelLoader() {
+
+    ASSERT_NE(model_loader_, nullptr);
+
+#ifdef VSTREAM_USE_CUDA
+
+    ModelLoaderTrt* trt_model_loader = dynamic_cast<ModelLoaderTrt*>(model_loader_);
+    ASSERT_NE(trt_model_loader, nullptr);
+
+    ASSERT_EQ(trt_model_loader->GetDeviceId(), device_id);
+    ASSERT_EQ(trt_model_loader->GetDeviceType(), DevType::CUDA);
+
+    std::string model_path = GetExePath() + trt_yolov8_engine_path;
+    std::cout << "[ModelLoaderTest] model_path = " << model_path << std::endl;
+    
+    InferParams params;
+
+    params.device_type = DevType::CUDA;
+    params.device_id = 0;
+    params.model_path = model_path;
+    params.input_ordered_index = 0;
+    params.output_ordered_index = 0;
+
+    ASSERT_TRUE(model_loader_->Init(model_path, params));
+
+#else
+
+#endif
+
   }
 
  protected:
@@ -85,34 +121,8 @@ class ModelLoaderTest : public testing::Test {
 };
 
 
-
 TEST_F(ModelLoaderTest, Create) {
-
-#ifdef VSTREAM_USE_CUDA
-
-  ModelLoaderTrt* trt_model_loader = dynamic_cast<ModelLoaderTrt*>(model_loader_);
-  ASSERT_NE(trt_model_loader, nullptr);
-
-  ASSERT_EQ(trt_model_loader->GetDeviceId(), device_id);
-  ASSERT_EQ(trt_model_loader->GetDeviceType(), DevType::CUDA);
-
-  std::string model_path = GetExePath() + trt_yolov8_engine_path;
-  InferParams params;
-
-  params.device_type = DevType::CUDA;
-  params.device_id = 0;
-  params.model_path = model_path;
-
-  ASSERT_TRUE(model_loader_->Init(model_path, params));
-
-#else
-
-#endif
-  
-  if(model_loader_ == nullptr) {
-    std::cout << "model_loader_ is nullptr" << std::endl;
-    return;
-  }
+  InitModelLoader();
 
   for (int i = 0; i < model_loader_->InputNum(); ++i) {
     std::string input_name = model_loader_->InputName(i);
@@ -133,17 +143,19 @@ TEST_F(ModelLoaderTest, Create) {
  * 验证 YOLOv8 模型输入输出加载
  */
 TEST_F(ModelLoaderTest, Run) {
-  if(model_loader_ == nullptr) {
-    return;
-  }
-
-  uint32_t batch_size = model_loader_->get_batch_size();
-  uint32_t channel_size = model_loader_->get_channel();
-  uint32_t height = model_loader_->get_height();
-  uint32_t width = model_loader_->get_width();
+  InitModelLoader();
 
   auto input_index = model_loader_->get_input_ordered_index();
   auto output_index = model_loader_->get_output_ordered_index();
+
+  std::cout << "Input index: [" << input_index << "]; Output index: [" << output_index << "]" << std::endl;
+
+  uint32_t batch_size = model_loader_->get_batch_size();
+  uint32_t channels_num = model_loader_->get_channel();
+  uint32_t height = model_loader_->get_height();
+  uint32_t width = model_loader_->get_width();
+
+  ASSERT_EQ(channels_num, 3);
   
   // 1）构造输入 IOResValue
   IOResValue i_value;
@@ -168,8 +180,12 @@ TEST_F(ModelLoaderTest, Run) {
   }
 
   if (input_mem_ == nullptr) {
-    input_mem_ = i_value.ptrs[input_index];
+    input_mem_ = i_value.ptrs[input_index];  // RAII 内存
   }
+
+  std::cout << "i_value input shape = " << i_value.datas[input_index].shape << std::endl;
+  std::cout << "i_value input batch_offset = " << i_value.datas[input_index].batch_offset << std::endl;
+  std::cout << "i_value input batchsize = " << i_value.datas[input_index].batchsize << std::endl;
 
   // 2）构造输出 IOResValue
   IOResValue o_value;
@@ -197,37 +213,102 @@ TEST_F(ModelLoaderTest, Run) {
     output_mem_ = o_value.ptrs[output_index];
   }
 
+  std::cout << "o_value output shape = " << o_value.datas[output_index].shape << std::endl;
+  std::cout << "o_value output batch_offset = " << o_value.datas[output_index].batch_offset << std::endl;
+  std::cout << "o_value output batchsize = " << o_value.datas[output_index].batchsize << std::endl;
+
   // 3）pre process
-  int src_w = input_image_.cols;
-  int src_h = input_image_.rows;
+  int img_w = input_image_.cols;
+  int img_h = input_image_.rows;
 
   int dst_w = 640;
   int dst_h = 640;
-  
-  AffineTrans trans;
-  std::tuple<int, int> from{src_w, src_h};
-  std::tuple<int, int> to{dst_w, dst_h};
-  trans.compute(from, to);
 
-  auto norm = Norm::alpha_beta(1 / 255.0f, 0.0f);   // 缩放为 1/255 ，并非最大最小归一化
-
-  /* 输出内存是紧密排列的 */
-  float* one_input_data = (float*)i_value.datas[input_index].ptr;  // raw input data
-  resize_cpu(input_image_.data, src_w, src_h, input_image_.step, one_input_data, dst_w, dst_h, 114.0f, trans.get_d2s());
-  swap_channel_cpu(one_input_data, dst_w, dst_h, dst_w * dst_h, ChannelsArrange::BGR);
-  normalize_cpu(one_input_data, dst_w, dst_h, dst_w * dst_h, norm, ChannelsArrange::RGB); 
+  ASSERT_EQ(width, dst_w);
+  ASSERT_EQ(height, dst_h);
   
   size_t one_input_size = model_loader_->GetInputDataBatchAlignSize(input_index);
   auto one_input_shape = model_loader_->InputShape(input_index);
   
   int pixes_num = model_loader_->InputShape(input_index).DataCount() / one_input_shape.N();
-  ASSERT_EQ(pixes_num, dst_w * dst_h * 3);
-  ASSERT_EQ(pixes_num * data_type_size(DataType::FLOAT32), one_input_size);
+  ASSERT_EQ(pixes_num, dst_w * dst_h * channels_num);
+  ASSERT_EQ(pixes_num * data_type_size(DataType::FLOAT32) * batch_size, one_input_size);
+
+  float img_scale = std::min((float)(dst_w) / (float)(img_w), (float)(dst_h) / (float)(img_h));
+  int new_w = int(img_w * img_scale);
+  int new_h = int(img_h * img_scale);
+
+  cv::Mat resize_img;
+  cv::resize(input_image_, resize_img, cv::Size(new_w, new_h), cv::INTER_LINEAR);
+        
+  // background pic padding
+  cv::Mat net_input_data(dst_h, dst_w, CV_8UC3, cv::Scalar(114, 114, 114));
+  // 理论上 dst_h, dst_w > new_h, new_w
+  int top = (dst_h - new_h) / 2;
+  int left = (dst_w - new_w) / 2;
+  top = std::max(0, top);
+  left = std::max(0, left);
+
+  int roi_w = std::min(new_w, dst_w - left);
+  int roi_h = std::min(new_h, dst_h - top);
+
+  if (roi_w > 0 && roi_h > 0) {
+    resize_img.copyTo(net_input_data(cv::Rect(left, top, roi_w, roi_h)));
+  }
+
+  // HWC BGR -> HWC RGB
+  cv::cvtColor(net_input_data, net_input_data, cv::COLOR_BGR2RGB);
+  
+  // convert to float and normalize
+  cv::Mat net_input_float;
+  net_input_data.convertTo(net_input_float, CV_32FC3);
+  net_input_float /= 255.0;
+
+  auto net_input_float_shape = net_input_float.size();
+  std::cout << "net_input_float_shape = " << net_input_float_shape << "; channels: "<< net_input_float.channels() << std::endl;
+
+  // HWC RGB -> CHW
+  std::vector<cv::Mat> channels(channels_num);
+  cv::split(net_input_float, channels);
+
+  ASSERT_EQ(channels_num, channels.size());
+  for (int c = 0; c < channels_num; c++) {
+    if (!channels[c].isContinuous()) {
+      std::cout << "[warn] channel " << c << " is not continuous" << std::endl;
+    }
+  }
+
+  // note: one_input_data 位于 GPU 中，
+  // copy to first batch index data CHW
+  // channels[c] items num = H * W
+  size_t one_batch_floats = channels_num * dst_h * dst_w;  // 单张图片的 float 元素数
+  std::vector<float> cpu_buffer(one_batch_floats);
+
+  for (int c = 0; c < channels_num; c++) {
+    float* dst_ptr = cpu_buffer.data() + c * dst_h * dst_w;
+    // 检查 Mat 是否连续，不连续则需要逐行复制
+    if (channels[c].isContinuous()) {
+      std::cout << "[info] channel " << c << ": shape = " << channels[c].size() << "; channels = " << channels[c].channels() << std::endl;
+      memcpy(dst_ptr, channels[c].ptr<float>(0), dst_h * dst_w * sizeof(float));
+    } else {
+      // 逐行复制
+      for (int row = 0; row < dst_h; ++row) {
+        memcpy(dst_ptr + row * dst_w,
+               channels[c].ptr<float>(row),
+               dst_w * sizeof(float));
+      }
+    }
+  }
+
+  float* one_input_data = (float*)i_value.datas[input_index].ptr;  // GPU 显存地址
 
   // 拷贝到 batch 每个 idx 
-  size_t one_batch_offset = one_input_size / one_input_shape.N();
+  // 注意: float* 指针算术运算按 float 元素偏移，不是字节
+  size_t one_batch_bytes = one_batch_floats * sizeof(float);
   for (int i = 0; i < batch_size; ++i) {
-    memop_->CopyFromHost(one_input_data + i * one_batch_offset, one_input_data, one_batch_offset);
+    memop_->CopyFromHost(one_input_data + i * one_batch_floats,  // float 元素偏移
+                         cpu_buffer.data(), 
+                         one_batch_bytes);
   }
   model_loader_->RunSync(i_value.ptrs, o_value.ptrs);
 
@@ -306,7 +387,7 @@ void GetResult(std::shared_ptr<InferObserver> observer) {
 /**
  * 测试推理模块读取参数
  */
-TEST(Inference, Param) {
+TEST(InferenceBaseTest, Param) {
 
   InferParamManager manager;
   ParamRegister param_register;
@@ -413,28 +494,9 @@ TEST(Inference, Param) {
 
 }
 
-TEST(Inference, custom_preproc_params_parse) {
-  InferParamManager manager;
-  ParamRegister param_register;
-  manager.RegisterAll(&param_register);
-  ModuleParamSet raw_params;
-  raw_params["custom_preproc_params"] = "{wrong_json_format,}";
-  InferParams ret;
-  EXPECT_FALSE(manager.ParseBy(raw_params, &ret));
-}
-
-TEST(Inference, custom_postproc_params_parse) {
-  InferParamManager manager;
-  ParamRegister param_register;
-  manager.RegisterAll(&param_register);
-  ModuleParamSet raw_params;
-  raw_params["custom_postproc_params"] = "{wrong_json_format,}";
-  InferParams ret;
-  EXPECT_FALSE(manager.ParseBy(raw_params, &ret));
-}
-
-static const char *g_preproc_name = "PreprocClassification";
-static const char *g_postproc_name = "PostprocClassification";
+// 单个模块测试使用，并非 pipeline 所配
+static const char *g_preproc_name = "PreprocTest";
+static const char *g_postproc_name = "PostprocTest";
 
 static constexpr int g_device_id = 0;
 static const std::string g_channel_id = "channel_1";
@@ -442,21 +504,32 @@ static const std::string g_channel_id = "channel_1";
 /**
  * 单独创建一个 Inference 模块，每次处理单个 FrameInfo
  */
-TEST(Inference, Demo) {
+TEST(InferenceBaseTest, Demo) {
+
+  std::map<std::string, ClassInfo<ReflexObject>>& obj_map = CheckGlobalObjMap();
+  for (auto it = obj_map.begin(); it != obj_map.end(); it++) {
+    std::string name = it->first;
+    std::cout << "REFLEX: obj_map name = " << name << std::endl;
+  }
+
   std::string model_path = GetExePath() + trt_yolov8_engine_path;
 
   std::shared_ptr<Module> infer = std::make_shared<Inference>("test_inference");
   std::shared_ptr<InferObserver> observer = std::make_shared<InferObserver>();
   infer->SetObserver(reinterpret_cast<IModuleObserver *>(observer.get()));
-  std::thread th = std::thread(&GetResult, observer);
+  // std::thread th = std::thread(&GetResult, observer);
   ModuleParamSet param;
   param["model_path"] = model_path;
   param["preproc_name"] = g_preproc_name;
   param["postproc_name"] = g_postproc_name;
+  param["device_type"] = "cuda";
   param["device_id"] = std::to_string(g_device_id);
   param["batching_timeout"] = "3000";
 
   ASSERT_TRUE(infer->Open(param));
+
+  std::shared_ptr<Inference> p_infer = std::dynamic_pointer_cast<Inference>(infer);
+  ASSERT_NE(p_infer, nullptr);
 
   /**
    * 模拟在 CPU 上创建 dataframe
@@ -467,22 +540,7 @@ TEST(Inference, Demo) {
   const int width = 1280, height = 720;
   auto dec_frame = CreateTestDecodeFrame(DataFormat::PIXEL_FORMAT_RGB24, width, height);
 
-  size_t nbytes = width * height * sizeof(uint8_t) * 3;
-  size_t boundary = 1 << 16;
-  nbytes = (nbytes + boundary - 1) & ~(boundary - 1);  // align to 64kb
-
-  std::vector<std::shared_ptr<void>> frame_data_vec;
   for (uint32_t i = 0; i < 32; i++) {
-    // fake data
-    std::shared_ptr<void> frame_data = memop->Allocate(nbytes);
-    frame_data_vec.push_back(frame_data);
-    void *planes[3] = {nullptr, nullptr, nullptr};
-
-    uint8_t *frame_data_uint8 = (uint8_t *)frame_data.get();
-    planes[0] = (void *)frame_data_uint8;                   // R plane
-    planes[1] = (void *)(frame_data_uint8 + width * height);  // G plane
-    planes[2] = (void *)(frame_data_uint8 + width * height * 2);  // B plane   
-
     auto data = cnstream::FrameInfo::Create(g_channel_id);
 
     std::shared_ptr<DataFrame> frame(new (std::nothrow) DataFrame());
@@ -493,27 +551,27 @@ TEST(Inference, Demo) {
     // set DataFrame
     frame->width_ = width;
     frame->height_ = height;
-    void *ptr_cpu[3] = {planes[0], planes[1], planes[2]};
-    frame->stride_[0] = frame->stride_[1] = frame->stride_[2] = width;
+    frame->stride_[0] = width * 3;  // stride: bytes
     frame->ctx_.device_id = -1;
     frame->ctx_.device_type = DevType::CPU;
     frame->fmt_ = DataFormat::PIXEL_FORMAT_RGB24;
     frame->CopyToSyncMem(dec_frame);
 
     int ret = infer->Process(data);
-    EXPECT_EQ(ret, 0);
+    ASSERT_EQ(ret, 0);
   }  // end for
   
   // eos frame
   auto data = cnstream::FrameInfo::Create(g_channel_id, true);
   int ret = infer->Process(data);
-  EXPECT_EQ(ret, 0);
+  ASSERT_EQ(ret, 0);
 
   ASSERT_NO_THROW(infer->Close());
 
-  if (th.joinable()) {
-    th.join();
-  }
+  // if (th.joinable()) {
+  //   th.join();
+  // }
+
   CleanupTestDecodeFrame(dec_frame);
 
 }

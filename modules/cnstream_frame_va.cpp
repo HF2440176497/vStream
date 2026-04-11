@@ -170,8 +170,8 @@ void DataFrame::CopyToSyncMem(DecodeFrame* dec_frame) {
   }
 
 #ifdef UNIT_TEST
-  LOGI(FRAME) << "CopyToSyncMem: Loop; image width: " << width_ << ", height: " << height_ << ", alloca size: " << bytes;
-  LOGI(FRAME) << "-------------: Loop; sync mem status: " << this->data_[0]->StatusToString();
+  LOGD(FRAME) << "CopyToSyncMem: Loop; image width: " << width_ << ", height: " << height_ << ", alloca size: " << bytes;
+  LOGD(FRAME) << "-------------: Loop; sync mem status: " << this->data_[0]->StatusToString();
 #endif
 
   this->deAllocator_.reset();

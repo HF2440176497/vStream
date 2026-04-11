@@ -17,12 +17,12 @@
 
 class CNSyncedMemoryTest : public ::testing::Test {
  protected:
-  static const int kFloatCount = 1024;
-  static const int kTestSize = 1024 * sizeof(float);
+  static const int kFloatCount;
+  static const int kTestSize;
 };
 
-const int CNSyncedMemoryTest::kFloatCount;
-const int CNSyncedMemoryTest::kTestSize;
+const int CNSyncedMemoryTest::kFloatCount = 1024;
+const int CNSyncedMemoryTest::kTestSize = kFloatCount * sizeof(float);
 
 namespace cnstream {
 

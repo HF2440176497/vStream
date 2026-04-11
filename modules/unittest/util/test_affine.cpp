@@ -44,10 +44,10 @@ TEST(AffineTrans, preprocess) {
 
   float* output = new float[dst_w * dst_h * 3];
   resize_cpu(image.data, src_w, src_h, image.step, output, dst_w, dst_h, 114.0f, trans.get_d2s());  // output: CHW BGR
-  save_float_image_chw_cpu(output, dst_w, dst_h, output_path_resize, ChannelsArrange::BGR);
+  save_float_image_chw_cpu(output, dst_w, dst_h, output_path_resize, ChannelsArrange::BGR, false);
 
   swap_channel_cpu(output, dst_w, dst_h, dst_w * dst_h, ChannelsArrange::BGR);  // output: CHW RGB
-  save_float_image_chw_cpu(output, dst_w, dst_h, output_path_resize_swap, ChannelsArrange::RGB);
+  save_float_image_chw_cpu(output, dst_w, dst_h, output_path_resize_swap, ChannelsArrange::RGB, false);
 
   normalize_cpu(output, dst_w, dst_h, dst_w * dst_h, norm, ChannelsArrange::RGB); 
   save_float_image_chw_cpu(output, dst_w, dst_h, output_path_resize_swap_norm, ChannelsArrange::RGB, true);

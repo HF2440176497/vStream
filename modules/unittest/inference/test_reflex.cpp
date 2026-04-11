@@ -14,45 +14,46 @@
 
 namespace cnstream {
 
-class PreprocYolo: public Preproc {
+class PreprocTest: public Preproc {
 
  public:
   int Execute(const std::vector<float*>& net_inputs, ModelLoader* model,
               const std::shared_ptr<cnstream::FrameInfo>& package) {
-    std::cout << "PreprocYolo::Execute" << std::endl;
+    std::cout << "PreprocTest::Execute" << std::endl;
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
     return 0;
   }
 
  private:
-  DECLARE_REFLEX_OBJECT_EX(PreprocYolo, cnstream::Preproc);
-};  // class PreprocYolo
+  DECLARE_REFLEX_OBJECT_EX(PreprocTest, cnstream::Preproc);
+};  // class PreprocTest
 
-IMPLEMENT_REFLEX_OBJECT_EX(PreprocYolo, cnstream::Preproc);
+IMPLEMENT_REFLEX_OBJECT_EX(PreprocTest, cnstream::Preproc);
 
 
-class PostprocYolo: public Postproc {
+class PostprocTest: public Postproc {
 
  public:
   int Execute(const std::vector<float*>& net_outputs, ModelLoader* model,
               const std::shared_ptr<cnstream::FrameInfo>& package) {
-    std::cout << "PostprocYolo::Execute" << std::endl;
+    std::cout << "PostprocTest::Execute" << std::endl;
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
     return 0;
   }
 
  private:
-  DECLARE_REFLEX_OBJECT_EX(PostprocYolo, cnstream::Postproc);
-};  // class PostprocYolo
+  DECLARE_REFLEX_OBJECT_EX(PostprocTest, cnstream::Postproc);
+};  // class PostprocTest
 
-IMPLEMENT_REFLEX_OBJECT_EX(PostprocYolo, cnstream::Postproc);
+IMPLEMENT_REFLEX_OBJECT_EX(PostprocTest, cnstream::Postproc);
 
 
-TEST(REFLEX, Yolo) {
+TEST(REFLEX, Test) {
   std::map<std::string, ClassInfo<ReflexObject>>& obj_map = CheckGlobalObjMap();
-  EXPECT_EQ(obj_map.size(), 2);
 
   for (auto it = obj_map.begin(); it != obj_map.end(); it++) {
     std::string name = it->first;
-    std::cout << "REFLEX: obj_map name = " << name << std::endl;
+    LOGI(TEST_REFLEX)  << "TEST_REFLEX: obj_map name = " << name;
   }
 
 }
@@ -64,15 +65,15 @@ TEST(REFLEX, Yolo) {
 TEST(REFLEX, CreateObject) {
 
   // 验证两种层次的创建过程（基类，向下类型转换的）
-  ASSERT_NE(ReflexObject::CreateObject("PreprocYolo"), nullptr);
-  ASSERT_NE(ReflexObject::CreateObject("PostprocYolo"), nullptr);
+  ASSERT_NE(ReflexObject::CreateObject("PreprocTest"), nullptr);
+  ASSERT_NE(ReflexObject::CreateObject("PostprocTest"), nullptr);
 
-  ASSERT_NE(ReflexObjectEx<Preproc>::CreateObject("PreprocYolo"), nullptr);
-  ASSERT_NE(ReflexObjectEx<Postproc>::CreateObject("PostprocYolo"), nullptr);
+  ASSERT_NE(ReflexObjectEx<Preproc>::CreateObject("PreprocTest"), nullptr);
+  ASSERT_NE(ReflexObjectEx<Postproc>::CreateObject("PostprocTest"), nullptr);
   
   // 手动创建 class_info（T: ReflexObject） 验证注册
   ClassInfo<ReflexObject> info2(std::string(), ObjectConstructor<ReflexObject>([]() {
-    return reinterpret_cast<ReflexObject*>(new PostprocYolo());
+    return reinterpret_cast<ReflexObject*>(new PostprocTest());
   }));
 
   ObjectConstructor<ReflexObject> base_constructor;

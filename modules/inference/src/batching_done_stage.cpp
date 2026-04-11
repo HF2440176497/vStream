@@ -69,7 +69,12 @@ std::vector<std::shared_ptr<InferTask>> H2DBatchingDoneStage::BatchingDone(const
       void* dst_net = net_value.ptrs[i].get();
       auto input_data_type = model_->InputDataType(i);
       size_t data_size = net_value.datas[i].shape.DataCount() * data_type_size(input_data_type);
-      memop_->CopyFromHost(src_cpu, dst_net, data_size);
+      
+      // cpu shape 与 net shape 应该一致
+      std::cout << "CopyFromHost H2D " << i << "; cpu shape: " << cpu_value.datas[i].shape << "; net shape:" << net_value.datas[i].shape << std::endl;
+      std::cout << "CopyFromHost H2D " << i << "; count:" << net_value.datas[i].shape.DataCount() << ", data_size: " << data_size << std::endl;
+      
+      memop_->CopyFromHost(dst_net, src_cpu, data_size);
     }
   
     this->cpu_input_res_->DeallingDone();
@@ -165,7 +170,7 @@ std::vector<std::shared_ptr<InferTask>> D2HBatchingDoneStage::BatchingDone(const
       void* dst_cpu = cpu_output_value.ptrs[i].get();
       auto output_data_type = model_->OutputDataType(i);
       size_t data_size = net_output_value.datas[i].shape.DataCount() * data_type_size(output_data_type);
-      memop_->CopyToHost(src_net, dst_cpu, data_size);
+      memop_->CopyToHost(dst_cpu, src_net, data_size);
     }
 
     this->net_output_res_->DeallingDone();

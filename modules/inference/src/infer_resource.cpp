@@ -71,6 +71,11 @@ static IOResValue allocate_input_iovalue(ModelLoader* model, std::shared_ptr<Mem
     value.datas[idx].shape = shape;
     value.datas[idx].batch_offset = batch_offset;  // bytes
     value.datas[idx].batchsize = shape.N();
+
+#ifdef UNIT_TEST
+    LOGI(INPUT_IOVALUE) << "in idx: " << idx << " shape: " << shape << "; data_size: " << data_size;
+#endif
+
   }
   return value;
 }
@@ -96,6 +101,11 @@ static IOResValue allocate_output_iovalue(ModelLoader* model, std::shared_ptr<Me
     value.datas[idx].shape = shape;
     value.datas[idx].batch_offset = batch_offset;
     value.datas[idx].batchsize = shape.N();
+
+#ifdef UNIT_TEST
+    LOGI(OUTPUT_IOVALUE) << "out idx: " << idx << " shape: " << shape << "; data_size: " << data_size;
+#endif
+
   }
   return value;
 }

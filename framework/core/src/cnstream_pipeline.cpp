@@ -171,7 +171,7 @@ bool Pipeline::Start() {
 }
 
 bool Pipeline::Stop() {
-  LOGI(CORE) << "Pipeline[" << GetName() << "] " << "Ready to stop";
+  LOGD(CORE) << "Pipeline [" << GetName() << "] " << "Prepare to stop";
   if (!IsRunning()) return true;
 
   // frist close head module
@@ -180,6 +180,7 @@ bool Pipeline::Stop() {
       node->data.module->Close();
     }
   }
+  LOGD(CORE) << "Pipeline [" << GetName() << "] " << "Head module closed";
   // stop task loop thread
   running_.store(false);
 
@@ -199,6 +200,7 @@ bool Pipeline::Stop() {
     if (it.joinable()) it.join();
   }
   threads_.clear();
+  LOGD(CORE) << "Pipeline [" << GetName() << "] " << "Task loop threads stopped";
   // event_bus_->Stop();  // Sasha: 此处暂不调用
 
   // close other modules

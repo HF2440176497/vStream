@@ -72,7 +72,7 @@ class InferencePrivate: public NonCopyable {
   std::map<std::thread::id, InferContextSptr> ctxs_ { };
   std::mutex ctx_mtx_;
 
-  void InferEngineErrorHnadleFunc(const std::string& err_msg) {
+  void InferEngineErrorHandleFunc(const std::string& err_msg) {
     LOGE(INFERENCER) << err_msg;
   }
 
@@ -210,7 +210,7 @@ class InferencePrivate: public NonCopyable {
           .SetPreprocessor(preproc_)
           .SetPostprocessor(postproc_)
           .SetBatchingTimeout(params_.batching_timeout)
-          .SetErrorHandler(std::bind(&InferencePrivate::InferEngineErrorHnadleFunc, this, std::placeholders::_1))
+          .SetErrorHandler(std::bind(&InferencePrivate::InferEngineErrorHandleFunc, this, std::placeholders::_1))
           .SetBatchingByObj(params_.object_infer)
           .SetObjPreprocessor(obj_preproc_)
           .SetObjPostprocessor(obj_postproc_)

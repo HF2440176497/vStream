@@ -293,7 +293,7 @@ inline void normalize_cpu(float* src, int width, int height, int channel_stride,
  * @param order 表示输入数据的通道排列顺序，RGB 时会处理为 BGR 
  */
 inline void save_float_image_chw_cpu(float* src, int width, int height, const std::string& save_path, 
-                                     ChannelsArrange order = ChannelsArrange::BGR, bool normalize = false) {
+                                     ChannelsArrange order, bool normalize) {
     if (!src || width <= 0 || height <= 0) {
         throw std::runtime_error("Invalid input parameters");
     }

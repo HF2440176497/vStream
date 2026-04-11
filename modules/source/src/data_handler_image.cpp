@@ -156,9 +156,8 @@ void ImageHandlerImpl::Loop() {
               image_.cols * image_.elemSize());
       }
     }
-#ifdef UNIT_TEST
-    LOGI(SOURCE) << "ImageHandlerImpl: Loop; image width: " << image_.cols << ", height: " << image_.rows << ", alloca data_size: " << data_size;
-#endif
+
+    // LOGD(SOURCE) << "ImageHandlerImpl: Loop; image width: " << image_.cols << ", height: " << image_.rows << ", alloca data_size: " << data_size;
 
     frame.stride[0] = frame.width * image_.elemSize();  // BGR格式每个像素3字节
     frame.plane[0] = buffer;

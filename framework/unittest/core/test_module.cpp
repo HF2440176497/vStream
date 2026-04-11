@@ -60,6 +60,7 @@ TEST(ModuleCreatorTest, CreateObject) {
   Module* module = ModuleFactory::Instance()->Create(cur_class_name, module_create_name);
   EXPECT_TRUE(module != nullptr);
   EXPECT_EQ(module->GetName(), module_create_name);  // 构造函数参数
+  delete module;  // 释放创建的模块对象
 }
 
 }

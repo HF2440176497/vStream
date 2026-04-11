@@ -118,7 +118,7 @@ int MemOp::ConvertImageFormat(CNSyncedMemory* dst_mem, DataFormat dst_fmt,
   }
   DataFormat src_fmt = src_frame->fmt;
   if (src_fmt == dst_fmt) {
-    LOGW(CORE) << "MemOp::ConvertImageFormat: Source format is same as destination format";
+    LOGD(CORE) << "MemOp::ConvertImageFormat: Source format is same as destination format";
     Copy(dst, src_frame->plane[0], width * height * 3);
     return 0;
   }

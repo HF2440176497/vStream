@@ -57,6 +57,7 @@ InferEngine::InferEngine(const InferOptions& options)
   net_output_res_->Init();
 
   StageAssemble();
+  timeout_helper_.SetTimeout(batching_timeout_);
 
   running_ = true;
 }
@@ -115,16 +116,23 @@ void InferEngine::StageAssemble() {
   }
 }
 
+/**
+ * @note: timeout_helper_ 保护 FeedData 不会被中断
+ */
 InferEngine::ResultWaitingCard InferEngine::FeedData(std::shared_ptr<FrameInfo> frame_info) {
+
+  timeout_helper_.LockOperator();
   cached_frame_cnt_++;  // 表示当前 batch 内正在处理的 frame 的计数
 
   auto ret_promise = std::make_shared<std::promise<void>>();
   ResultWaitingCard card(ret_promise);
   auto auto_set_done = std::make_shared<AutoSetDone>(ret_promise, frame_info);  // destructor will set done
+  ret_promise.reset();  // only use once
 
   if (batching_by_obj_) {
 
     if (!frame_info->collection.HasValue(kInferObjsTag)) {
+      timeout_helper_.UnlockOperator();
       return card;
     }
     // objs_holder: std::vector<inferobjptr>, mutex
@@ -148,14 +156,14 @@ InferEngine::ResultWaitingCard InferEngine::FeedData(std::shared_ptr<FrameInfo> 
 
       if (batched_finfos_.size() == batchsize_) {
         BatchingDone();
-        // timeout_helper_.Reset(nullptr);
+        timeout_helper_.Reset(nullptr);
       } else {
-        // timeout_helper_.Reset([this]() -> void { BatchingDone(); });
+        timeout_helper_.Reset([this]() -> void { BatchingDone(); });
       }
     }
     if (cached_frame_cnt_ >= batchsize_) {
       BatchingDone();
-      // timeout_helper_.Reset(nullptr);
+      timeout_helper_.Reset(nullptr);
     }
 
   } else {  // batching_by_obj_ = false
@@ -167,12 +175,12 @@ InferEngine::ResultWaitingCard InferEngine::FeedData(std::shared_ptr<FrameInfo> 
 
     if (batched_finfos_.size() == batchsize_) {
       BatchingDone();
-      // timeout_helper_.Reset(nullptr);
+      timeout_helper_.Reset(nullptr);
     } else {
-      // timeout_helper_.Reset([this]() -> void { BatchingDone(); });
+      timeout_helper_.Reset([this]() -> void { BatchingDone(); });
     }
   }
-
+  timeout_helper_.UnlockOperator();
   return card;
 }
 
@@ -193,10 +201,16 @@ void InferEngine::BatchingDone() {
   // obj_batching_stage_ 和 obj_postproc_stage_ 分别是前后处理
 
   // reset batch_idx
-  if (batching_by_obj_) {
+  if (batching_by_obj_) {  // params: object_infer
     obj_batching_stage_->Reset();
   } else {
     batching_stage_->Reset();
+  }
+
+  // TODO: 有可能超时，暂定丢弃
+  if (!batched_finfos_.empty() && batched_finfos_.size() != batchsize_) {
+    batched_finfos_.clear();
+    return;
   }
 
   // h2d, infer, d2h, post(not obj)

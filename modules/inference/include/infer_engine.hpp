@@ -40,6 +40,7 @@
 #include "postproc.hpp"
 #include "preproc.hpp"
 #include "obj_filter.hpp"
+#include "timeout_helper.hpp"
 
 namespace cnstream {
 
@@ -94,6 +95,7 @@ class InferEngine {
   std::shared_ptr<NetInputResource>  net_input_res_ = nullptr;
   std::shared_ptr<NetOutputResource> net_output_res_ = nullptr;
 
+  TimeoutHelper timeout_helper_;
   std::shared_ptr<InferThreadPool> thread_pool_ = nullptr;
   std::function<void(const std::string& err_msg)> error_func_;
 

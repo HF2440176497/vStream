@@ -72,6 +72,12 @@ class Inference : public Module, public ModuleCreator<Inference> {
 
  private:
   std::shared_ptr<InferParamManager> param_manager_ = nullptr;
+
+#ifdef UNIT_TEST
+  public:
+#else
+  private:
+#endif
   DECLARE_PRIVATE(d_ptr_, Inference);
 };  // class Inference
 

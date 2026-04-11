@@ -23,7 +23,10 @@ class YoloPostproc: public Postproc {
     return 0;
 
   }
-
+ private:
+  DECLARE_REFLEX_OBJECT_EX(YoloPostproc, cnstream::Postproc);
 };  // class YoloPostproc
+
+IMPLEMENT_REFLEX_OBJECT_EX(YoloPostproc, cnstream::Postproc);
 
 }  // namespace cnstream

@@ -88,7 +88,7 @@ int CudaMemOp::ConvertImageFormat(CNSyncedMemory* dst_mem, DataFormat dst_fmt,
   }
   const int dst_stride = width * 3;
   if (dst_fmt == src_fmt) {
-    LOGW(CORE) << "CudaMemOp::ConvertImageFormat: Source format is same as destination format";
+    LOGD(CORE) << "CudaMemOp::ConvertImageFormat: Source format is same as destination format";
     int src_stride = src_frame->stride[0];  // src_fmt：RGB or BGR
     CHECK_CUDA_RUNTIME(cudaMemcpy2D(dst, dst_stride, 
                                 src_frame->plane[0], src_stride, 

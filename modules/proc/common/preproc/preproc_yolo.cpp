@@ -26,10 +26,10 @@ class YoloPreproc: public Preproc {
     int Execute(const std::vector<float*>& cpu_outputs, ModelLoader* model,
                 const std::shared_ptr<cnstream::FrameInfo>& package) override {
 
-        LOGI(Preproc) << "Execute for data: " << package->GetStreamId() << ", timestamp: " << package->GetTimestamp();
+        LOGI(PREPROC) << "Execute for data: " << package->GetStreamId() << ", timestamp: " << package->GetTimestamp();
         int channel = model->get_channel();
         if (channel != 3) {
-            LOGE(Preproc) << "model input shape not supported";
+            LOGE(PREPROC) << "model input shape not supported";
             return -1;
         }
         DataFramePtr frame = package->collection.Get<DataFramePtr>(cnstream::kDataFrameTag);
@@ -66,15 +66,15 @@ class YoloPreproc: public Preproc {
         }
 
         // HWC BGR -> HWC RGB
-        cv::cvtColor(resize_img, resize_img, cv::COLOR_BGR2RGB);
-		resize_img.convertTo(resize_img, CV_32FC3);
+        cv::cvtColor(net_input_data, net_input_data, cv::COLOR_BGR2RGB);
+		net_input_data.convertTo(net_input_data, CV_32FC3);
 
-        resize_img /= 255.0;
+        net_input_data /= 255.0;
 
-        // HWC RGB -> CHW
+        // HWC RGB -> CHW RGB
         // 按照图片本身的尺寸决定内存大小
         std::vector<cv::Mat> channels(3);
-        cv::split(resize_img, channels);
+        cv::split(net_input_data, channels);
 
         float* cpu_output = cpu_outputs[input_index];
         for (int c = 0; c < 3; c++) {
@@ -83,16 +83,22 @@ class YoloPreproc: public Preproc {
 
 #ifdef UNIT_TEST
         if (!has_save_frame_mat_) {
-            save_float_image_chw_cpu(cpu_output, input_h, input_w, save_file_, true);
+            save_float_image_chw_cpu(cpu_output, input_h, input_w, save_file_, ChannelsArrange::RGB, true);
+            has_save_frame_mat_ = true;
         }
 #endif
+        return 0;
     }
- public:
+
+ private:
     bool has_save_frame_mat_ = false;
     std::string save_file_ = "save_image/test_inference_save.jpg";
 
+ private:
+  DECLARE_REFLEX_OBJECT_EX(YoloPreproc, cnstream::Preproc);
 };  // class YoloPreproc
 
+IMPLEMENT_REFLEX_OBJECT_EX(YoloPreproc, cnstream::Preproc);
 
 
 }  // namespace cnstream

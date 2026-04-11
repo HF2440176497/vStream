@@ -78,7 +78,9 @@ struct FrameCountData {
 
 /**
  * @brief 创建测试 pipeline 用到的 Module
- * 测试并发性，验证 ModuleThree 接收的 data 一定是 ModuleOne 和 ModuleTwo 处理后的 data
+ * 测试并发性
+ （1）对于配置为 next_nods: [ProcessOne, ProcessTwo] 的情况， ProcessOne 和 ProcessTwo 是并发执行的
+ （2）验证 ProcessThree 接收的 data 一定是 ProcessOne 和 ProcessTwo 处理后的 data
  */
 class ProcessOne: public Module, public ModuleCreator<ProcessOne> {
  public:
@@ -107,19 +109,21 @@ class ProcessOne: public Module, public ModuleCreator<ProcessOne> {
     if (!frame_info->collection.HasValue(process_total_name)) {
       frame_info->collection.AddIfNotExists(process_total_name, std::make_shared<FrameCountData>());
     }
+    // total_count_ 相当于是全局计数
+    // process_xxx_name 是模块内自己的 用于验证是否经过
     // 1. 获取 process_total_name 对应的 FrameCountData
     auto total_count_data = frame_info->collection.Get<std::shared_ptr<FrameCountData>>(process_total_name);
     {
       std::lock_guard<std::mutex> lock(total_count_data->mtx);
-      total_count_data->process_count += frame_count_;
-      LOGI(ProcessOne) << "process_total_count: " << total_count_data->process_count;
+      total_count_data->process_count++;
+      LOGD(ProcessOne) << "frame ts: " << frame_info->timestamp << " process_total_count: " << total_count_data->process_count;
     }
     // 2. 获取 当前 module 对应的 FrameCountData, 自定义赋值
     auto count_data = frame_info->collection.Get<std::shared_ptr<FrameCountData>>(process_one_name);
     {
       std::lock_guard<std::mutex> lock(count_data->mtx);
       count_data->process_count = frame_count_;
-      LOGI(ProcessOne) << "process_one_count: " << count_data->process_count;
+      LOGD(ProcessOne) << "frame ts: " << frame_info->timestamp << " process_one_count: " << count_data->process_count;
     }
     return 0;
   }
@@ -162,14 +166,14 @@ class ProcessTwo: public Module, public ModuleCreator<ProcessTwo> {
     {
       std::lock_guard<std::mutex> lock(total_count_data->mtx);
       total_count_data->process_count += frame_count_;
-      LOGI(ProcessTwo) << "process_total_count: " << total_count_data->process_count;
+      LOGD(ProcessTwo) << "frame ts: " << frame_info->timestamp << " process_total_count: " << total_count_data->process_count;
     }
     // 2. 获取 当前 module 对应的 FrameCountData, 自定义赋值
     auto count_data = frame_info->collection.Get<std::shared_ptr<FrameCountData>>(process_two_name);
     {
       std::lock_guard<std::mutex> lock(count_data->mtx);
       count_data->process_count = 2 * frame_count_;
-      LOGI(ProcessTwo) << "process_two_count: " << count_data->process_count;
+      LOGD(ProcessTwo) << "frame ts: " << frame_info->timestamp << " process_two_count: " << count_data->process_count;
     }
     return 0;
   }
@@ -205,19 +209,25 @@ class ProcessThree: public Module, public ModuleCreator<ProcessThree> {
       LOGE(ProcessThree) << "process_total not found";
       return -1;
     }
+    // total_count_: 前两个模块 count 的加和; should == ProcessThree frame_count_ + 1
     auto total_count_data = frame_info->collection.Get<std::shared_ptr<FrameCountData>>(process_total_name);
-    LOGI(ProcessThree) << "total_count_data: " << total_count_data->process_count << "; while module_three count: " << frame_count_;
+    EXPECT_EQ(total_count_data->process_count, frame_count_ + 1);
+    LOGD(ProcessThree) << "frame ts: " << frame_info->timestamp << " total_count_data: " << total_count_data->process_count << "; while module_three count: " << frame_count_;
 
+    // process_two_count should == 2 * process_one_count
     if (frame_info->collection.HasValue(process_one_name)) {
       auto count_data = frame_info->collection.Get<std::shared_ptr<FrameCountData>>(process_one_name);
-      LOGI(ProcessThree) << "process_one_count: " << count_data->process_count;
+      LOGD(ProcessThree) << "frame ts: " << frame_info->timestamp << " process_one_count: " << count_data->process_count;
     } else {
       LOGE(ProcessThree) << "process_one not found";
       return -1;
     }
+    // 对于 process_two, 其内部进行了两倍的处理
     if (frame_info->collection.HasValue(process_two_name)) {
-      auto count_data = frame_info->collection.Get<std::shared_ptr<FrameCountData>>(process_two_name);
-      LOGI(ProcessThree) << "process_two_count: " << count_data->process_count;
+      auto one_count_data = frame_info->collection.Get<std::shared_ptr<FrameCountData>>(process_one_name);
+      auto two_count_data = frame_info->collection.Get<std::shared_ptr<FrameCountData>>(process_two_name);
+      EXPECT_EQ(two_count_data->process_count, 2 * one_count_data->process_count);
+      LOGD(ProcessThree) << "frame ts: " << frame_info->timestamp << " process_two_count: " << two_count_data->process_count;
     } else {
       LOGE(ProcessThree) << "process_two not found";
       return -1;

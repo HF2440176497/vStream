@@ -54,11 +54,13 @@ void CheckExePath(const std::string& path) {
 // 根据路径创建临时文件，在外需要手动维护关闭
 std::pair<int, std::string> CreateTempFile(const std::string& filename_prefix) {
   char filename[PATH_MAX_LENGTH];
-  if (filename_prefix.size() > PATH_MAX_LENGTH - random_field_str.size()) {
+  size_t total_len = filename_prefix.size() + random_field_str.size();
+  if (total_len >= PATH_MAX_LENGTH) {
     LOGF(COREUNITEST) << "filename_prefix is too long, must be less than " << PATH_MAX_LENGTH - random_field_str.size() << std::endl;
   }
   strncpy(filename, filename_prefix.c_str(), filename_prefix.size());
   strncpy(filename + filename_prefix.size(), random_field_str.c_str(), random_field_str.size());
+  filename[total_len] = '\0';  // strncpy 不保证终止符，必须手动添加
   int fd = mkstemp(filename);
   LOGF_IF(COREUNITEST, -1 == fd) << "Create temporary file for BuildPipelineByJSONFile test case failed! "
       << strerror(errno);

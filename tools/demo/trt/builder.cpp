@@ -402,11 +402,11 @@ int main(int argc, char* argv[]) {
   TRT::CompileConfig config;
   config.dynamic_batch = false;
   config.max_batch_size = 16;
-  config.opt_batch_size = 4;
+  config.opt_batch_size = 8;
   config.strict_qdq = true;  // 关键：启用强类型模式
 
-  std::string onnx_path = "onnx_model/yolov8s_tracing_static_b4_quant_fix.onnx";
-  std::string out_engine_path = "onnx_model/yolov8s_tracing_static_b4_quant.engine";
+  std::string onnx_path = "onnx_file/yolov8s_tracing_static_b8_quant_fix.onnx";
+  std::string out_engine_path = "onnx_file/yolov8s_tracing_static_b8_quant_fix.engine";
   TRT::compile(TRT::Mode::INT8, TRT::ModelSource(onnx_path), TRT::CompileOutput(out_engine_path), config);
 
   return 0;

@@ -203,7 +203,7 @@ bool ModelLoaderTrt::ParseBindings() {
 
   auto bind_num = engine_->getNbIOTensors();
 
-  if (bind_num <= 2) {
+  if (bind_num < 2) {
     LOGE(MODEL) << "Model with tensor num: " << bind_num << " is not supported";
     return false;
   }
@@ -309,8 +309,7 @@ bool ModelLoaderTrt::RunSync(std::vector<std::shared_ptr<void>> inputs, std::vec
     LOGF(MODEL) << "execute fail, code: " << code << ", message: " << cudaGetErrorName(code) << ", " << cudaGetErrorString(code);
     return false;
   }
-  CHECK_CUDA_RUNTIME(cudaStreamSynchronize(stream_));
-  return true;
+  return CHECK_CUDA_RUNTIME(cudaStreamSynchronize(stream_));
 }
 
 nvinfer1::IExecutionContext* ModelLoaderTrt::CreateExecutionContext() {

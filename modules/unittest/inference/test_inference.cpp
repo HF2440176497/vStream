@@ -9,6 +9,7 @@
 #include "data_handler_image.hpp"
 #include "cnstream_pipeline.hpp"
 
+#include "reflex_object.h"
 #include "common.hpp"
 #include "tensor.hpp"
 #include "infer_params.hpp"
@@ -57,7 +58,14 @@ class InferenceTest : public testing::Test {
 /**
  * 运行YOLO推理管道
  */
-TEST_F(InferenceTest, DISABLED_RunYOLO) {
+TEST_F(InferenceTest, RunYOLO) {
+
+  // 首先验证前后处理的注册
+  std::map<std::string, ClassInfo<ReflexObject>>& obj_map = CheckGlobalObjMap();
+  for (auto it = obj_map.begin(); it != obj_map.end(); it++) {
+    std::string name = it->first;
+    LOGI(RUN_YOLO) << "REFLEX: obj_map name = " << name << std::endl;
+  }
   
   Module* module_in_pipeline = pipeline_->GetModule("decoder");
   ASSERT_NE(module_in_pipeline, nullptr);
@@ -76,7 +84,7 @@ TEST_F(InferenceTest, DISABLED_RunYOLO) {
   ASSERT_TRUE(image_handler_->impl_->running_);
 
   std::this_thread::sleep_for(std::chrono::milliseconds(5000));  // running for a while
-  LOGI(SourceModuleTest) << "Handler stream idx: " << image_handler_->GetStreamIndex();
+  LOGI(InferenceTest) << "Handler stream idx: " << image_handler_->GetStreamIndex();
   EXPECT_NE(image_handler_->GetStreamIndex(), INVALID_STREAM_IDX);  // 等同 data->GetStreamIndex
   EXPECT_TRUE(pipeline_->IsRunning());
   
@@ -86,9 +94,9 @@ TEST_F(InferenceTest, DISABLED_RunYOLO) {
   PrintStreamEos();
   std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
-  LOGI(SourceModuleTest) << "Wait for EOS message to be processed";
-  LOGI(SourceModuleTest) << "CheckStreamEosReached(stream_id_) = " << std::boolalpha << CheckStreamEosReached(stream_id_, true);
-  LOGI(SourceModuleTest) << "Wait for EOS message complete";
+  LOGI(InferenceTest) << "Wait for EOS message to be processed";
+  LOGI(InferenceTest) << "CheckStreamEosReached(stream_id_) = " << std::boolalpha << CheckStreamEosReached(stream_id_, true);
+  LOGI(InferenceTest) << "Wait for EOS message complete";
   
   pipeline_->Stop();
 
