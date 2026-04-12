@@ -59,8 +59,7 @@ std::vector<std::shared_ptr<InferTask>> H2DBatchingDoneStage::BatchingDone(const
     assert(finfos.size() == batchsize_);
 
     for (uint32_t bidx = 0; bidx < batchsize_; bidx++) {
-      std::cout << "H2DBatchingDoneStage, bidx: " << bidx
-          << "; [" << finfos[bidx].first->stream_id << ", " << finfos[bidx].first->timestamp << "] " << std::endl;
+      LOGI(H2DBatchingDoneStage) << "bidx: " << bidx << "; [" << finfos[bidx].first->stream_id << "], ts: " << finfos[bidx].first->timestamp;
     }
 #endif
 
@@ -71,9 +70,9 @@ std::vector<std::shared_ptr<InferTask>> H2DBatchingDoneStage::BatchingDone(const
       size_t data_size = net_value.datas[i].shape.DataCount() * data_type_size(input_data_type);
       
       // cpu shape 与 net shape 应该一致
-      std::cout << "CopyFromHost H2D " << i << "; cpu shape: " << cpu_value.datas[i].shape << "; net shape:" << net_value.datas[i].shape << std::endl;
-      std::cout << "CopyFromHost H2D " << i << "; count:" << net_value.datas[i].shape.DataCount() << ", data_size: " << data_size << std::endl;
-      
+      // LOGD(CopyFromHost H2D) << " index: " << i << "; cpu shape: " << cpu_value.datas[i].shape << "; net shape:" << net_value.datas[i].shape << std::endl;
+      // LOGD(CopyFromHost H2D) << " index: " << i << "; count:" << net_value.datas[i].shape.DataCount() << ", data_size: " << data_size << std::endl;
+
       memop_->CopyFromHost(dst_net, src_cpu, data_size);
     }
   
@@ -115,8 +114,7 @@ std::vector<std::shared_ptr<InferTask>> InferBatchingDoneStage::BatchingDone(con
     assert(finfos.size() == batchsize_);
 
     for (uint32_t bidx = 0; bidx < batchsize_; bidx++) {
-      std::cout << "InferBatchingDoneStage, bidx: " << bidx
-          << "; [" << finfos[bidx].first->stream_id << ", " << finfos[bidx].first->timestamp << "] " << std::endl;
+      LOGD(InferBatchingDoneStage) << "bidx: " << bidx << "; [" << finfos[bidx].first->stream_id << "], ts: " << finfos[bidx].first->timestamp;
     }
 #endif
 
@@ -160,8 +158,7 @@ std::vector<std::shared_ptr<InferTask>> D2HBatchingDoneStage::BatchingDone(const
     assert(finfos.size() == batchsize_);
 
     for (uint32_t bidx = 0; bidx < batchsize_; bidx++) {
-      std::cout << "D2HBatchingDoneStage, bidx: " << bidx
-          << "; [" << finfos[bidx].first->stream_id << ", " << finfos[bidx].first->timestamp << "] " << std::endl;
+      LOGI(D2HBatchingDoneStage) << "bidx: " << bidx << "; [" << finfos[bidx].first->stream_id << "], ts: " << finfos[bidx].first->timestamp;
     }
 #endif
 
@@ -215,13 +212,6 @@ std::vector<std::shared_ptr<InferTask>> PostprocessingBatchingDoneStage::Batchin
 
     InferTaskSptr task =
         std::make_shared<InferTask>([cpu_output_res_ticket, cpu_output_res, this, finfo, bidx]() -> int {
-
-#ifdef UNIT_TEST
-        // std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        // CPU 后处理帧级并行
-        std::cout << "PostprocessingBatchingDoneStage, bidx: " << bidx
-              << "; [" << finfo.first->stream_id << ", " << finfo.first->timestamp << "] " << std::endl;
-#endif
 
           QueuingTicket cor_ticket = cpu_output_res_ticket;
           IOResValue cpu_output_value = cpu_output_res->WaitResourceByTicket(&cor_ticket);

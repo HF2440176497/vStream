@@ -257,12 +257,14 @@ int SourceModule::RemoveSources(bool force) {
 
 /**
  * 调用处：SourceHandler::SendData
- * @note 目前我们只用在 EOS 帧的情况下会用到
  */
 bool SourceModule::SendData(const std::shared_ptr<FrameInfo> data) {
   if (!data->IsEos() && IsStreamRemoved(data->stream_id)) {
     return false;
   }
+#ifdef UNIT_TEST
+  LOGD(SourceModule) << "SendData, stream_id: " << data->stream_id << ", ts: " << data->timestamp << std::endl;
+#endif
   return TransmitData(data);
 }
 

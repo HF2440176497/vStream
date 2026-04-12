@@ -184,18 +184,6 @@ class Module : private NonCopyable {
    *         module has not been added to the pipeline.
    */
   bool PostEvent(Event e);
-
-  /**
-   * @brief Transmits data to the following stages.
-   *
-   * Valid when the module has permission to transmit data by itself.
-   *
-   * @param[in] data A pointer to the information of the frame.
-   *
-   * @return Returns true if the data has been transmitted successfully. Otherwise, returns false.
-   *
-   * bool TransmitData(std::shared_ptr<FrameInfo> data);
-   */
   
   /**
    * @brief Checks parameters for a module, including parameter name, type, value, validity, and so on.
@@ -224,7 +212,11 @@ class Module : private NonCopyable {
    */
   ModuleProfiler* GetProfiler();
 
-  // 改进后的 Pipeline 不需要此函数
+  /**
+   * @brief Checks if the module has permission to transmit data by itself.
+   *
+   * @return Returns true if the module has permission to transmit data by itself. Otherwise, returns false.
+   */
   bool HasTransmit() const { return hasTransmit_.load(); }
 
   /**
@@ -271,8 +263,17 @@ class Module : private NonCopyable {
    */
   int DoProcess(std::shared_ptr<FrameInfo> data);
 
-  int DoTransmitData(const std::shared_ptr<FrameInfo> data);
+  bool DoTransmitData(const std::shared_ptr<FrameInfo> data);
 
+  /**
+   * @brief Transmits data to the following stages.
+   *
+   * Valid when the module has permission to transmit data by itself.
+   *
+   * @param[in] data A pointer to the information of the frame.
+   *
+   * @return Returns true if the data has been transmitted successfully. Otherwise, returns false.
+   */
   bool TransmitData(std::shared_ptr<FrameInfo> data);
 
   Pipeline *container_ = nullptr;  ///< The container.

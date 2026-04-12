@@ -19,7 +19,7 @@ class YoloPostproc: public Postproc {
   int Execute(const std::vector<float*>& cpu_outputs, ModelLoader* model,
               const std::shared_ptr<cnstream::FrameInfo>& package) {
 
-    LOGI(Postproc) << "YoloPostproc Execute";
+    LOGI(Postproc) << "Postproc Execute for data: " << package->GetStreamId() << ", timestamp: " << package->GetTimestamp();
     return 0;
 
   }

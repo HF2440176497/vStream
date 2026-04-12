@@ -61,6 +61,7 @@ public:
   std::thread thread_;  // consumer thread
   DataSource *module_;
   std::string stream_id_;
+  int frame_index_ = 0;
 };
 
 }  // namespace cnstream

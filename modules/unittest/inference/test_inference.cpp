@@ -83,13 +83,10 @@ TEST_F(InferenceTest, RunYOLO) {
   ASSERT_EQ(source->AddSource(image_handler_), 0);
   ASSERT_TRUE(image_handler_->impl_->running_);
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(5000));  // running for a while
+  std::this_thread::sleep_for(std::chrono::milliseconds(2000));  // running for a while
   LOGI(InferenceTest) << "Handler stream idx: " << image_handler_->GetStreamIndex();
   EXPECT_NE(image_handler_->GetStreamIndex(), INVALID_STREAM_IDX);  // 等同 data->GetStreamIndex
   EXPECT_TRUE(pipeline_->IsRunning());
-  
-  image_handler_->Stop();
-  image_handler_->Close();
   
   PrintStreamEos();
   std::this_thread::sleep_for(std::chrono::milliseconds(500));
@@ -98,6 +95,7 @@ TEST_F(InferenceTest, RunYOLO) {
   LOGI(InferenceTest) << "CheckStreamEosReached(stream_id_) = " << std::boolalpha << CheckStreamEosReached(stream_id_, true);
   LOGI(InferenceTest) << "Wait for EOS message complete";
   
+  // 直接调用 pipeline->stop 可以实现 source handler 的 stop
   pipeline_->Stop();
 
 }

@@ -19,7 +19,7 @@ class PreprocTest: public Preproc {
  public:
   int Execute(const std::vector<float*>& net_inputs, ModelLoader* model,
               const std::shared_ptr<cnstream::FrameInfo>& package) {
-    std::cout << "PreprocTest::Execute" << std::endl;
+    LOGI(PreprocTest) << "Preproc Execute for data: " << package->GetStreamId() << ", timestamp: " << package->GetTimestamp();
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
     return 0;
   }
@@ -36,7 +36,7 @@ class PostprocTest: public Postproc {
  public:
   int Execute(const std::vector<float*>& net_outputs, ModelLoader* model,
               const std::shared_ptr<cnstream::FrameInfo>& package) {
-    std::cout << "PostprocTest::Execute" << std::endl;
+    LOGI(PostprocTest) << "Postproc Execute for data: " << package->GetStreamId() << ", timestamp: " << package->GetTimestamp();
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
     return 0;
   }

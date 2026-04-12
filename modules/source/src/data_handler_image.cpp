@@ -164,7 +164,8 @@ void ImageHandlerImpl::Loop() {
     frame.buf_ref = std::make_unique<MatBufRef>(buffer);  // 交给 MatBufRef 管理释放
 
     controller.Control();
-    frame.pts += 1000 / frame_rate_;
+    frame_index_++;
+    frame.pts = frame_index_ * 1000 / frame_rate_;  // ms
     std::shared_ptr<FrameInfo> data = OnDecodeFrame(&frame);
     if (!module_ || !handler_) {
       LOGE(SOURCE) << "ImageHandler: [" << stream_id_ << "]: module_ or handler_ is null";

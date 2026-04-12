@@ -82,17 +82,18 @@ bool Module::PostEvent(Event e) {
 }
 
 /**
- * @return 1 传输成功
- * @return 0 传输失败
+ * @return true 传输成功
+ * @return false 传输失败
  */
-int Module::DoTransmitData(const std::shared_ptr<FrameInfo> data) {
+bool Module::DoTransmitData(const std::shared_ptr<FrameInfo> data) {
   RwLockReadGuard guard(container_lock_);
   if (container_) {
     return container_->ProvideData(this, data);
   } else {
     LOGE(CORE) << "[" << GetName() << "] module's container is not set";
-    return 0;
+    return false;
   }
+  return false;
 }
 
 /**
@@ -100,17 +101,26 @@ int Module::DoTransmitData(const std::shared_ptr<FrameInfo> data) {
  */
 int Module::DoProcess(std::shared_ptr<FrameInfo> data) {
   bool removed = IsStreamRemoved(data->stream_id);
-  if (!data->IsEos()) {
-    if (!removed) {  // 并且不能是正在移除的 stream_id
-      int ret = Process(data);
-      if (ret != 0) {
-        return ret;
+  if (!HasTransmit()) {
+    if (!data->IsEos()) {
+      if (!removed) {  // 并且不能是正在移除的 stream_id
+        int ret = Process(data);
+        if (ret != 0) {
+          return ret;
+        }
       }
+    } else {
+      this->OnEos(data->stream_id);  // 首先调用 Module 的 OnEos() 逻辑
     }
+    if (DoTransmitData(data)) { return 0; } else { return -1; }
   } else {
-    this->OnEos(data->stream_id);  // 首先调用 Module 的 OnEos() 逻辑
+    if (removed) {
+      data->flags |= static_cast<size_t>(DataFrameFlag::FRAME_FLAG_REMOVED);
+      return 0;  // TODO: 个人认为不再需要输入模块处理
+    }
+    return Process(data);
   }
-  return DoTransmitData(data);  // DoTransmitData 借助 Pipeline 实现传输
+  return -1;
 }
 
 /**
@@ -118,9 +128,9 @@ int Module::DoProcess(std::shared_ptr<FrameInfo> data) {
  */
 bool Module::TransmitData(std::shared_ptr<FrameInfo> data) {
   if (!HasTransmit()) {
-    return true;
+    return false;
   }
-  if (!DoTransmitData(data)) {
+  if (DoTransmitData(data)) {
     return true;
   }
   return false;

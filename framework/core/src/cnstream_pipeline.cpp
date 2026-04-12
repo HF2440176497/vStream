@@ -201,7 +201,7 @@ bool Pipeline::Stop() {
   }
   threads_.clear();
   LOGD(CORE) << "Pipeline [" << GetName() << "] " << "Task loop threads stopped";
-  // event_bus_->Stop();  // Sasha: 此处暂不调用
+  event_bus_->Stop();  // Sasha: 此处暂不调用
 
   // close other modules
   for (auto node = graph_->DFSBegin(); node != graph_->DFSEnd(); ++node) {
@@ -236,7 +236,7 @@ bool Pipeline::ProvideData(const Module* module, const std::shared_ptr<FrameInfo
   // check running.
   if (!IsRunning()) {
     LOGE(CORE) << "[" << module->GetName() << "]" << " Provide data to pipeline [" << GetName() << "] failed, "
-        << "pipeline is not running, start pipeline first. " << data->stream_id;
+        << "pipeline is not running, stream_id [" << data->stream_id << "]";
     return false;
   }
   // check module is created by current pipeline.
@@ -467,8 +467,7 @@ void Pipeline::TransmitData(NodeContext* context, const std::shared_ptr<FrameInf
     // set mask to 1 for never touched modules, for case which has multiple source modules.
     data->SetModulesMask(all_modules_mask_ ^ context->route_mask);
   }
-  // 如果数据经过的是头结点，那么 
-  // SetModulesMask 标记当前根节点不会经过的节点
+  // 如果数据经过的是根结点，那么 SetModulesMask 标记当前根节点不会经过的节点
   // 异或：相同为 0，不同为 1
 
   if (data->IsEos()) {
