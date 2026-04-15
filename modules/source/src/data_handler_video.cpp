@@ -1,10 +1,10 @@
+
 #include "cnstream_source.hpp"
 #include "data_handler_video.hpp"
+#include "data_source_param.hpp"
 
 #include <memory>
 #include <unordered_map>
-
-#include "data_source_param.hpp"
 
 namespace cnstream {
 
@@ -387,7 +387,9 @@ int VideoHandlerImpl::decode_write() {
         LOGW(SOURCE) << "VideoHandlerImpl: stride[0] != stride[1]: " << frame.stride[0] << " != " << frame.stride[1];
       }
 
-      // 后续需要创建，拷贝到 data 的内存，因此不设置 buf_ref
+      // （1）创建 CUDA memop 调用 CopyToSyncMem 从 dec_frame 拷贝到 CSyncMem
+      // （2）frameinfo->data_[i]: CUDA sync mem
+      // 因此不需要 buf_ref
       data = OnDecodeFrame(&frame);
     } else {
       LOGF(SOURCE) << "VideoHandler: nsupported output type: " << static_cast<int>(output_type_);
@@ -527,7 +529,6 @@ void VideoHandlerImpl::Loop() {
       controller.Control();
     }
   }
-
   OnEndFrame();
 }
 

@@ -70,7 +70,10 @@ class Postproc : virtual public ReflexObjectEx<Postproc> {
    *
    * @return Returns ture for success, otherwise returns false.
    **/
-  virtual bool Init(const std::map<std::string, std::string> &params) { return true; }
+  virtual bool Init(const std::map<std::string, std::string> &params) {
+    params_ = params;
+    return true;
+  }
   /**
    * @brief Sets threshold.
    *
@@ -112,6 +115,10 @@ class Postproc : virtual public ReflexObjectEx<Postproc> {
 
  protected:
   float threshold_ = 0;
+
+  std::map<std::string, std::string> params_;
+  std::string config_file_;  // json 配置文件路径
+  std::map<int, float> threshold_map_;  // class_id -> threshold
 };  // class Postproc
 
 using PostprocPtr = std::shared_ptr<Postproc>;
@@ -144,7 +151,10 @@ class ObjPostproc : virtual public ReflexObjectEx<ObjPostproc> {
    *
    * @return Returns ture for success, otherwise returns false.
    **/
-  virtual bool Init(const std::map<std::string, std::string> &params) { return true; }
+  virtual bool Init(const std::map<std::string, std::string> &params) {
+    params_ = params;
+    return true;
+  }
   /**
    * @brief Sets threshold.
    *
@@ -190,6 +200,7 @@ class ObjPostproc : virtual public ReflexObjectEx<ObjPostproc> {
 
  protected:
   float threshold_ = 0;  // TODO: More information
+  std::map<std::string, std::string> params_;
 };  // class ObjPostproc
 
 using ObjPostprocPtr = std::shared_ptr<ObjPostproc>;

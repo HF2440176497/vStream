@@ -158,9 +158,12 @@ InferEngine::ResultWaitingCard InferEngine::FeedData(std::shared_ptr<FrameInfo> 
         BatchingDone();
         timeout_helper_.Reset(nullptr);
       } else {
+        // TODO: 若 objs 数量非 batch_size 整数倍，存在超时丢弃
+        // obj model 最好 batch_size == 1
         timeout_helper_.Reset([this]() -> void { BatchingDone(); });
       }
-    }
+    }  // end for objs
+    
     if (cached_frame_cnt_ >= batchsize_) {
       BatchingDone();
       timeout_helper_.Reset(nullptr);

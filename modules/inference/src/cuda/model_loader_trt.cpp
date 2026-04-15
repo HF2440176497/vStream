@@ -188,6 +188,7 @@ bool ModelLoaderTrt::LoadEngine(const std::string& engine_path) {
   if (!ParseBindings()) {
     return false;
   }
+  name_ = utils::get_filename_without_ext(engine_path);
   engine_path_ = engine_path;
   return true;
 }

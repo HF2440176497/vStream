@@ -498,7 +498,6 @@ void Pipeline::TransmitData(NodeContext* context, const std::shared_ptr<FrameInf
   }
 
   // transmit to next nodes
-  // 操作后面的
   for (auto next_node : node->GetNext()) {
     if (!PassedByAllParentNodes(&next_node->data, cur_mask)) continue;
     auto next_module = next_node->data.module;
@@ -513,8 +512,9 @@ void Pipeline::TransmitData(NodeContext* context, const std::shared_ptr<FrameInf
     const int conveyor_idx = data->GetStreamIndex() % connector->GetConveyorCount();
     while (connector->IsRunning() && connector->PushDataBufferToConveyor(conveyor_idx, data) == false) {
       if (connector->GetFailTime(conveyor_idx) % 10 == 0) {
-        // Show infomation when conveyor is full in every second
-        LOGD(CORE) << "[" << next_module->GetName() << " " << conveyor_idx << "] " << "Input buffer is full";
+        // 说明 next_module 消费数据过慢，存在堆积
+        size_t size = connector->GetConveyorSize(conveyor_idx);
+        LOGW(CORE) << "[" << next_module->GetName() << " " << conveyor_idx << "] " << "Input buffer is full, size = " << size;
       }
       std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }  // while try push

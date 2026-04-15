@@ -22,7 +22,7 @@
 
 namespace cnstream {
 
-static std::string test_pipeline_json = "pipeline_inference_base.json";
+static std::string test_pipeline_json = "pipeline_inference.json";
 
 class InferenceTest : public testing::Test {
  protected:

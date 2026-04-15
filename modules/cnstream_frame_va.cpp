@@ -153,6 +153,7 @@ void DataFrame::CopyToSyncMem(DecodeFrame* dec_frame) {
   std::shared_ptr<MemOp> memop = CreateMemOp();
   if (!memop) return;
 
+  // reuse DecodeFrame plane buffer
   if (this->deAllocator_ != nullptr && dec_frame->fmt == this->fmt_) {
     for (int i = 0; i < GetPlanes(); i++) {
       const size_t plane_bytes = GetPlaneBytes(i);
@@ -170,8 +171,8 @@ void DataFrame::CopyToSyncMem(DecodeFrame* dec_frame) {
   }
 
 #ifdef UNIT_TEST
-  LOGD(FRAME) << "CopyToSyncMem: Loop; image width: " << width_ << ", height: " << height_ << ", alloca size: " << bytes;
-  LOGD(FRAME) << "-------------: Loop; sync mem status: " << this->data_[0]->StatusToString();
+  LOGD(FRAME) << "CopyToSyncMem image width: " << width_ << ", height: " << height_ << ", alloca size: " << bytes;
+  // LOGD(FRAME) << "------------- CopyToSyncMem sync mem status: " << this->data_[0]->StatusToString();
 #endif
 
   this->deAllocator_.reset();

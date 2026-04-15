@@ -35,17 +35,17 @@ class SourceRender {
     if (!frame) {
       return nullptr;
     }
-    // auto inferobjs = std::make_shared<InferObjs>();
-    // if (!inferobjs) {
-    //   return nullptr;
-    // }
-    // auto inferdata =  std::make_shared<InferData>();
-    // if (!inferdata) {
-    //   return nullptr;
-    // }
-    data->collection.Add(kDataFrameTag, frame);  // Add DataFrame to FrameInfo
-    // data->collection.Add(kInferObjsTag, inferobjs);
-    // data->collection.Add(kInferDataTag, inferdata);
+    auto inferobjs = std::make_shared<InferObjs>();
+    if (!inferobjs) {
+      return nullptr;
+    }
+    auto inferdata =  std::make_shared<InferData>();
+    if (!inferdata) {
+      return nullptr;
+    }
+    data->collection.Add(kDataFrameTag, frame);
+    data->collection.Add(kInferObjsTag, inferobjs);
+    data->collection.Add(kInferDataTag, inferdata);
     return data;
   }
 

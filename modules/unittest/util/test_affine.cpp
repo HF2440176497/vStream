@@ -55,14 +55,6 @@ TEST(AffineTrans, preprocess) {
   delete[] output;
 }
 
-
-
-TEST(AffineTrans, postprocess) {
-
-
-
-}
-
 }  // namespace cnstream
 
 

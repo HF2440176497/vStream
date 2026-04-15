@@ -64,11 +64,12 @@ CpuPreprocessingObjBatchingStage::~CpuPreprocessingObjBatchingStage() {}
 void CpuPreprocessingObjBatchingStage::ProcessOneObject(std::shared_ptr<FrameInfo> finfo,
                                                         std::shared_ptr<InferObject> obj, uint32_t batch_idx,
                                                         const IOResValue& value) {
-  std::vector<float*> net_inputs;
+  // 前处理的输出
+  std::vector<float*> cpu_outputs;
   for (auto it : value.datas) {
-    net_inputs.push_back(reinterpret_cast<float*>(it.Offset(batch_idx)));
+    cpu_outputs.push_back(reinterpret_cast<float*>(it.Offset(batch_idx)));
   }
-  preprocessor_->Execute(net_inputs, model_, finfo, obj);
+  preprocessor_->Execute(cpu_outputs, model_, finfo, obj);
 }
 
 }  // namespace cnstream

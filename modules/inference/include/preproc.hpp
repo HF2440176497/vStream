@@ -69,7 +69,10 @@ class Preproc : virtual public ReflexObjectEx<Preproc> {
    *
    * @return Returns ture for success, otherwise returns false.
    **/
-  virtual bool Init(const std::map<std::string, std::string> &params) { return true; }
+  virtual bool Init(const std::map<std::string, std::string> &params) {
+    params_ = params;
+    return true;
+  }
 
   /**
    * @brief Executes preprocess on network inputs.
@@ -82,6 +85,10 @@ class Preproc : virtual public ReflexObjectEx<Preproc> {
    */
   virtual int Execute(const std::vector<float*>& net_inputs, ModelLoader* model,
                       const FrameInfoPtr& package) = 0;
+
+ protected:
+  std::map<std::string, std::string> params_;
+
 };  // class Preproc
 
 
@@ -115,7 +122,10 @@ class ObjPreproc : virtual public ReflexObjectEx<ObjPreproc> {
    *
    * @return Returns ture for success, otherwise returns false.
    **/
-  virtual bool Init(const std::map<std::string, std::string> &params) { return true; }
+  virtual bool Init(const std::map<std::string, std::string> &params) {
+    params_ = params;
+    return true;
+  }
 
   /**
    * @brief Executes preprocess on network inputs.
@@ -129,6 +139,10 @@ class ObjPreproc : virtual public ReflexObjectEx<ObjPreproc> {
    */
   virtual int Execute(const std::vector<float*>& net_inputs, ModelLoader* model,
                       const FrameInfoPtr& finfo, const std::shared_ptr<InferObject>& pobj) = 0;
+
+ protected:
+  std::map<std::string, std::string> params_;
+
 };  // class ObjPreproc
 
 using ObjPreprocPtr = std::shared_ptr<ObjPreproc>;

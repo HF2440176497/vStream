@@ -33,7 +33,7 @@ namespace cnstream {
 template <typename T>
 class ThreadSafeQueue {
  public:
-  ThreadSafeQueue() = default;
+  explicit ThreadSafeQueue(uint32_t max_size = 0) : max_size_(max_size) {}
   ThreadSafeQueue(const ThreadSafeQueue& other) = delete;
   ThreadSafeQueue& operator=(const ThreadSafeQueue& other) = delete;
 
@@ -43,7 +43,7 @@ class ThreadSafeQueue {
 
   bool WaitAndTryPop(T& value, const std::chrono::microseconds rel_time);
 
-  void Push(const T& new_value);
+  bool Push(const T& new_value);
 
   bool Empty() {
     std::lock_guard<std::mutex> lk(data_m_);
@@ -59,6 +59,8 @@ class ThreadSafeQueue {
   std::mutex data_m_;
   std::queue<T> q_;
   std::condition_variable notempty_cond_;
+  std::condition_variable notfull_cond_;
+  uint32_t max_size_ = 0;
 };
 
 template <typename T>
@@ -94,11 +96,15 @@ bool ThreadSafeQueue<T>::WaitAndTryPop(T& value, const std::chrono::microseconds
 }
 
 template <typename T>
-void ThreadSafeQueue<T>::Push(const T& new_value) {
+bool ThreadSafeQueue<T>::Push(const T& new_value) {
   std::unique_lock<std::mutex> lk(data_m_);
+  if (max_size_ > 0 && q_.size() >= max_size_) {
+    return false;
+  }
   q_.push(new_value);
   lk.unlock();
   notempty_cond_.notify_one();
+  return true;
 }
 
 /**

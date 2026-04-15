@@ -25,6 +25,7 @@ class ModelLoader {
     input_ordered_index_ = input_index;
     output_ordered_index_ = output_index;
   }
+  const std::string& get_name() { return name_; };
 
   public:
   int GetDeviceId() const { return device_id_; }
@@ -98,6 +99,7 @@ class ModelLoader {
 #else
  protected:
 #endif
+  std::string name_;  // model name
   std::string engine_path_;
   DevType     device_type_ = DevType::INVALID;
   int         device_id_ = -1;

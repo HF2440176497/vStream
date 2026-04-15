@@ -154,11 +154,12 @@ class InferObject {
    * @return No return value.
    */
   ~InferObject() = default;
-  std::string id;           ///< The ID of the classification (label value).
-  std::string track_id;     ///< The tracking result.
-  float score;              ///< The label score.
-  InferBoundingBox bbox;  ///< The object normalized coordinates.
-  Collection collection;    ///< User-defined structured information.
+  std::string model_name;  ///< The name of the model.
+  int id;                  ///< The ID of the classification (label value).
+  std::string track_id;    ///< The tracking result.
+  float score;             ///< The label score.
+  InferBoundingBox bbox;   ///< The object normalized coordinates.
+  Collection collection;   ///< User-defined structured information.
 
   /**
    * @brief Adds the key of an attribute to a specified object.
@@ -288,6 +289,7 @@ class InferObject {
   InferFeatures GetFeatures();
 
  private:
+  // InferAttr includes: id, value, score
   std::map<std::string, InferAttr> attributes_;
   std::map<std::string, std::string> extra_attributes_;
   std::map<std::string, InferFeature> features_;

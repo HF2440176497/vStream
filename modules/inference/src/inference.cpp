@@ -87,7 +87,7 @@ class InferencePrivate: public NonCopyable {
 
     LOGI(INFERENCER) << "[" << module_name_ << "] load model [path: " << model_path << "]";
 
-    // TODO: 未来由 Pipeline 参数透传到此，以此为准来检验 data 中是否相同
+    // TODO: 推理模块的参数用于查找推理后端
     auto device_type = params.device_type;
     auto device_id = params.device_id;
     auto& factory = ModelLoaderFactory::Instance();

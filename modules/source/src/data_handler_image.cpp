@@ -211,7 +211,7 @@ void ImageHandlerImpl::OnEndFrame() {
   // 调用 SourceRender::OnEndFrame 发送 EOS 帧
   std::shared_ptr<FrameInfo> data = this->CreateFrameInfo(true);
   if (!data) {
-    LOGW(SOURCE) << "[FileHandlerImpl] OnDecodeFrame function, failed to create FrameInfo.";
+    LOGW(SOURCE) << "[ImageHandlerImpl] OnEndFrame function, failed to create FrameInfo.";
     return;
   }
   this->SendFrameInfo(data);

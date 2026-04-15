@@ -105,7 +105,7 @@ std::unique_ptr<CNSyncedMemory> MemOp::CreateSyncedMemory(size_t size) {
 int MemOp::ConvertImageFormat(CNSyncedMemory* dst_mem, DataFormat dst_fmt,
                               const DecodeFrame* src_frame) {
   if (!dst_mem) return -1;
-  void* dst = dst_mem->Allocate();  // GetMutableCpuData
+  void* dst = dst_mem->Allocate();
   if (!dst) return -1;
   
   int width = src_frame->width;

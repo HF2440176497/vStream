@@ -120,7 +120,7 @@ std::vector<std::shared_ptr<InferTask>> InferBatchingDoneStage::BatchingDone(con
 
     if (profiler_) {  // module profiler
       for (auto it : finfos)
-        profiler_->RecordProcessStart("RUN MODEL", std::make_pair(it.first->stream_id, it.first->timestamp));
+        profiler_->RecordProcessStart("INFER", std::make_pair(it.first->stream_id, it.first->timestamp));
     }
     // debug for net_input
     if (!dump_resized_image_dir_.empty()) {
@@ -130,7 +130,7 @@ std::vector<std::shared_ptr<InferTask>> InferBatchingDoneStage::BatchingDone(con
 
     if (profiler_) {
       for (auto it : finfos)
-        profiler_->RecordProcessEnd("RUN MODEL", std::make_pair(it.first->stream_id, it.first->timestamp));
+        profiler_->RecordProcessEnd("INFER", std::make_pair(it.first->stream_id, it.first->timestamp));
     }
 
     this->net_input_res_->DeallingDone();
