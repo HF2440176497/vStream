@@ -70,7 +70,6 @@ TEST(CoreConfig, ModuleConfig) {
 
     // CMoudleConfig
     cnstream::CNModuleConfig inference_config;
-    inference_config.config_root_dir = "./";
     EXPECT_TRUE(inference_config.ParseByJSONStr(inference_str));
     EXPECT_TRUE(inference_config.name.empty());
 
@@ -94,7 +93,6 @@ TEST(CoreConfig, CNGraphConfig) {
     EXPECT_FALSE(json_content.empty()) << "Read json file failed";
 
     cnstream::CNGraphConfig graph_config;
-    graph_config.config_root_dir = "./";
     EXPECT_TRUE(graph_config.ParseByJSONStr(json_content));
 
     // 检查 profiler_config 模块

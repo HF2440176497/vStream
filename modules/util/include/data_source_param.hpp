@@ -183,6 +183,7 @@ struct DecodeFrame {
   }
   bool valid;
   int64_t pts;
+  std::string frame_id_s;
   int32_t height;
   int32_t width; 
   
@@ -218,15 +219,15 @@ inline const std::unordered_map<std::string, DecoderType> param_decoder_map_ = {
   {"npu", DecoderType::DECODER_NPU}
 };
 
-inline const std::string KEY_OUTPUT_TYPE = "output_type";
-inline const std::string KEY_DEVICE_ID = "device_id";
-inline const std::string KEY_INTERVAL = "interval";
-inline const std::string KEY_DECODER_TYPE = "decoder_type";
-inline const std::string KEY_ONLY_KEY_FRAME = "only_key_frame";
+inline const std::string key_output_type = "output_type";
+inline const std::string key_device_id = "device_id";
+inline const std::string key_interval = "interval";
+inline const std::string key_decoder_type = "decoder_type";
+inline const std::string key_only_key_frame = "only_key_frame";
 
-inline const std::string KEY_FILE_PATH = "file_path";
-inline const std::string KEY_FRAME_RATE = "frame_rate";
-inline const std::string KEY_STREAM_URL = "stream_url";
+inline const std::string key_file_path = "file_path";
+inline const std::string key_frame_rate = "frame_rate";
+inline const std::string key_stream_url = "stream_url";
 
 /*!
  * @brief DataSourceParam is a structure for private usage.

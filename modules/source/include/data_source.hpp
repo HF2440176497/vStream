@@ -167,7 +167,8 @@ class SendHandler : public SourceHandler {
   void Close() override;
 
   bool SetHandlerParams(const ModuleParamSet& params) override;
-  int Send(uint64_t pts, const cv::Mat &image);
+  int Send(const SendFrame& send_frame);
+  int Send(uint64_t pts, std::string frame_id_s, const cv::Mat &image);
 
  private:
   explicit SendHandler(DataSource *module, const std::string &stream_id);

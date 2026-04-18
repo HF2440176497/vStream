@@ -26,8 +26,19 @@ SendHandler::~SendHandler() {
   }
 }
 
+int SendHandler::Send(const SendFrame& send_frame) {
+  if (send_frame.image.empty()) {
+    LOGE(SOURCE) << "[" << stream_id_ << "]: image is empty";
+    return -1;
+  }
+  if (impl_->Push(send_frame)) {
+    return 0;
+  }
+  LOGW(SOURCE) << "[" << stream_id_ << "]: send frame failed";
+  return -1;
+}
 
-int SendHandler::Send(uint64_t pts, const cv::Mat &image) {
+int SendHandler::Send(uint64_t pts, std::string frame_id_s, const cv::Mat &image) {
   if (!impl_) {
     LOGE(SOURCE) << "[" << stream_id_ << "] handler is not valid";
     return -1;
@@ -36,10 +47,10 @@ int SendHandler::Send(uint64_t pts, const cv::Mat &image) {
     LOGE(SOURCE) << "[" << stream_id_ << "]: image is not valid";
     return -1;
   }
-  if (impl_->Push(pts, image)) {
+  if (impl_->Push(SendFrame{pts, frame_id_s, image})) {
     return 0;
   }
-  LOGW(SOURCE) << "[" << stream_id_ << "]: send image failed";
+  LOGW(SOURCE) << "[" << stream_id_ << "]: send frame failed";
   return -1;
 }
 
@@ -79,10 +90,9 @@ bool SendHandler::SetHandlerParams(const ModuleParamSet& params) {
   return true;
 }
 
-bool SendHandlerImpl::Push(uint64_t pts, const cv::Mat &image) {
-  return image_queue_.Push(SendFrame{pts, image});
+bool SendHandlerImpl::Push(const SendFrame& send_frame) {
+  return image_queue_.Push(send_frame);
 }
-
 
 bool SendHandlerImpl::Open() {
   running_.store(true);
@@ -91,6 +101,7 @@ bool SendHandlerImpl::Open() {
 }
 
 void SendHandlerImpl::Stop() {
+  image_queue_.Stop();
   if (running_.load()) {
     running_.store(false);
   }
@@ -143,6 +154,7 @@ void SendHandlerImpl::Loop() {
     frame.buf_ref = std::make_unique<MatBufRef>(buffer);
 
     frame.pts = send_frame.pts;
+    frame.frame_id_s = send_frame.frame_id_s;
     std::shared_ptr<FrameInfo> data = OnDecodeFrame(&frame);
     if (!module_ || !handler_) {
       LOGE(SOURCE) << "SendHandlerImpl: [" << stream_id_ << "]: module_ or handler_ is null";
@@ -165,6 +177,7 @@ std::shared_ptr<FrameInfo> SendHandlerImpl::OnDecodeFrame(DecodeFrame* frame) {
     return nullptr;
   }
   data->timestamp = frame->pts;
+  data->frame_id_s = frame->frame_id_s;
   if (!frame->valid) {
     data->flags = static_cast<size_t>(DataFrameFlag::FRAME_FLAG_INVALID);
     this->SendFrameInfo(data);

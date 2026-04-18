@@ -60,12 +60,12 @@ void VideoHandler::Stop() {
 }
 
 void VideoHandler::RegisterHandlerParams() {
-  param_register_.Register(KEY_STREAM_URL, "URL of the video stream (rtsp/rtmp/file).");
-  param_register_.Register(KEY_FRAME_RATE, "Framerate for video playback. Default is 25.");
+  param_register_.Register(key_stream_url, "URL of the video stream (rtsp/rtmp/file).");
+  param_register_.Register(key_frame_rate, "Framerate for video playback. Default is 25.");
 }
 
 bool VideoHandler::CheckHandlerParams(const ModuleParamSet& params) {
-  if (params.find(KEY_STREAM_URL) == params.end()) {
+  if (params.find(key_stream_url) == params.end()) {
     LOGE(SOURCE) << "[VideoHandler] stream_url is required";
     return false;
   }
@@ -442,14 +442,14 @@ void VideoHandlerImpl::clean_up() {
 }
 
 bool VideoHandlerImpl::Open() {
-  stream_url_ = param_set_.at(KEY_STREAM_URL);
+  stream_url_ = param_set_.at(key_stream_url);
   if (stream_url_.empty()) {
     LOGE(SOURCE) << "VideoHandlerImpl: stream_url is empty";
     return false;
   }
 
-  if (param_set_.find(KEY_FRAME_RATE) != param_set_.end()) {
-    frame_rate_ = std::stoi(param_set_.at(KEY_FRAME_RATE));
+  if (param_set_.find(key_frame_rate) != param_set_.end()) {
+    frame_rate_ = std::stoi(param_set_.at(key_frame_rate));
   }
 
   if (module_) {

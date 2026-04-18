@@ -83,6 +83,8 @@ class InferencePrivate: public NonCopyable {
   bool InitByParams(const InferParams &params, const ModuleParamSet &param_set) {
     params_ = params;
     module_name_ = q_ptr_->GetName();
+
+    // model_path 拼接上 CNS_JSON_DIR_PARAM_NAME 参数
     std::string model_path = GetPathRelativeToTheJSONFile(params.model_path, param_set);
 
     LOGI(INFERENCER) << "[" << module_name_ << "] load model [path: " << model_path << "]";
@@ -211,6 +213,7 @@ class InferencePrivate: public NonCopyable {
           .SetPostprocessor(postproc_)
           .SetBatchingTimeout(params_.batching_timeout)
           .SetErrorHandler(std::bind(&InferencePrivate::InferEngineErrorHandleFunc, this, std::placeholders::_1))
+          .SetPostprocOnDevice(params_.postproc_on_device)
           .SetBatchingByObj(params_.object_infer)
           .SetObjPreprocessor(obj_preproc_)
           .SetObjPostprocessor(obj_postproc_)
@@ -275,9 +278,12 @@ bool Inference::Open(ModuleParamSet raw_params) {
   } else {
     if (GetProfiler()) {
       if (!params.preproc_name.empty()) {
-        GetProfiler()->RegisterProcess("RUN PREPROC");
+        GetProfiler()->RegisterProcess(key_profile_preproc);
       }
-      GetProfiler()->RegisterProcess("RUN MODEL");
+      if (!params.postproc_name.empty()) {
+        GetProfiler()->RegisterProcess(key_profile_postproc);
+      }
+      GetProfiler()->RegisterProcess(key_profile_inference);
     }
   }
 

@@ -24,9 +24,8 @@
 | 库 | 版本 |
 |:---|:---:|
 | nlohmann/json | 3.11.3 |
-| libyuv | stable |
 | googletest | 1.15.2 |
-| pybind11 | 2.13.6 |
+| pybind11 | 3.0.3 |
 
 ---
 

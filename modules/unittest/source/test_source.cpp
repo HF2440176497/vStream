@@ -95,11 +95,6 @@ class InferenceProcess: public Module, public ModuleCreator<InferenceProcess> {
 
 REGISTER_MODULE(InferenceProcess);
 
-static uint64_t getCurrentTimestampMs() {
-  return std::chrono::duration_cast<std::chrono::milliseconds>(
-    std::chrono::system_clock::now().time_since_epoch()).count();
-}
-
 class EosObserver : public StreamMsgObserver {
  public:
   void Update(const StreamMsg &msg) override {}
@@ -111,7 +106,6 @@ class SourceModuleTest : public testing::Test {
     std::string json_content = readFile(test_pipeline_json.c_str());
     EXPECT_FALSE(json_content.empty()) << "Read json file failed";
     cnstream::CNGraphConfig graph_config;
-    graph_config.config_root_dir = "./";
     graph_config.ParseByJSONStr(json_content);
     graph_config_ = graph_config;
 
@@ -145,7 +139,6 @@ class VideoSourceTest : public testing::Test {
     std::string json_content = readFile(test_pipeline_video_json.c_str());
     EXPECT_FALSE(json_content.empty()) << "Read json file failed";
     cnstream::CNGraphConfig graph_config;
-    graph_config.config_root_dir = "./";
     graph_config.ParseByJSONStr(json_content);
     graph_config_ = graph_config;
 
@@ -230,11 +223,11 @@ TEST_F(SourceModuleTest, Loop) {
   image_handler_ = std::dynamic_pointer_cast<ImageHandler>(source_handler_ptr);
   EXPECT_NE(image_handler_, nullptr);
 
-  EXPECT_TRUE(pipeline_->Start());
-  EXPECT_FALSE(IsStreamRemoved(stream_id_));  // 此处不应当被移除
-
   EXPECT_EQ(source->AddSource(image_handler_), 0);
   EXPECT_TRUE(image_handler_->impl_->running_);
+
+  EXPECT_TRUE(pipeline_->Start());
+  EXPECT_FALSE(IsStreamRemoved(stream_id_));  // 此处不应当被移除
 
   // AddSource 之后，handler handler 理应可以获取到配置参数
   std::cout << "image_handler_->impl_->image_path = " << image_handler_->impl_->image_path_ << std::endl;

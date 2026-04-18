@@ -81,6 +81,7 @@ class InferEngine {
   uint32_t batchsize_ = 0;
   uint32_t batching_timeout_ = 0;
   int device_id_ = 0;
+  bool postproc_on_device_ = false;  // infer_param: postproc_on_device_
   bool batching_by_obj_ = false;  // infer_param: obj_infer_
   std::string module_name_;
 

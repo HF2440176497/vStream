@@ -55,20 +55,20 @@ void ImageHandler::Stop() {
 
 // Note: not use，handler may carry additional params
 void ImageHandler::RegisterHandlerParams() {
-  param_register_.Register(KEY_FILE_PATH, "Path to the image file.");
-  param_register_.Register(KEY_FRAME_RATE, "Framerate for image display. Default is 5.");
+  param_register_.Register(key_file_path, "Path to the image file.");
+  param_register_.Register(key_frame_rate, "Framerate for image display. Default is 5.");
 }
 
 bool ImageHandler::CheckHandlerParams(const ModuleParamSet& params) {
-  if (params.find(KEY_FILE_PATH) == params.end()) {
+  if (params.find(key_file_path) == params.end()) {
     LOGE(SOURCE) << "[ImageHandler] file_path is required";
     return false;
   }
-  if (access(params.at(KEY_FILE_PATH).c_str(), F_OK) == -1) {
-    LOGE(SOURCE) << "[ImageHandler] file not found: " << params.at(KEY_FILE_PATH);
+  if (access(params.at(key_file_path).c_str(), F_OK) == -1) {
+    LOGE(SOURCE) << "[ImageHandler] file not found: " << params.at(key_file_path);
     return false;
   }
-  if (params.find(KEY_FRAME_RATE) == params.end()) {
+  if (params.find(key_frame_rate) == params.end()) {
     LOGE(SOURCE) << "[ImageHandler] frame_rate is required";
     return false;
   }
@@ -87,8 +87,8 @@ bool ImageHandler::SetHandlerParams(const ModuleParamSet& params) {
 
 bool ImageHandlerImpl::Open() {
   // if you need something, just get it
-  image_path_ = param_set_.at(KEY_FILE_PATH);
-  frame_rate_ = std::stoi(param_set_.at(KEY_FRAME_RATE));
+  image_path_ = param_set_.at(key_file_path);
+  frame_rate_ = std::stoi(param_set_.at(key_frame_rate));
   if (image_path_.empty() || access(image_path_.c_str(), F_OK) == -1) {
     LOGE(SOURCE) << "ImageHandlerImpl: Image path not found: " << image_path_;
     return false;

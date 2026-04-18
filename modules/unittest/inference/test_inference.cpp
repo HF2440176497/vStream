@@ -30,7 +30,6 @@ class InferenceTest : public testing::Test {
     std::string json_content = readFile(test_pipeline_json.c_str());
     EXPECT_FALSE(json_content.empty()) << "Read json file failed";
     cnstream::CNGraphConfig graph_config;
-    graph_config.config_root_dir = "./";
     graph_config.ParseByJSONStr(json_content);
     graph_config_ = graph_config;
 

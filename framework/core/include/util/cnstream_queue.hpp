@@ -22,6 +22,7 @@
 #define CNSTREAM_THREADSAFE_QUEUE_HPP_
 
 #include <condition_variable>
+#include <chrono>
 #include <mutex>
 #include <queue>
 #include <vector>
@@ -38,12 +39,11 @@ class ThreadSafeQueue {
   ThreadSafeQueue& operator=(const ThreadSafeQueue& other) = delete;
 
   bool TryPop(T& value);
-
   void WaitAndPop(T& value);
-
   bool WaitAndTryPop(T& value, const std::chrono::microseconds rel_time);
 
   bool Push(const T& new_value);
+  void Stop(bool clear_queue = true);
 
   bool Empty() {
     std::lock_guard<std::mutex> lk(data_m_);
@@ -57,38 +57,71 @@ class ThreadSafeQueue {
 
  private:
   std::mutex data_m_;
+  bool run_ = true;
   std::queue<T> q_;
   std::condition_variable notempty_cond_;
   std::condition_variable notfull_cond_;
   uint32_t max_size_ = 0;
 };
 
+
+template <typename T>
+void ThreadSafeQueue<T>::Stop(bool clear_queue = true) {
+  {
+    std::unique_lock<std::mutex> lock(data_m_);
+    run_ = false;
+    if (clear_queue) {
+      q_.clear();
+    }
+  }
+  notempty_cond_.notify_all();
+  notfull_cond_.notify_all();
+}
+
 template <typename T>
 bool ThreadSafeQueue<T>::TryPop(T& value) {
   std::lock_guard<std::mutex> lk(data_m_);
-  if (q_.empty()) {
+  if (!run_ || q_.empty()) {
     return false;
   } else {
     value = q_.front();
     q_.pop();
+    lk.unlock();
+    notfull_cond_.notify_one();
     return true;
   }
 }
 
 template <typename T>
 void ThreadSafeQueue<T>::WaitAndPop(T& value) {
+  if (!run_) {
+    return;
+  }
   std::unique_lock<std::mutex> lk(data_m_);
-  notempty_cond_.wait(lk, [&] { return !q_.empty(); });
+  notempty_cond_.wait(lk, [&] { return !run_ || !q_.empty(); });
+  if (!run_) {
+    return;
+  }
   value = q_.front();
   q_.pop();
+  lk.unlock();
+  notfull_cond_.notify_one();
 }
 
 template <typename T>
 bool ThreadSafeQueue<T>::WaitAndTryPop(T& value, const std::chrono::microseconds rel_time) {
+  if (!run_) {
+    return false;
+  }
   std::unique_lock<std::mutex> lk(data_m_);
-  if (notempty_cond_.wait_for(lk, rel_time, [&] { return !q_.empty(); })) {
+  if (notempty_cond_.wait_for(lk, rel_time, [&] { return !run_ || !q_.empty(); })) {
+    if (!run_) {
+      return false;
+    }
     value = q_.front();
     q_.pop();
+    lk.unlock();
+    notfull_cond_.notify_one();
     return true;
   } else {
     return false;
@@ -97,7 +130,13 @@ bool ThreadSafeQueue<T>::WaitAndTryPop(T& value, const std::chrono::microseconds
 
 template <typename T>
 bool ThreadSafeQueue<T>::Push(const T& new_value) {
+  if (!run_) {
+    return false;
+  }
   std::unique_lock<std::mutex> lk(data_m_);
+  if (!run_) {
+    return false;
+  }
   if (max_size_ > 0 && q_.size() >= max_size_) {
     return false;
   }
@@ -235,9 +274,12 @@ class ThreadSafeJobQueue {
 
   /**
    * @brief 停止队列操作（唤醒所有等待线程）
+   * @param clear_queue 是否清空队列中的未完成任务，默认为 true
    */
-  void stop() {
-    clear();  // 可以首先清空队列
+  void stop(bool clear_queue = true) {
+    if (clear_queue) {
+      clear();
+    }
     {
       std::unique_lock<std::mutex> lock(mutex_);
       run_ = false;

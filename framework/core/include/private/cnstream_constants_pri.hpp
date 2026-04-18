@@ -8,7 +8,7 @@
 #ifndef CNSTREAM_CONSTANTS_PRI_HPP_
 #define CNSTREAM_CONSTANTS_PRI_HPP_
 
-inline constexpr char CNS_JSON_DIR_PARAM_NAME[] = "json_file_dir";
+inline constexpr char CNS_JSON_DIR_PARAM_NAME[] = "config_file_path";
 
 inline constexpr size_t INVALID_MODULE_ID = (size_t)(-1);
 inline constexpr uint32_t INVALID_STREAM_IDX = (uint32_t)(-1);

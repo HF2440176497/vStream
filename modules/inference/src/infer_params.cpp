@@ -80,6 +80,10 @@ static bool STR2FLOAT(const std::string &value, float *ret) {
   return true;
 }
 
+inline const std::string key_profile_preproc = "PRE_PROC";
+inline const std::string key_profile_inference = "INFER";
+inline const std::string key_profile_postproc = "POST_PROC";
+
 /**
  * invoked in Inference::Inference
  */
@@ -171,15 +175,14 @@ void InferParamManager::RegisterAll(ParamRegister *pregister) {
   };
   ASSERT(RegisterParam(pregister, param));
 
-  /** TODO: 需要设置为字典: key: class id, value: threshold. */
-  param.name = "threshold";
-  param.desc_str = "Optional. The threshold pass to postprocessing function.";
-  param.default_value = "0";
-  param.type = "float";
-  param.parser = [](const std::string &value, InferParams *param_set) -> bool {
-    return STR2FLOAT(value, &param_set->threshold);
-  };
-  ASSERT(RegisterParam(pregister, param));
+  // param.name = "threshold";
+  // param.desc_str = "Optional. The threshold pass to postprocessing function.";
+  // param.default_value = "0";
+  // param.type = "float";
+  // param.parser = [](const std::string &value, InferParams *param_set) -> bool {
+  //   return STR2FLOAT(value, &param_set->threshold);
+  // };
+  // ASSERT(RegisterParam(pregister, param));
 
   param.name = "infer_interval";
   param.desc_str = "Optional. Inferencing one frame every [infer_interval] frames.";
@@ -199,7 +202,15 @@ void InferParamManager::RegisterAll(ParamRegister *pregister) {
   };
   ASSERT(RegisterParam(pregister, param));
 
-  // 当设置此标志位，会反射创建 obj 处理的相关对象 例如 obj_filter， ObjPreproc 
+  param.name = "postproc_on_device";
+  param.desc_str = "Optional. Whether to postprocess on device. Default is false.";
+  param.default_value = "false";
+  param.type = "bool";
+  param.parser = [](const std::string &value, InferParams *param_set) -> bool {
+    return STR2BOOL(value, &param_set->postproc_on_device);
+  };
+  ASSERT(RegisterParam(pregister, param));
+
   param.name = "object_infer";
   param.desc_str =
       "Optional. if object_infer is set to true, the detection target is used as the input to"

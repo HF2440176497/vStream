@@ -256,6 +256,12 @@ TEST(CudaMemOp, ConvertImageFormat_RGB24_BGR24) {
 }
 
 
+static std::string save_file = "save_image/output_memop_nv12.jpg";
+
+/**
+ * 生成一张 NV12 图片,
+ * 借助 memop 的 convert 功能，在 CUDA Synced Memory 中转换为 RGB24 格式
+ */
 TEST(CudaMemOp, ConvertImageFormat_NV12_RGB24) {
   auto& factory = MemOpFactory::Instance();
   auto memop = factory.CreateMemOp(DevType::CUDA, 0);
@@ -283,7 +289,7 @@ TEST(CudaMemOp, ConvertImageFormat_NV12_RGB24) {
   cv::Mat rgb = cv::Mat(height, width, CV_8UC3, h_rgb);
   cv::Mat bgr = cv::Mat(height, width, CV_8UC3);
   cv::cvtColor(rgb, bgr, cv::COLOR_RGB2BGR);
-  cv::imwrite("memop_cuda_nv12_convert.jpg", bgr);
+  cv::imwrite(save_file, bgr);
 
   free(h_rgb);
   clear_decode_frame(src_frame);

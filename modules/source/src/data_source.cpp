@@ -34,26 +34,26 @@ DataSource::DataSource(const std::string &name) : SourceModule(name) {
   param_register_.SetModuleDesc(
       "DataSource is a module for handling input data (videos or images)."
       " Feed data to codec and send decoded data to the next module if there is one.");
-  param_register_.Register(KEY_OUTPUT_TYPE,
+  param_register_.Register(key_output_type,
                            "Where the outputs will be stored. It could be cpu or mlu,"
                            "It is used when decoder_type is cpu.");
-  param_register_.Register(KEY_DEVICE_ID, "Which device will be used. If there is only one device, it might be 0.");
-  param_register_.Register(KEY_INTERVAL,
+  param_register_.Register(key_device_id, "Which device will be used. If there is only one device, it might be 0.");
+  param_register_.Register(key_interval,
                            "How many frames will be discarded between two frames"
                            " which will be sent to next modules.");
-  param_register_.Register(KEY_DECODER_TYPE, "Which the input data will be decoded by. It could be cpu or mlu.");
-  param_register_.Register(KEY_ONLY_KEY_FRAME, "Only decode key frames and other frames are discarded. Default is false");
+  param_register_.Register(key_decoder_type, "Which the input data will be decoded by. It could be cpu or mlu.");
+  param_register_.Register(key_only_key_frame, "Only decode key frames and other frames are discarded. Default is false");
 }
 
 DataSource::~DataSource() {}
 
 static int GetDeviceId(ModuleParamSet paramSet) {
-  if (paramSet.find(KEY_DEVICE_ID) == paramSet.end()) {
+  if (paramSet.find(key_device_id) == paramSet.end()) {
     return -1;
   }
   std::stringstream ss;
   int device_id;
-  ss << paramSet[KEY_DEVICE_ID];
+  ss << paramSet[key_device_id];
   ss >> device_id;
   /*check device_id valid or not,FIXME*/
   return device_id;
@@ -67,18 +67,18 @@ bool DataSource::Open(ModuleParamSet paramSet) {
     LOGE(SOURCE) << "CheckParamSet failed";
     return false;
   }
-  if (paramSet.find(KEY_OUTPUT_TYPE) != paramSet.end()) {
-    std::string out_type = paramSet[KEY_OUTPUT_TYPE];
+  if (paramSet.find(key_output_type) != paramSet.end()) {
+    std::string out_type = paramSet[key_output_type];
     param_.output_type_ = param_output_map_.at(out_type);
   }
-  if (paramSet.find(KEY_DECODER_TYPE) != paramSet.end()) {
-    std::string dec_type = paramSet[KEY_DECODER_TYPE];
+  if (paramSet.find(key_decoder_type) != paramSet.end()) {
+    std::string dec_type = paramSet[key_decoder_type];
     param_.decoder_type_ = param_decoder_map_.at(dec_type);
   }
-  if (paramSet.find(KEY_INTERVAL) != paramSet.end()) {
+  if (paramSet.find(key_interval) != paramSet.end()) {
     std::stringstream ss;
     int interval;
-    ss << paramSet[KEY_INTERVAL];
+    ss << paramSet[key_interval];
     ss >> interval;
     if (interval <= 0) {
       LOGE(SOURCE) << "interval : invalid";
@@ -87,8 +87,8 @@ bool DataSource::Open(ModuleParamSet paramSet) {
     param_.interval_ = interval;
   }
   param_.device_id_ = GetDeviceId(paramSet);
-  if (paramSet.find(KEY_ONLY_KEY_FRAME) != paramSet.end()) {
-    param_.only_key_frame_ = (paramSet[KEY_ONLY_KEY_FRAME] == "true");
+  if (paramSet.find(key_only_key_frame) != paramSet.end()) {
+    param_.only_key_frame_ = (paramSet[key_only_key_frame] == "true");
   }
   param_.param_set_ = paramSet;
   param_set_ = paramSet;  // of SourceModule, for handlers
@@ -113,14 +113,14 @@ bool DataSource::CheckParamSet(const ModuleParamSet &paramSet) const {
     }
   }
   std::string err_msg;
-  if (!checker.IsNum({KEY_DEVICE_ID}, paramSet, err_msg, true)) {
+  if (!checker.IsNum({key_device_id}, paramSet, err_msg, true)) {
     LOGE(SOURCE) << "[DataSource] " << err_msg;
     return false;
   }
   int device_id = GetDeviceId(paramSet);
   // 1. output_type
-  if (paramSet.find(KEY_OUTPUT_TYPE) != paramSet.end()) {
-    std::string out_type = paramSet.at(KEY_OUTPUT_TYPE);
+  if (paramSet.find(key_output_type) != paramSet.end()) {
+    std::string out_type = paramSet.at(key_output_type);
     if (param_output_map_.find(out_type) == param_output_map_.end()) {
       LOGE(SOURCE) << "[DataSource] [output_type] " << out_type << " not supported";
       return false;
@@ -133,13 +133,13 @@ bool DataSource::CheckParamSet(const ModuleParamSet &paramSet) const {
       }
     }
   }
-  if (!checker.IsNum({KEY_INTERVAL}, paramSet, err_msg, false)) {
+  if (!checker.IsNum({key_interval}, paramSet, err_msg, false)) {
     LOGE(SOURCE) << "[DataSource] " << err_msg;
     return false;
   }
   // 2. decoder_type
-  if (paramSet.find(KEY_DECODER_TYPE) != paramSet.end()) {
-    std::string dec_type = paramSet.at(KEY_DECODER_TYPE);
+  if (paramSet.find(key_decoder_type) != paramSet.end()) {
+    std::string dec_type = paramSet.at(key_decoder_type);
     if (param_decoder_map_.find(dec_type) == param_decoder_map_.end()) {
       LOGE(SOURCE) << "[DataSource] [decoder_type] " << dec_type << " not supported";
       return false;

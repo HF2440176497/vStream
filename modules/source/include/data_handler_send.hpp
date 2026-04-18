@@ -28,6 +28,7 @@ class SendHandlerImpl: public SourceRender {
 
   struct SendFrame {
     uint64_t pts;
+    std::string frame_id_s;
     cv::Mat image;
   };
 
@@ -45,7 +46,7 @@ class SendHandlerImpl: public SourceRender {
   explicit SendHandlerImpl(DataSource *module, SourceHandler *handler)
       : SourceRender(handler), module_(module), stream_id_(handler->GetStreamId()) {}
   
-  bool Push(uint64_t pts, const cv::Mat &image);
+  bool Push(const SendFrame& send_frame);
   bool Open();
   void Close();
   void Stop();

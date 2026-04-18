@@ -40,6 +40,11 @@ bool IsProfilerItem(const std::string& item_name) {
   return kProfilerConfigName == item_name;
 }
 
+/**
+ * @brief 获取路径的目录部分
+ * @param path 文件路径
+ * @example "save_image/test.jpg" -> "save_image/"
+ */
 static inline
 std::string GetPathDir(const std::string& path) {
   auto slash_pos = path.rfind("/");
@@ -162,9 +167,10 @@ bool CNModuleConfig::ParseByJSONStr(const std::string& jstr) {
     }
     if (this->parameters.end() != this->parameters.find(CNS_JSON_DIR_PARAM_NAME)) {
       config_root_dir = this->parameters[CNS_JSON_DIR_PARAM_NAME];
-      LOGW(CORE) << "Parameter [" << CNS_JSON_DIR_PARAM_NAME << "]  is manually set as [" << config_root_dir << "]";
-    } else {
       this->parameters.insert(std::make_pair(CNS_JSON_DIR_PARAM_NAME, config_root_dir));
+    } else {
+      // this->parameters.insert(std::make_pair(CNS_JSON_DIR_PARAM_NAME, "./"));
+      LOGD(CORE) << "Parameter [" << CNS_JSON_DIR_PARAM_NAME << "]  not set.";
     }
   } else {
     this->parameters = {};
@@ -208,10 +214,10 @@ bool CNGraphConfig::ParseByJSONStr(const std::string& json_str) {
  * @note CheckPath 调用
  */
 std::string GetPathRelativeToTheJSONFile(const std::string& path, const ModuleParamSet& param_set) {
-  std::string jsf_dir = "./";
+  std::string config_dir = "./";
   // pipeline json dir
   if (param_set.find(CNS_JSON_DIR_PARAM_NAME) != param_set.end()) {
-    jsf_dir = param_set.find(CNS_JSON_DIR_PARAM_NAME)->second;
+    config_dir = param_set.find(CNS_JSON_DIR_PARAM_NAME)->second;
   }
 
   std::string ret = "";
@@ -219,7 +225,7 @@ std::string GetPathRelativeToTheJSONFile(const std::string& path, const ModulePa
     /*absolute path*/
     ret = path;
   } else {
-    ret = jsf_dir + path;
+    ret = config_dir + path;
   }
   return ret;
 }

@@ -64,7 +64,7 @@ std::string GetPathRelativeToTheJSONFile(const std::string &path, const ModulePa
  * @brief CNConfigBase is a base structure for configurations.
  */
 struct CNConfigBase {
-  std::string config_root_dir = "";   ///< The directory where a configuration file is stored.
+  std::string config_root_dir;   ///< The directory where a configuration file is stored.
   /**
    * @brief Parses members from a JSON file.
    *

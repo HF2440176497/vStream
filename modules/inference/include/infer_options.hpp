@@ -47,6 +47,11 @@ class InferOptions {
     return *this;
   }
 
+  InferOptions& SetPostprocOnDevice(bool flag) {
+    postproc_on_device_ = flag;
+    return *this;
+  }
+
   InferOptions& SetBatchingByObj(bool flag) {
     batching_by_obj_ = flag;
     return *this;
@@ -71,6 +76,7 @@ class InferOptions {
     dump_resized_image_dir_ = dump_dir;
     return *this;
   }
+  
   InferOptions& SetSavingInferInput(bool saving_infer_input) {
     saving_infer_input_ = saving_infer_input;
     return *this;
@@ -92,6 +98,7 @@ class InferOptions {
   std::shared_ptr<Postproc> postprocessor() const { return postprocessor_; }
   uint32_t batching_timeout() const { return batching_timeout_; }
   const std::function<void(const std::string& err_msg)>& error_handler() const { return error_func_; }
+  bool postproc_on_device() const { return postproc_on_device_; }
   bool batching_by_obj() const { return batching_by_obj_; }
   std::shared_ptr<ObjPreproc> obj_preprocessor() const { return obj_preprocessor_; }
   std::shared_ptr<ObjPostproc> obj_postprocessor() const { return obj_postprocessor_; }
@@ -108,6 +115,7 @@ class InferOptions {
   std::shared_ptr<Postproc> postprocessor_ = nullptr;
   uint32_t batching_timeout_ = 3000;
   std::function<void(const std::string& err_msg)> error_func_;
+  bool postproc_on_device_ = false;
   bool batching_by_obj_ = false;
   std::shared_ptr<ObjPreproc> obj_preprocessor_ = nullptr;
   std::shared_ptr<ObjPostproc> obj_postprocessor_ = nullptr;

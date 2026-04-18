@@ -52,6 +52,11 @@ std::pair<int, std::string> CreateTempFile(const std::string& filename_prefix);
  */
 std::string readFile(const char* filename);
 
+inline uint64_t get_timestamp_ms() {
+  return std::chrono::duration_cast<std::chrono::milliseconds>(
+    std::chrono::system_clock::now().time_since_epoch()).count();
+}
+
 namespace cnstream {
 
 /**
@@ -240,6 +245,44 @@ class ProcessThree: public Module, public ModuleCreator<ProcessThree> {
   std::mutex mtx_;
 };
 REGISTER_MODULE(ProcessThree);
+
+
+/**
+ * 提取 frame_info 中的 frame_id_s 得到数字，验证是否连续
+ * 配合 test_send 单元测试
+ */
+class ProcessCount: public Module, public ModuleCreator<ProcessCount> {
+ public:
+  ProcessCount(const std::string &name) : Module(name) {}
+  ~ProcessCount() {}
+  bool Open(ModuleParamSet params) override {
+    return true;
+  }
+  void Close() override {
+    LOGI(ProcessCount) << "Close";
+  }
+  void OnEos(const std::string& stream_id) override {
+    LOGI(ProcessCount) << "OnEos: " << stream_id;
+  }
+  int Process(std::shared_ptr<FrameInfo> frame_info) override {
+    DataFramePtr frame = frame_info->collection.Get<DataFramePtr>(kDataFrameTag);
+    if (!frame) {
+      LOGE(ProcessCount) << "frame is empty";
+      return -1;
+    }
+    frame_count_++;
+    int current_frame_id = stoi(frame_info->frame_id_s);
+    if (last_frame_id_ != -1) {
+      EXPECT_EQ(current_frame_id, last_frame_id_ + 1);
+    }
+    last_frame_id_ = current_frame_id;
+  }  // Process
+
+ private:
+  int frame_count_ = 0;
+  int last_frame_id_ = -1;
+}
+REGISTER_MODULE(ProcessCount);
 
 
 }  // namespace cnstream

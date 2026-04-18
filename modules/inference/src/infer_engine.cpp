@@ -36,6 +36,7 @@ InferEngine::InferEngine(const InferOptions& options)
       dump_resized_image_dir_(options.dump_resized_image_dir()),
       batching_timeout_(options.batching_timeout()),
       device_id_(options.device_id()),
+      postproc_on_device_(options.postproc_on_device()),
       batching_by_obj_(options.batching_by_obj()),
       module_name_(options.module_name()),
       error_func_(options.error_handler()) {
@@ -87,6 +88,12 @@ InferEngine::~InferEngine() {
  */
 void InferEngine::StageAssemble() {
 
+  // 目前只允许 device 上的非对象处理，对象后处理只能在 CPU 上
+  if (batching_by_obj_ && postproc_on_device_) {
+    LOGE(INFER) << "postproc_on_device is true, but not allowed for obj processing";
+    return;
+  }
+
   if (batching_by_obj_) {
     obj_batching_stage_ = std::make_shared<CpuPreprocessingObjBatchingStage>(model_, batchsize_, obj_preprocessor_,
                                                                             cpu_input_res_);
@@ -102,16 +109,24 @@ void InferEngine::StageAssemble() {
       std::make_shared<InferBatchingDoneStage>(model_, batchsize_, device_id_, net_input_res_, net_output_res_);
   batching_done_stages_.push_back(infer_stage);
 
-  auto d2h_stage =
+  if (!postproc_on_device_) {
+    auto d2h_stage =
       std::make_shared<D2HBatchingDoneStage>(model_, batchsize_, device_id_, net_output_res_, cpu_output_res_);
-  batching_done_stages_.push_back(d2h_stage);
+    batching_done_stages_.push_back(d2h_stage);
+  }
 
   if (batching_by_obj_) {
       obj_postproc_stage_ = std::make_shared<ObjPostprocessingBatchingDoneStage>(model_, batchsize_, device_id_,
                                                                                  obj_postprocessor_, cpu_output_res_);
   } else {
-    auto postproc_stage =
-        std::make_shared<PostprocessingBatchingDoneStage>(model_, batchsize_, device_id_, postprocessor_, cpu_output_res_);
+    if (postproc_on_device_) {
+      auto postproc_stage =
+          std::make_shared<PostprocessingBatchingDoneStage>(model_, batchsize_, device_id_, postprocessor_, net_output_res_);
+      batching_done_stages_.push_back(postproc_stage);
+    } else {
+      auto postproc_stage =
+          std::make_shared<PostprocessingBatchingDoneStage>(model_, batchsize_, device_id_, postprocessor_, cpu_output_res_);
+    }
     batching_done_stages_.push_back(postproc_stage);
   }
 }

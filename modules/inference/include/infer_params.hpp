@@ -34,8 +34,9 @@ namespace cnstream {
 struct InferParams {
   DevType device_type = DevType::CPU;
   uint32_t device_id = -1;
+  bool postproc_on_device = false;  // 是否在 device 进行后处理，省略 D2H 数据拷贝; infer_param: postproc_on_device_
   bool object_infer = false;
-  float threshold = 0.0f;
+  // float threshold = 0.0f;  // not used
   uint32_t infer_interval = 1;
   uint32_t batching_timeout = 3000;  // ms
   uint32_t trans_data_size = 20;  // queue size

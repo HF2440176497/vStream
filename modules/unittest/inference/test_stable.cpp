@@ -29,11 +29,8 @@ static std::string test_pipeline_json = "pipeline_stable.json";
 class StableTest : public testing::Test {
  protected:
   virtual void SetUp() {
-    std::string json_content = readFile(test_pipeline_json.c_str());
-    EXPECT_FALSE(json_content.empty()) << "Read json file failed";
     cnstream::CNGraphConfig graph_config;
-    graph_config.config_root_dir = "./";
-    graph_config.ParseByJSONStr(json_content);
+    graph_config.ParseByJSONFile(test_pipeline_json.c_str());
     graph_config_ = graph_config;
 
     pipeline_ = std::make_shared<Pipeline>("pipeline");
