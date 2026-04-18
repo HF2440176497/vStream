@@ -1,7 +1,5 @@
 
-
-#include "data_common.hpp"
-#include "consumer_queue.hpp"
+#include "decode_queue.hpp"
 #include "cnstream_collection.hpp"
 #include "cnstream_logging.hpp"
 
@@ -96,7 +94,8 @@ bool DecodeQueue::GetData(s_output_data& data, int wait_ms) {
     } else if (wait_ms == 0) {
         return queue_->TryPop(data);
     } else {
-        return queue_->WaitAndTryPop(data, wait_ms);
+      std::chrono::milliseconds timeout(wait_ms);
+      return queue_->WaitAndTryPop(data, timeout);
     }
     return false;
 }
@@ -143,10 +142,9 @@ bool DecodeQueue::CheckParamSet(const ModuleParamSet& paramSet) const {
   return ret;
 }
 
-bool DecodeQueue::Close() {
+void DecodeQueue::Close() {
     queue_->Stop();
     queue_.reset();
-    return true;
 }
 
 }  // namespace cnstream

@@ -80,10 +80,6 @@ static bool STR2FLOAT(const std::string &value, float *ret) {
   return true;
 }
 
-inline const std::string key_profile_preproc = "PRE_PROC";
-inline const std::string key_profile_inference = "INFER";
-inline const std::string key_profile_postproc = "POST_PROC";
-
 /**
  * invoked in Inference::Inference
  */

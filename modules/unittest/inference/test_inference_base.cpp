@@ -331,7 +331,6 @@ bool InferParamsEQ(const InferParams &p1, const InferParams &p2) {
   return p1.device_type == p2.device_type &&
     p1.device_id == p2.device_id &&
     p1.object_infer == p2.object_infer &&
-    p1.threshold == p2.threshold &&
     p1.infer_interval == p2.infer_interval &&
     p1.batching_timeout == p2.batching_timeout &&
     p1.trans_data_size == p2.trans_data_size &&
@@ -396,7 +395,6 @@ TEST(InferenceBaseTest, Param) {
   std::vector<std::string> infer_param_list = {
     "device_id",
     "object_infer",
-    "threshold",
     "infer_interval",
     "batching_timeout",
     "trans_data_size",
@@ -419,7 +417,6 @@ TEST(InferenceBaseTest, Param) {
   InferParams expect_ret;
   expect_ret.device_id = 1;
   expect_ret.object_infer = true;
-  expect_ret.threshold = 0.5;
   expect_ret.infer_interval = 1;
   expect_ret.batching_timeout = 3;
   expect_ret.trans_data_size = 20;
@@ -437,7 +434,6 @@ TEST(InferenceBaseTest, Param) {
   ModuleParamSet raw_params;
   raw_params["device_id"] = std::to_string(expect_ret.device_id);
   raw_params["object_infer"] = std::to_string(expect_ret.object_infer);
-  raw_params["threshold"] = std::to_string(expect_ret.threshold);
   raw_params["infer_interval"] = std::to_string(expect_ret.infer_interval);
   raw_params["batching_timeout"] = std::to_string(expect_ret.batching_timeout);
   raw_params["trans_data_size"] = std::to_string(expect_ret.trans_data_size);
@@ -468,13 +464,6 @@ TEST(InferenceBaseTest, Param) {
   {
     InferParams ret;
     raw_params["object_infer"] = "wrong";
-    EXPECT_FALSE(manager.ParseBy(raw_params, &ret));
-  }
-
-  raw_params.clear();
-  {
-    InferParams ret;
-    raw_params["threshold"] = "wrong";
     EXPECT_FALSE(manager.ParseBy(raw_params, &ret));
   }
 

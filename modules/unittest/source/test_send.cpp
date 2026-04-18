@@ -17,6 +17,8 @@
 #include <thread>
 #include <typeinfo>
 
+namespace cnstream {
+
 static std::string test_pipeline_send_json = "pipeline_source_send.json";
 static std::string test_image_path = "test_image.png";
 
@@ -113,3 +115,5 @@ TEST_F(SourceSendTest, TestSend) {
   send_thread.join();
   receive_thread.join();
 }
+
+}  // namespace cnstream

@@ -276,12 +276,13 @@ class ProcessCount: public Module, public ModuleCreator<ProcessCount> {
       EXPECT_EQ(current_frame_id, last_frame_id_ + 1);
     }
     last_frame_id_ = current_frame_id;
+    return 0;
   }  // Process
 
  private:
   int frame_count_ = 0;
   int last_frame_id_ = -1;
-}
+};
 REGISTER_MODULE(ProcessCount);
 
 

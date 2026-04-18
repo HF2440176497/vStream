@@ -13,8 +13,6 @@
 #include <typeinfo>
 
 #include <opencv2/opencv.hpp>
-#include <opencv2/imgproc.hpp>
-#include <opencv2/highgui.hpp>
 
 #ifdef VSTREAM_USE_CUDA
 #include "cuda/inspect_mem.hpp"

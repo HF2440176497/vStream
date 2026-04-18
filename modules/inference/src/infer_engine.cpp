@@ -119,6 +119,7 @@ void InferEngine::StageAssemble() {
       obj_postproc_stage_ = std::make_shared<ObjPostprocessingBatchingDoneStage>(model_, batchsize_, device_id_,
                                                                                  obj_postprocessor_, cpu_output_res_);
   } else {
+    // TODO: device 上的后处理需要自己负责数据到 CPU 的拷贝
     if (postproc_on_device_) {
       auto postproc_stage =
           std::make_shared<PostprocessingBatchingDoneStage>(model_, batchsize_, device_id_, postprocessor_, net_output_res_);
@@ -126,8 +127,8 @@ void InferEngine::StageAssemble() {
     } else {
       auto postproc_stage =
           std::make_shared<PostprocessingBatchingDoneStage>(model_, batchsize_, device_id_, postprocessor_, cpu_output_res_);
+      batching_done_stages_.push_back(postproc_stage);
     }
-    batching_done_stages_.push_back(postproc_stage);
   }
 }
 
@@ -241,7 +242,7 @@ void InferEngine::BatchingDone() {
     }
 
     // post(obj)
-    if (batching_by_obj_) {
+    if (batching_by_obj_ && obj_postproc_stage_) {
       auto tasks = obj_postproc_stage_->ObjBatchingDone(batched_finfos_, batched_objs_);
       thread_pool_->SubmitTask(tasks);
       batched_objs_.clear();

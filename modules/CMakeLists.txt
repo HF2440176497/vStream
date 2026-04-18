@@ -47,6 +47,7 @@ endif()
 
 option(build_source "build module source" ON)
 option(build_inference "build module inference" ON)
+option(build_osd "build module osd" ON)
 option(build_va "build stream_va" ON)
 
 # ---[ opencv
@@ -96,6 +97,10 @@ endif()
 
 if(build_inference)
   list(APPEND module_list inference)
+endif()
+
+if(build_osd)
+  list(APPEND module_list osd)
 endif()
 
 file(GLOB srcs ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)

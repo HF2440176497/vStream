@@ -8,9 +8,7 @@
 #include <thread>
 #include <vector>
 
-#include <opencv2/core.hpp>
-#include <opencv2/imgproc.hpp>
-#include <opencv2/highgui.hpp>
+#include <opencv2/opencv.hpp>
 
 #include "cnstream_logging.hpp"
 #include "data_handler_util.hpp"
@@ -25,12 +23,6 @@ namespace cnstream {
  * 提供发送接口，发送到队列，消费者不断取出向下游输送
  */
 class SendHandlerImpl: public SourceRender {
-
-  struct SendFrame {
-    uint64_t pts;
-    std::string frame_id_s;
-    cv::Mat image;
-  };
 
   struct MatBufRef : public IDecBufRef {
     explicit MatBufRef(void* data) : data_(data) {}

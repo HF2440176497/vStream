@@ -650,7 +650,7 @@ int main(int argc, char** argv) {
   int         deviceCount = 0;
   cudaError_t err = cudaGetDeviceCount(&deviceCount);
   if (err != cudaSuccess || deviceCount == 0) {
-    std::cerr << "No CUDA devices found!" << std::endl;
+    std::cerr << "No CUDA devices found" << std::endl;
     return -1;
   }
 

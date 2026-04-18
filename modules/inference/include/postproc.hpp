@@ -74,14 +74,7 @@ class Postproc : virtual public ReflexObjectEx<Postproc> {
     params_ = params;
     return true;
   }
-  /**
-   * @brief Sets threshold.
-   *
-   * @param[in] threshold The value between 0 and 1.
-   *
-   * @return No return value.
-   */
-  void SetThreshold(const float threshold);
+
   /**
    * @brief Executes postproc on network outputs.
    *
@@ -155,14 +148,7 @@ class ObjPostproc : virtual public ReflexObjectEx<ObjPostproc> {
     params_ = params;
     return true;
   }
-  /**
-   * @brief Sets threshold.
-   *
-   * @param[in] threshold The value between 0 and 1.
-   *
-   * @return No return value.
-   */
-  void SetThreshold(const float threshold);
+
   /**
    * @brief Executes post processing on network outputs.
    *

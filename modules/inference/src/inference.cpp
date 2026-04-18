@@ -169,7 +169,6 @@ class InferencePrivate: public NonCopyable {
           LOGE(INFERENCER) << "Postprocessor init failed.";
           return false;
         }
-        obj_postproc_->SetThreshold(params.threshold);
       } else {
         postproc_ = std::shared_ptr<Postproc>(Postproc::Create(params.postproc_name));
         if (!postproc_) {
@@ -180,7 +179,6 @@ class InferencePrivate: public NonCopyable {
           LOGE(INFERENCER) << "Postprocessor init failed.";
           return false;
         }
-        postproc_->SetThreshold(params.threshold);
       }
     }
 

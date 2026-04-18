@@ -24,6 +24,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <opencv2/opencv.hpp>
 
 #include "cnstream_config.hpp"
 
@@ -240,6 +241,13 @@ struct DataSourceParam {
   bool only_key_frame_ = false;                         /*!< Whether only to decode key frames. */
   ModuleParamSet param_set_ {};
 };
+
+struct SendFrame {
+  uint64_t pts;
+  std::string frame_id_s;
+  cv::Mat image;
+};
+
 }  // namespace cnstream
 
 #endif  // MODULES_DATA_SOURCE_PARAM_HPP_

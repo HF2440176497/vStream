@@ -77,7 +77,11 @@ class InferParamManager {
  private:
   bool RegisterParam(ParamRegister *pregister, const InferParamDesc &param_desc);
   std::set<InferParamDesc, InferParamDescLessCompare> param_descs_;
-};  // struct InferParams
+};  // class InferParamManager
+
+inline const std::string key_profile_preproc = "PRE_PROC";
+inline const std::string key_profile_inference = "INFER";
+inline const std::string key_profile_postproc = "POST_PROC";
 
 }  // namespace cnstream
 

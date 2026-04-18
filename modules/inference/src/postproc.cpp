@@ -40,16 +40,14 @@ namespace cnstream {
 
 Postproc::~Postproc() {}
 
-Postproc* Postproc::Create(const std::string& proc_name) { return ReflexObjectEx<Postproc>::CreateObject(proc_name); }
-
-void Postproc::SetThreshold(const float threshold) { threshold_ = threshold; }
+Postproc* Postproc::Create(const std::string& proc_name) { 
+  return ReflexObjectEx<Postproc>::CreateObject(proc_name); 
+}
 
 ObjPostproc::~ObjPostproc() {}
 
 ObjPostproc* ObjPostproc::Create(const std::string& proc_name) {
   return ReflexObjectEx<ObjPostproc>::CreateObject(proc_name);
 }
-
-void ObjPostproc::SetThreshold(const float threshold) { threshold_ = threshold; }
 
 }  // namespace cnstream

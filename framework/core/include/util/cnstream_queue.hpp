@@ -66,12 +66,15 @@ class ThreadSafeQueue {
 
 
 template <typename T>
-void ThreadSafeQueue<T>::Stop(bool clear_queue = true) {
+void ThreadSafeQueue<T>::Stop(bool clear_queue) {
   {
     std::unique_lock<std::mutex> lock(data_m_);
     run_ = false;
     if (clear_queue) {
-      q_.clear();
+      while (!q_.empty()) {
+        // auto& item = q_.front();
+        q_.pop();
+      }
     }
   }
   notempty_cond_.notify_all();
@@ -80,7 +83,7 @@ void ThreadSafeQueue<T>::Stop(bool clear_queue = true) {
 
 template <typename T>
 bool ThreadSafeQueue<T>::TryPop(T& value) {
-  std::lock_guard<std::mutex> lk(data_m_);
+  std::unique_lock<std::mutex> lk(data_m_);
   if (!run_ || q_.empty()) {
     return false;
   } else {
