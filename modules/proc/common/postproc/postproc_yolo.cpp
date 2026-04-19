@@ -109,6 +109,9 @@ class Yolov8Postproc: public Postproc {
     } else {
       return false;
     }
+#ifdef UNIT_TEST
+    LOGI(Postproc) << "Init config_file: " << config_file_;
+#endif
     std::ifstream file(config_file_);
     if (!file.is_open()) {
       LOGE(Postproc) << "Init Could not open file " << config_file_;

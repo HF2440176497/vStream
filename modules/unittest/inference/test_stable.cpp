@@ -61,8 +61,11 @@ class StableTest : public testing::Test {
 
 TEST_F(StableTest, MultiStream) {
 
-  GPUInspect inspect(0);
+  int device_id = 0;
+  GPUInspect inspect(device_id);
   bool force_exit = false;
+
+  EXPECT_TRUE(pipeline_->Start());
 
   DataSource *source = dynamic_cast<DataSource*>(pipeline_->GetModule("decoder"));
   EXPECT_NE(source, nullptr);
@@ -78,7 +81,6 @@ TEST_F(StableTest, MultiStream) {
   auto inference_module = pipeline_->GetModule("Inference");
   EXPECT_NE(inference_module, nullptr);
 
-  EXPECT_TRUE(pipeline_->Start());
   std::this_thread::sleep_for(std::chrono::seconds(10));
 
   auto profiler = inference_module->GetProfiler();

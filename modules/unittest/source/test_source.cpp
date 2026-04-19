@@ -162,10 +162,7 @@ class VideoSourceTest : public testing::Test {
 };
 
 TEST(Source, BasicOutput) {
-  std::cout << "=== Standard output test ===" << std::endl;
-  std::cout << "Calling LOGI..." << std::endl;
   LOGI(MODULESUNITEST) << "LOGI test message";
-  std::cout << "LOGI call completed" << std::endl;
   LOGW(MODULESUNITEST) << "LOGW test message";
   LOGE(MODULESUNITEST) << "LOGE test message";
 }
@@ -221,11 +218,11 @@ TEST_F(SourceModuleTest, Loop) {
   image_handler_ = std::dynamic_pointer_cast<ImageHandler>(source_handler_ptr);
   EXPECT_NE(image_handler_, nullptr);
 
-  EXPECT_EQ(source->AddSource(image_handler_), 0);
-  EXPECT_TRUE(image_handler_->impl_->running_);
-
   EXPECT_TRUE(pipeline_->Start());
   EXPECT_FALSE(IsStreamRemoved(stream_id_));  // 此处不应当被移除
+
+  EXPECT_EQ(source->AddSource(image_handler_), 0);
+  EXPECT_TRUE(image_handler_->impl_->running_);
 
   // AddSource 之后，handler handler 理应可以获取到配置参数
   std::cout << "image_handler_->impl_->image_path = " << image_handler_->impl_->image_path_ << std::endl;

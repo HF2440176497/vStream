@@ -146,7 +146,7 @@ void SendHandlerImpl::Loop() {
       }
     }
 #ifdef UNIT_TEST
-    LOGI(SOURCE) << "SendHandlerImpl: Loop; image width: " << send_frame.image.cols << ", height: " << send_frame.image.rows << ", alloca data_size: " << data_size;
+    LOGD(SOURCE) << "SendHandlerImpl: Loop; image width: " << send_frame.image.cols << ", height: " << send_frame.image.rows << ", alloca data_size: " << data_size;
 #endif
 
     frame.stride[0] = frame.width * send_frame.image.elemSize();  // BGR格式每个像素3字节

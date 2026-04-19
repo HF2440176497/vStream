@@ -16,6 +16,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <mutex>
 
 #include "model_loader.hpp"
 
@@ -65,6 +66,7 @@ class ModelLoaderTrt : public ModelLoader {
   std::unique_ptr<nvinfer1::ICudaEngine, TrtDeleter> engine_ = nullptr;
   std::unique_ptr<nvinfer1::IExecutionContext, TrtDeleter> context_ = nullptr;
   cudaStream_t stream_ = nullptr;
+  std::mutex mutex_;
 
 };  // end of ModelLoaderTrt
 

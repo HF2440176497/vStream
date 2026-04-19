@@ -298,6 +298,7 @@ bool ModelLoaderTrt::ParseBindings() {
  * 在解析模型阶段，需要确保 tensor shape 已设置
  */
 bool ModelLoaderTrt::RunSync(std::vector<std::shared_ptr<void>> inputs, std::vector<std::shared_ptr<void>> outputs) {
+  std::lock_guard<std::mutex> lock(mutex_);
   for (int i = 0; i < inputs.size(); ++i) {
     context_->setInputTensorAddress(input_names_[i].c_str(), inputs[i].get());
   }

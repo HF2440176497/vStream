@@ -16,7 +16,6 @@ DecodeQueue::DecodeQueue(const std::string& name) : Module(name) {
 }
 
 DecodeQueue::~DecodeQueue() {
-  Close();
 }
 
 int DecodeQueue::Process(std::shared_ptr<FrameInfo> data) {
@@ -76,6 +75,9 @@ void DecodeQueue::OnFrame(std::shared_ptr<FrameInfo> frame_info) {
 }
 
 bool DecodeQueue::Push(const s_output_data& data) {
+    if (!queue_) {
+        return false;
+    }
     return queue_->Push(data);
 }
 
@@ -85,6 +87,9 @@ bool DecodeQueue::Push(const s_output_data& data) {
  * @return true 成功获取数据，false 失败获取数据
  */
 bool DecodeQueue::GetData(s_output_data& data, int wait_ms) {
+    if (!queue_) {
+        return false;
+    }
     if (wait_ms < 0) {
         queue_->WaitAndPop(data);
         if (data.result != 0) {  // 说明此时队列可能停止
@@ -143,8 +148,10 @@ bool DecodeQueue::CheckParamSet(const ModuleParamSet& paramSet) const {
 }
 
 void DecodeQueue::Close() {
-    queue_->Stop();
-    queue_.reset();
+    if (queue_) {
+        queue_->Stop();
+        queue_.reset();
+    }
 }
 
 }  // namespace cnstream
