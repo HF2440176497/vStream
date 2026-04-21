@@ -33,10 +33,10 @@ namespace cnstream {
 class DataFrame : public NonCopyable {
  public:
   DataFrame() {
-    for (int i = 0; i < CN_MAX_PLANES; ++i) {
+    for (int i = 0; i < FRAME_MAX_PLANES; ++i) {
       data_[i] = nullptr;
     }
-    for (int i = 0; i < CN_MAX_PLANES; ++i) {
+    for (int i = 0; i < FRAME_MAX_PLANES; ++i) {
       stride_[i] = 0;
     }
   };
@@ -68,7 +68,7 @@ class DataFrame : public NonCopyable {
   int GetStride(int plane_idx) const { return stride_[plane_idx]; }
   const DevContext& GetCtx() const { return ctx_; }
 
-  std::unique_ptr<CNSyncedMemory> data_[CN_MAX_PLANES];
+  std::unique_ptr<CNSyncedMemory> data_[FRAME_MAX_PLANES];
   std::unique_ptr<IDataDeallocator> deAllocator_ = nullptr;
   
 #ifdef UNIT_TEST
@@ -84,7 +84,7 @@ class DataFrame : public NonCopyable {
   DataFormat fmt_ = DataFormat::INVALID;
   int width_ = 0;
   int height_ = 0;
-  int stride_[CN_MAX_PLANES];
+  int stride_[FRAME_MAX_PLANES];
   
   friend class SourceRender;
 

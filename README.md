@@ -23,9 +23,11 @@
 
 | 库 | 版本 |
 |:---|:---:|
+| gflags | 2.3.0 |
+| glog | 0.7.1 |
 | nlohmann/json | 3.11.3 |
 | googletest | 1.15.2 |
-| pybind11 | 3.0.3 |
+| pybind11 | 3.0.4 |
 
 ---
 

@@ -135,7 +135,7 @@ bool DecodeQueue::CheckParamSet(const ModuleParamSet& paramSet) const {
   ParametersChecker checker;
   for (auto &it : paramSet) {
     if (!param_register_.IsRegisted(it.first)) {
-      LOGW(DECODE_QUEUE) << "[DecodeQueue] Unknown param: " << it.first << "; Maybe for handler usage";
+      LOGW(DECODE_QUEUE) << "[DecodeQueue] unknown param: " << it.first << "; Maybe for handler usage";
     }
   }
   // 如果存在配置项，则进行对应检查

@@ -87,7 +87,7 @@ bool ProfilerConfig::ParseByJSONStr(const std::string& jstr) {
         return false;
       }
     } else {
-        LOGE(CORE) << "Unknown parameter named [" << key << "] for profiler_config.";
+        LOGE(CORE) << "unknown parameter named [" << key << "] for profiler_config.";
         return false;
     }
   }

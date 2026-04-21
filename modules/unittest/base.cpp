@@ -96,7 +96,7 @@ DecodeFrame* CreateTestDecodeFrame(DataFormat fmt, int width, int height) {
   frame->device_id = -1;
   frame->planeNum = 0;
 
-  for (int i = 0; i < CN_MAX_PLANES; ++i) {
+  for (int i = 0; i < FRAME_MAX_PLANES; ++i) {
     frame->plane[i] = nullptr;
     frame->stride[i] = 0;
   }

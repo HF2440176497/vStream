@@ -304,6 +304,24 @@ class Module : private NonCopyable {
   size_t id_ = INVALID_MODULE_ID;
   NodeContext* context_ = nullptr;  // 外界创建传入的 使用裸指针
   std::shared_ptr<Connector> connector_ = nullptr;  // 完全交给 Module
+};  // class Module
+
+/**
+ * @class ModuleEx
+ *
+ * @brief ModuleEx is the base class of the modules who have permission to transmit processed data by themselves.
+ */
+class ModuleEx : public Module {
+ public:
+  /**
+   * @brief Constructor. A constructor to construct the module which has permission to transmit processed data by
+   *        itself.
+   *
+   * @param[in] name The name of a module. Modules defined in a pipeline must have different names.
+   *
+   * @return No return value.
+   */
+  explicit ModuleEx(const std::string &name) : Module(name) { hasTransmit_.store(true); }
 };
 
 }  // namespace cnstream

@@ -30,7 +30,7 @@
 
 namespace cnstream {
 
-inline constexpr uint32_t CN_MAX_PLANES = 3;
+inline constexpr uint32_t FRAME_MAX_PLANES = 3;
 
 /**
  * @enum DataFormat
@@ -133,7 +133,7 @@ enum class OutputType {
  */
 enum class DecoderType {
   DECODER_CPU,  /*!< CPU decoder is used. */
-  DECODER_CUDA,  /*!< Video decoder is used. */
+  DECODER_CUDA,  /*!< CUDA decoder is used. */
   DECODER_NPU   /*!< NPU decoder is used. */
 };
 
@@ -177,7 +177,7 @@ struct DecodeFrame {
   DecodeFrame(int height, int width, DataFormat fmt = DataFormat::PIXEL_FORMAT_BGR24) : height(height), width(width), fmt(fmt) {
     valid = true;
     pts = 0;
-    for (int i = 0; i < CN_MAX_PLANES; ++i) {
+    for (int i = 0; i < FRAME_MAX_PLANES; ++i) {
       plane[i] = nullptr;
       stride[i] = 0;
     }
@@ -193,14 +193,14 @@ struct DecodeFrame {
   
   DataFormat fmt;
   int32_t planeNum;
-  void *plane[CN_MAX_PLANES];
-  int stride[CN_MAX_PLANES];
+  void *plane[FRAME_MAX_PLANES];
+  int stride[FRAME_MAX_PLANES];
   std::unique_ptr<IDecBufRef> buf_ref = nullptr;
 
  public:
   ~DecodeFrame() {
     // note: DecodeFrame 不负责 plane 的内存管理
-    for (int i = 0; i < CN_MAX_PLANES; ++i) {
+    for (int i = 0; i < FRAME_MAX_PLANES; ++i) {
       plane[i] = nullptr;
     }
     buf_ref.reset();

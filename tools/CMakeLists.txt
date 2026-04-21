@@ -92,12 +92,7 @@ endif()
 include_directories(${VSTREAM_ROOT_PATH}/3rdparty/libyuv/include)
 
 # ---[ Options
-option(build_inspect "build cnstream inspect" ON)
 option(build_demo "build demo executable file" ON)
-
-if(build_inspect)
-  add_subdirectory(inspect)
-endif()
 
 if(build_demo)
   add_subdirectory(demo)

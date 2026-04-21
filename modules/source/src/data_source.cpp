@@ -109,7 +109,7 @@ bool DataSource::CheckParamSet(const ModuleParamSet &paramSet) const {
   ParametersChecker checker;
   for (auto &it : paramSet) {
     if (!param_register_.IsRegisted(it.first)) {
-      LOGW(SOURCE) << "[DataSource] Unknown param: " << it.first << "; Maybe for handler usage";
+      LOGW(SOURCE) << "[DataSource] unknown param: " << it.first << "; Maybe for handler usage";
     }
   }
   std::string err_msg;

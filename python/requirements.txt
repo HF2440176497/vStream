@@ -1,0 +1,3 @@
+numpy==2.1.3
+opencv-python==4.12.0.88
+pybind11==3.0.4
