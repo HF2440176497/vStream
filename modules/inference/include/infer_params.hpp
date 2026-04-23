@@ -41,8 +41,7 @@ struct InferParams {
   uint32_t batching_timeout = 3000;  // ms
   uint32_t trans_data_size = 20;  // queue size
   std::string model_path;
-  uint32_t input_ordered_index = 0;  // 单输入单输出模型的张量索引，默认0
-  uint32_t output_ordered_index = 0;
+  uint32_t input_ordered_index = 0;  // 单输入的张量索引，默认0, 输出张量索引不进行配置
   std::string preproc_name;
   std::string postproc_name;
   std::string obj_filter_name;

@@ -45,29 +45,6 @@ std::string GetExePath() {
   return result;
 }
 
-void CheckExePath(const std::string& path) {
-  if (path.size() == 0) {
-    LOGF_IF(COREUNITEST, 0 != errno) << std::string(strerror(errno));
-    LOGF(COREUNITEST) << "length of exe path is larger than " << PATH_MAX_LENGTH;
-  }
-}
-
-// Unix-like systems function
-// 根据路径创建临时文件，在外需要手动维护关闭
-std::pair<int, std::string> CreateTempFile(const std::string& filename_prefix) {
-  char filename[PATH_MAX_LENGTH];
-  if (filename_prefix.size() > PATH_MAX_LENGTH - random_field_str.size()) {
-    LOGF(COREUNITEST) << "filename_prefix is too long, must be less than " << PATH_MAX_LENGTH - random_field_str.size() << std::endl;
-  }
-  strncpy(filename, filename_prefix.c_str(), filename_prefix.size());
-  strncpy(filename + filename_prefix.size(), random_field_str.c_str(), random_field_str.size());
-  int fd = mkstemp(filename);
-  LOGF_IF(COREUNITEST, -1 == fd) << "Create temporary file for BuildPipelineByJSONFile test case failed! "
-      << strerror(errno);
-  return std::make_pair(fd, std::string(filename));
-}
-
-
 std::string readFile(const char* filename) {
     std::ifstream file(filename);
     if (!file.is_open()) {

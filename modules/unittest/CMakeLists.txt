@@ -1,32 +1,46 @@
 
-
 if(NOT DEFINED VSTREAM_ROOT_PATH)
   set(VSTREAM_ROOT_PATH ${CMAKE_CURRENT_SOURCE_DIR}/..
       CACHE INTERNAL "Top-level directory of this project")
 endif()
 
-include(${VSTREAM_ROOT_PATH}/cmake/FindGtest.cmake)
-if(GTEST_FOUND)
-  message(STATUS "Using installed GTest for modules unittest")
-  include_directories(${GTEST_INCLUDE_DIRS})
-else()
-  if(NOT has_built_gtest)
-    add_subdirectory(${VSTREAM_ROOT_PATH}/3rdparty/googletest)
-    set(has_built_gtest TRUE)
+set(VSTREAM_MODULES_UNITTEST_DEPENDENCIES "")
+set(VSTREAM_MODULES_UNITTEST_3RDPARTY_INCLUDE "")
+set(VSTREAM_MODULES_UNITTEST_3RDPARTY_LIBS "")
+
+if(DEFINED VSTREAM_HAS_BUILT_GTEST AND VSTREAM_HAS_BUILT_GTEST)
+  if(TARGET gtest::gtest)
+    list(APPEND VSTREAM_MODULES_UNITTEST_3RDPARTY_LIBS gtest::gtest)
+    message(STATUS "Using built GTest for modules unittest (target: gtest::gtest)")
+  elseif(TARGET GTest::gtest)
+    list(APPEND VSTREAM_MODULES_UNITTEST_3RDPARTY_LIBS GTest::gtest)
+    message(STATUS "Using built GTest for modules unittest (target: GTest::gtest)")
+  elseif(TARGET gtest)
+    list(APPEND VSTREAM_MODULES_UNITTEST_3RDPARTY_LIBS gtest)
+    message(STATUS "Using built GTest for modules unittest (target: gtest)")
+  else()
+    message(FATAL_ERROR "gtest target not found. Please ensure googletest is built")
   endif()
-  include_directories(${VSTREAM_ROOT_PATH}/3rdparty/googletest/googletest/include)
+else()
+  include(${VSTREAM_ROOT_PATH}/cmake/FindGtest.cmake)
+  if(GTEST_FOUND)
+    message(STATUS "Using installed GTest for modules unittest")
+    list(APPEND VSTREAM_MODULES_UNITTEST_3RDPARTY_INCLUDE ${GTEST_INCLUDE_DIRS})
+    list(APPEND VSTREAM_MODULES_UNITTEST_3RDPARTY_LIBS ${GTEST_LIBRARIES})
+  else()
+    message(FATAL_ERROR "GTest not found! Please enable VSTREAM_BUILD_TESTS to build googletest or install GTest")
+  endif()
 endif()
 
-# 必须包含框架头文件
-include_directories(${VSTREAM_ROOT_PATH}/framework/core/include)
-include_directories(${VSTREAM_ROOT_PATH}/framework/core/include/private)
-include_directories(${VSTREAM_ROOT_PATH}/framework/core/include/util)
+# include_directories(${VSTREAM_ROOT_PATH}/framework/core/include)
+# include_directories(${VSTREAM_ROOT_PATH}/framework/core/include/private)
+# include_directories(${VSTREAM_ROOT_PATH}/framework/core/include/util)
 
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/..)
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../util/include)  # modules/util 头文件
+# include_directories(${CMAKE_CURRENT_SOURCE_DIR}/..)
+# include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../util/include)  # vstream/modules/util/include
 
-# unittest 头文件
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
+# # unittest 头文件
+# include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 set(test_srcs "")
 list(APPEND test_srcs ${CMAKE_CURRENT_SOURCE_DIR}/base.cpp)
@@ -49,7 +63,7 @@ have_modules_target(${VSTREAM_ROOT_PATH})
 
 if(HAVE_FRAMEWORK_TARGET AND HAVE_MODULES_TARGET)
   foreach(module ${module_list})
-    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../${module}/include)  # modules/$module_name/include
+    # include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../${module}/include)  # modules/$module_name/include
     file(GLOB_RECURSE test_${module}_srcs ${CMAKE_CURRENT_SOURCE_DIR}/${module}/*.cpp)
     list(APPEND test_srcs ${test_${module}_srcs})
   endforeach()
@@ -58,26 +72,26 @@ else()
 endif()
 
 add_executable(vstream_modules_test ${test_srcs})
-add_dependencies(vstream_modules_test vstream_va vstream_core)
-
-set(MODULES_TEST_DEPENDENCIES vstream_va vstream_core)
-
-if(DEFINED MODULES_3RDPARTY_LIBS AND DEFINED MODULES_DEPENDENCIES)
-  list(APPEND MODULES_TEST_DEPENDENCIES ${MODULES_3RDPARTY_LIBS})
-  list(APPEND MODULES_TEST_DEPENDENCIES ${MODULES_DEPENDENCIES})
-else()
-  message(FATAL_ERROR "modules must define 3rd-party libraries and dependencies")
-endif()
+list(APPEND VSTREAM_MODULES_UNITTEST_DEPENDENCIES vstream_va vstream_core)
 
 if(HAVE_FRAMEWORK_TARGET AND HAVE_MODULES_TARGET)
   if(DEFINED VSTREAM_LIB_PATH)
     set_target_properties(vstream_modules_test PROPERTIES
-        BUILD_RPATH ${VSTREAM_LIB_PATH}
+      BUILD_RPATH ${VSTREAM_LIB_PATH}
     )
   endif()
-  if(GTEST_FOUND)
-    target_link_libraries(vstream_modules_test ${MODULES_TEST_DEPENDENCIES} ${GTEST_LIBRARIES} glog gflags rt dl pthread)
-  elseif(has_built_gtest)
-    target_link_libraries(vstream_modules_test ${MODULES_TEST_DEPENDENCIES} gtest glog gflags rt dl pthread)
-  endif()
+  target_include_directories(vstream_modules_test 
+   PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${VSTREAM_MODULES_3RDPARTY_INCLUDE}
+    ${VSTREAM_MODULES_UNITTEST_3RDPARTY_INCLUDE}
+  )
+  target_link_libraries(vstream_modules_test
+   PUBLIC
+    ${VSTREAM_MODULES_DEPENDENCIES}
+    ${VSTREAM_MODULES_UNITTEST_DEPENDENCIES}
+   PRIVATE
+    ${VSTREAM_MODULES_3RDPARTY_LIBS}
+    ${VSTREAM_MODULES_UNITTEST_3RDPARTY_LIBS}
+  )
 endif()

@@ -18,9 +18,9 @@ namespace cnstream {
  * libnvidia-ml 是 NVIDIA 提供的管理 GPU 的库，是 nvidia-driver 提供的
  */
 
-class GPUInspect {
+class CudaMemInspect {
  public:
-  GPUInspect(int device_id = 0) : device_id_(device_id), initialized_(false) {
+  CudaMemInspect(int device_id = 0) : device_id_(device_id), initialized_(false) {
     nvmlReturn_t result = nvmlInit();
     if (result == NVML_SUCCESS) {
       result = nvmlDeviceGetHandleByIndex(device_id, &device_handle_);
@@ -30,7 +30,7 @@ class GPUInspect {
     }
   }
 
-  ~GPUInspect() {
+  ~CudaMemInspect() {
     if (initialized_) {
       nvmlShutdown();
     }
@@ -197,7 +197,7 @@ class GPUInspect {
   int device_id_;
   bool initialized_;
   nvmlDevice_t device_handle_;
-};  // end GPUInspect
+};  // end CudaMemInspect
 
 
 }  // namespace cnstream

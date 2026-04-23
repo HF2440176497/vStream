@@ -104,15 +104,6 @@ void InferParamManager::RegisterAll(ParamRegister *pregister) {
   };
   ASSERT(RegisterParam(pregister, param));
 
-  param.name = "output_ordered_index";
-  param.desc_str = "Optional. The index of the output tensor in the model. Default is 0.";
-  param.default_value = "0";
-  param.type = "uint32";
-  param.parser = [](const std::string &value, InferParams *param_set) -> bool {
-    return STR2U32(value, &param_set->output_ordered_index);
-  };
-  ASSERT(RegisterParam(pregister, param));
-
   param.name = "postproc_name";
   param.desc_str =
       "Required. The class name for postprocess. The class specified by this name "

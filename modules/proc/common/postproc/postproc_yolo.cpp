@@ -155,7 +155,7 @@ class Yolov8Postproc: public Postproc {
       model_name_ = model->get_name();
     }
     int input_index = model->get_input_ordered_index();
-    int output_index = model->get_output_ordered_index();
+    int output_index = 0;  // output tensor index
 
     const int input_w = model->get_width();
     const int input_h = model->get_height();

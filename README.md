@@ -17,7 +17,7 @@
 
 ### 必需依赖
 
-`gflags` · `glog` · `opencv`
+`ffmpeg` · `opencv`
 
 ### 已包含的第三方库
 
@@ -59,7 +59,7 @@ make -j$(nproc)
     "class_name": "cnstream::Inference",
     "next_modules": [],
     "custom_params": { 
-      "model_path": "./models/detect.mlu"
+      "model_path": "./models/detect.engine"
     }
   }
 }
@@ -121,10 +121,10 @@ vStream/
 - [x] EventBus 事件总线
 - [x] SourceModule 数据源模块
 - [x] Inference 推理模块
+- [x] Python 绑定
 
 ## 🚧 待开发
-- [ ] Python 绑定
-- [ ] Encoder/Render 模块
+- [ ] Encoder 推流模块
 
 ## 📌 适配模型
 

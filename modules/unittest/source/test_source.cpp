@@ -26,11 +26,9 @@ static std::string test_pipeline_video_json = "pipeline_source_video.json";
 // 定义在 base.hpp 中
 std::string process_module_name = "ProcessOne";
 
-
 static bool has_save_frame_mat = false;
 static std::string save_file = "save_image/test_source_save.jpg";
 
-// 在测试实例中，定义出这个 virtual module
 class InferenceProcess: public Module, public ModuleCreator<InferenceProcess> {
   public:
     InferenceProcess(const std::string &name) : Module(name) {}
@@ -50,23 +48,22 @@ class InferenceProcess: public Module, public ModuleCreator<InferenceProcess> {
 
     int Process(std::shared_ptr<FrameInfo> frame_info) override {
       frame_count_++;
-      LOGI(InferenceProcess) << "---------- Process frame " << frame_info->stream_id << "; with time: " << frame_info->timestamp;
       DataFramePtr frame = frame_info->collection.Get<DataFramePtr>(kDataFrameTag);
       if (!frame) {
         LOGE(InferenceProcess) << "frame is empty";
         return -1;
       }
-      std::cout << "--- frame datafmt: " << DataFormat2Str(frame->GetFmt()) << std::endl;
-      std::cout << "--- frame devtype: " << DevType2Str(frame->GetCtx().device_type) << std::endl;
-      std::cout << "--- frame devid: " << frame->GetCtx().device_id << std::endl;
-      
-      std::cout << "--- frame image height: " << frame->GetHeight() << std::endl;  
-      std::cout << "--- frame image width: " << frame->GetWidth() << "; stride: " << frame->GetStride(0) << std::endl;
+      // 打印 DataFrame 的相关信息
+      // LOGD(InferenceProcess) << "--- frame [" << frame_count_ << "] datafmt: " << DataFormat2Str(frame->GetFmt());
+      // LOGD(InferenceProcess) << "--- frame [" << frame_count_ << "] devtype: " << DevType2Str(frame->GetCtx().device_type);
+      // LOGD(InferenceProcess) << "--- frame [" << frame_count_ << "] devid: " << frame->GetCtx().device_id;
+      // LOGD(InferenceProcess) << "--- frame [" << frame_count_ << "] image height: " << frame->GetHeight();
+      // LOGD(InferenceProcess) << "--- frame [" << frame_count_ << "] image width: " << frame->GetWidth() << "; stride: " << frame->GetStride(0);
 
       // 打印 SyncMem 状态
       for (int i = 0; i < frame->GetPlanes(); ++i) {
         std::string mem_status_info = frame->data_[i]->StatusToString();
-        std::cout << "--- frame plane " << i << " mem status: " << mem_status_info << std::endl;
+        LOGD(InferenceProcess) << "--- frame [" << frame_count_ << "] plane " << i << " mem status: " << mem_status_info;
       }
 
       // 尝试通过 SyncMem 落地图片
@@ -80,8 +77,8 @@ class InferenceProcess: public Module, public ModuleCreator<InferenceProcess> {
       }
 
       if (frame_count_ % 100 == 0) {
-        GPUInspect inspect(0);
-        std::cout << inspect.GetBriefInfo() << std::endl;
+        CudaMemInspect inspect(0);
+        LOGD(InferenceProcess) << inspect.GetBriefInfo();
       }
       if (!has_save_frame_mat) {
         cv::imwrite(save_file, frame_mat);

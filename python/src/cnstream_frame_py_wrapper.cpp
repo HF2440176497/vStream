@@ -34,7 +34,7 @@ namespace cnstream {
 
 std::shared_ptr<py::class_<FrameInfo, std::shared_ptr<FrameInfo>>> g_py_frame_info;
 
-void CNFrameInfoWrapper(const py::module &m) {
+void FrameInfoWrapper(const py::module &m) {
   g_py_frame_info = std::make_shared<py::class_<FrameInfo, std::shared_ptr<FrameInfo>>>(m, "FrameInfo");
 
   (*g_py_frame_info)

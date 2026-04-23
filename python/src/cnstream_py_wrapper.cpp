@@ -28,10 +28,9 @@ void FrameInfoWrapper(const py::module&);
 void FrameVaWrapper(const py::module&);
 void ModuleWrapper(py::module &);
 void SourceModuleWrapper(const py::module &);
-void ConfigWrapper(py::module &);
 void PipelineWrapper(py::module &);
 void DataHandlerWrapper(const py::module &);
-void ProfileWrapper(const py::module &);
+void OsdModuleWrapper(py::module &);
 
 PYBIND11_MODULE(cnstream, m) {
   m.doc() = "vstream python api";
@@ -39,10 +38,9 @@ PYBIND11_MODULE(cnstream, m) {
   FrameVaWrapper(m);
   ModuleWrapper(m);
   SourceModuleWrapper(m);
-  ConfigWrapper(m);
   PipelineWrapper(m);
   DataHandlerWrapper(m);
-  ProfileWrapper(m);
+  OsdModuleWrapper(m);
 }
 
 }  // namespace cnstream

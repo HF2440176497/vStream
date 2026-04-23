@@ -37,7 +37,7 @@ TEST(CudaAllocator, CudaMemAllocLoop) {
   cudaGetDevice(&device_id);
   std::cout << " CudaMemAllocLoop use device_id: " << device_id << std::endl;
   
-  GPUInspect inspect(device_id);
+  CudaMemInspect inspect(device_id);
   // 循环申请释放内存，查看内存使用
   for (int i = 0; i < 5000; ++i) {
     std::shared_ptr<void> cur_mem = cnCudaMemAlloc(4000, device_id);

@@ -21,9 +21,8 @@ class ModelLoader {
   virtual ~ModelLoader() = default;
   virtual bool IsValid() = 0;
   virtual bool Init(const std::string& engine_path, const InferParams& params) = 0;
-  virtual void SetInputOrderedIndex(int input_index, int output_index) {
+  virtual void SetInputOrderedIndex(int input_index) {
     input_ordered_index_ = input_index;
-    output_ordered_index_ = output_index;
   }
   const std::string& get_name() { return name_; };
 
@@ -82,7 +81,6 @@ class ModelLoader {
     return "";
   }
   int get_input_ordered_index() const { return input_ordered_index_; }
-  int get_output_ordered_index() const { return output_ordered_index_; }
 
   size_t GetInputDataBatchAlignSize(uint32_t index) const {
     return InputShape(index).DataCount() * data_type_size(input_data_types_[index]);
@@ -114,8 +112,9 @@ class ModelLoader {
   std::map<std::string, int> bind_name_index_map_{};  // bind_name - index
   std::string                input_name_;             // one input name
   std::string                output_name_;            // one output name
+
+  // note: 图像模型需要确定 input_tensor_index 才能确定 batch_size
   uint32_t                   input_ordered_index_;
-  uint32_t                   output_ordered_index_;
 };
 
 

@@ -98,7 +98,6 @@ class ModelLoaderTest : public testing::Test {
     params.device_id = 0;
     params.model_path = model_path;
     params.input_ordered_index = 0;
-    params.output_ordered_index = 0;
 
     ASSERT_TRUE(model_loader_->Init(model_path, params));
 
@@ -146,7 +145,7 @@ TEST_F(ModelLoaderTest, Run) {
   InitModelLoader();
 
   auto input_index = model_loader_->get_input_ordered_index();
-  auto output_index = model_loader_->get_output_ordered_index();
+  auto output_index = 0;  // output tensor index
 
   std::cout << "Input index: [" << input_index << "]; Output index: [" << output_index << "]" << std::endl;
 

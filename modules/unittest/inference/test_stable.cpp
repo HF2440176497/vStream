@@ -62,7 +62,7 @@ class StableTest : public testing::Test {
 TEST_F(StableTest, MultiStream) {
 
   int device_id = 0;
-  GPUInspect inspect(device_id);
+  CudaMemInspect inspect(device_id);
   bool force_exit = false;
 
   EXPECT_TRUE(pipeline_->Start());

@@ -144,7 +144,7 @@ bool ModelLoaderTrt::Init(const std::string& engine_path, const InferParams& par
     return false;
   }    
   // Set input ordered index
-  SetInputOrderedIndex(params.input_ordered_index, params.output_ordered_index);
+  SetInputOrderedIndex(params.input_ordered_index);
   return LoadEngine(engine_path);
 }
 
@@ -237,23 +237,12 @@ bool ModelLoaderTrt::ParseBindings() {
     bind_name_index_map_[bind_name] = i;
   }
 
-  // TODO: 目前只支持单个输入输出
   if (input_names_.size() > 1) {
       LOGW(MODEL) << "Model with " << input_names_.size() << " inputs, choose input index: " << input_ordered_index_;
       input_name_ = input_names_[input_ordered_index_];
       int index_ = bind_name_index_map_[input_name_];
       if (index_ != input_ordered_index_) {
         LOGF(MODEL) << "input_index_ not match bind_name: " << input_name_ << " actual_index: " << index_ << std::endl;
-        return false;
-      }
-  }
-
-  if (output_names_.size() > 1) {
-      LOGW(MODEL) << "Model with " << output_names_.size() << " outputs, choose output index: " << output_ordered_index_;
-      output_name_ = output_names_[output_ordered_index_];
-      int index_ = bind_name_index_map_[output_name_];
-      if (index_ != output_ordered_index_) {
-        LOGF(MODEL) << "output_index_ not match bind_name: " << output_name_ << " actual_index: " << index_ << std::endl;
         return false;
       }
   }
