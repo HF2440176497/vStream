@@ -29,7 +29,7 @@
 #include <string>
 #include <utility>
 
-#include "pymodule.h"
+#include "pymodule.hpp"
 
 namespace py = pybind11;
 
@@ -68,7 +68,7 @@ class Pybind11ModuleV : public ModuleBase {
         Module,
         Close);
   }
-  int Process(std::shared_ptr<CNFrameInfo> data) override {
+  int Process(std::shared_ptr<FrameInfo> data) override {
     PYBIND11_OVERRIDE_PURE(
         int,
         Module,
@@ -181,7 +181,7 @@ void PyModule::Close() {
   }
 }
 
-int PyModule::Process(std::shared_ptr<CNFrameInfo> data) {
+int PyModule::Process(std::shared_ptr<FrameInfo> data) {
   {
     py::gil_scoped_acquire gil;
     if (instance_has_transmit_) {
@@ -225,7 +225,7 @@ void ModuleWrapper(py::module &m) {  // NOLINT
       .def("post_event", [] (detail::Pybind11Module* module, EventType type, const std::string &smsg) {
             return module->proxy_ ? module->proxy_->PostEvent(type, smsg) : false;
           })
-      .def("transmit_data", [] (detail::Pybind11Module* module, std::shared_ptr<CNFrameInfo> data) {
+      .def("transmit_data", [] (detail::Pybind11Module* module, std::shared_ptr<FrameInfo> data) {
             return module->HasTransmit() ? (module->proxy_ ? module->proxy_->TransmitData(data) : false) : false;
           }, py::call_guard<py::gil_scoped_release>())
           

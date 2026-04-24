@@ -34,7 +34,7 @@ class __attribute__((visibility("default"))) PyModule : public ModuleEx, public 
   bool CheckParamSet(const ModuleParamSet &params) const override;
   bool Open(ModuleParamSet params) override;
   void Close() override;
-  int Process(std::shared_ptr<CNFrameInfo> data) override;
+  int Process(std::shared_ptr<FrameInfo> data) override;
 
  private:
   pybind11::object pyinstance_;

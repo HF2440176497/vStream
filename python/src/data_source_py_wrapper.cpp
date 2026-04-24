@@ -65,7 +65,7 @@ void DataHandlerWrapper(const py::module &m) {
       .def(py::init([](DataSource *module, const std::string &stream_id) {
         auto image_handler = ImageHandler::Create(module, stream_id);
         if (!image_handler)
-          return nullptr;
+          return std::shared_ptr<ImageHandler>();
         return std::dynamic_pointer_cast<ImageHandler>(image_handler);
       }), py::arg("module"), py::arg("stream_id"))
       .def("open", &ImageHandler::Open)
@@ -76,7 +76,7 @@ void DataHandlerWrapper(const py::module &m) {
       .def(py::init([](DataSource *module, const std::string &stream_id) {
         auto video_handler = VideoHandler::Create(module, stream_id);
         if (!video_handler)
-          return nullptr;
+          return std::shared_ptr<VideoHandler>();
         return std::dynamic_pointer_cast<VideoHandler>(video_handler);
       }), py::arg("module"), py::arg("stream_id"))
       .def("open", &VideoHandler::Open)
@@ -109,7 +109,7 @@ void DataHandlerWrapper(const py::module &m) {
       .def(py::init([](DataSource *module, const std::string &stream_id) {
         auto send_handler = SendHandler::Create(module, stream_id);
         if (!send_handler)
-          return nullptr;
+          return std::shared_ptr<SendHandler>();
         return std::dynamic_pointer_cast<SendHandler>(send_handler);
       }), py::arg("module"), py::arg("stream_id"))
       .def("open", &SendHandler::Open)

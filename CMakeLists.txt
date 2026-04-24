@@ -33,7 +33,7 @@ option(VSTREAM_BUILD_TESTS "build unit tests" ON)
 
 # 模块
 option(VSTREAM_BUILD_MODULES "build modules" ON)
-option(VSTREAM_BUILD_PYTHON_API "build python api" OFF)
+option(VSTREAM_BUILD_PYTHON_API "build python api" ON)
 option(VSTREAM_BUILD_TOOLS "build tools" ON)
 
 # 第三方库 默认都为 ON

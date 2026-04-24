@@ -41,22 +41,20 @@ list(APPEND VSTREAM_TOOLS_DEMO_CUDA_3RDPARTY_LIBS
 
 # Source files
 set(VSTREAM_TOOLS_DEMO_CUDA_SOURCES
-  inspect_mem.cpp
   transfmt_cuda_npp_demo.cu
   transfmt_cuda_kernel_demo.cu
 )
 
 foreach(demo_source ${VSTREAM_TOOLS_DEMO_CUDA_SOURCES})
   get_filename_component(demo_name ${demo_source} NAME_WE)
-  cuda_add_executable(${demo_name} ${demo_source})
-  target_include_directories(${demo_name} 
-   PRIVATE 
+  add_executable(${demo_name} ${demo_source})
+  target_include_directories(${demo_name}
+   PRIVATE
     ${VSTREAM_TOOLS_3RDPARTY_INCLUDE}
   )
   target_link_libraries(${demo_name}
-   PUBLIC
-    ${VSTREAM_TOOLS_DEPENDENCIES}
    PRIVATE
+    ${VSTREAM_TOOLS_DEPENDENCIES}
     ${VSTREAM_TOOLS_3RDPARTY_LIBS}
     ${VSTREAM_TOOLS_DEMO_CUDA_3RDPARTY_LIBS}
   )

@@ -61,24 +61,20 @@ void PipelineWrapper(py::module &m) {
       .def("get_source_module",
            [](Pipeline *pipeline, const std::string &module_name) {
               auto* module = pipeline->GetModule(module_name);
-              if (!module) return nullptr;
+              if (!module) return static_cast<SourceModule *>(nullptr);
               return dynamic_cast<SourceModule *>(module);
            },
            py::return_value_policy::reference)
       .def("get_module",
            [](Pipeline *pipeline, const std::string &module_name) {
               auto* module = pipeline->GetModule(module_name);
-              if (!module) return nullptr;
+              if (!module) return static_cast<Module *>(nullptr);
               return dynamic_cast<Module *>(module);
            },
            py::return_value_policy::reference)
       .def("get_module_config", &Pipeline::GetModuleConfig)
       .def("is_profiling_enabled", &Pipeline::IsProfilingEnabled)
-      .def("is_tracing_enabled", &Pipeline::IsTracingEnabled)
-      .def("is_root_node", &Pipeline::IsRootNode)
-      .def("get_profile", [](Pipeline *pipeline) {
-        return pipeline->GetProfiler()->GetProfile();
-      });
+      .def("is_root_node", &Pipeline::IsRootNode);
 }
 
 }  // namespace cnstream

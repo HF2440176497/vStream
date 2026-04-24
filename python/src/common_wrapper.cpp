@@ -21,31 +21,34 @@ py::dtype GetNpDType(int depth) {
   }
 }
 
-std::vector<std::size_t> GetMatShape(cv::Mat& m) {
+std::vector<std::size_t> GetMatShape(const cv::Mat& m) {
   if (m.channels() == 1) {
     return {static_cast<size_t>(m.rows), static_cast<size_t>(m.cols)};
   }
   return {static_cast<size_t>(m.rows), static_cast<size_t>(m.cols), static_cast<size_t>(m.channels())};
 }
 
-py::capsule MakeCapsule(cv::Mat& m) {
+/**
+ * @brief copy construct to hold cv::Mat
+ */
+py::capsule MakeCapsule(const cv::Mat& m) {
   return py::capsule(new cv::Mat(m), [](void *v) { delete reinterpret_cast<cv::Mat*>(v); });
 }
 
 /**
  * @brief Convert cv::Mat to python numpy array
  */
-py::array MatToArray(cv::Mat& m) {
+py::array MatToArray(const cv::Mat& m) {
   if (!m.isContinuous()) {
     throw std::invalid_argument("only continuous cv::Mat is supported. Call mat.clone() or mat.reshape(1) first.");
   }
   std::vector<py::ssize_t> strides;
   if (m.channels() == 1) {
-    strides = {m.step[0], m.step[1]};
+    strides = {static_cast<py::ssize_t>(m.step[0]), static_cast<py::ssize_t>(m.step[1])};
   } else {
     // elemSize1() is the size of each channel in bytes
     // for opencv, channel 是 HWC 的最后一个维度，可以使用 elemSize1 直接获取，不存在 step[2]
-    strides = {m.step[0], m.step[1], static_cast<py::ssize_t>(m.elemSize1())};
+    strides = {static_cast<py::ssize_t>(m.step[0]), static_cast<py::ssize_t>(m.step[1]), static_cast<py::ssize_t>(m.elemSize1())};
   }
   return py::array(GetNpDType(m.depth()), GetMatShape(m), strides, m.data, MakeCapsule(m));
 }
@@ -58,7 +61,7 @@ cv::Mat ArrayToMat(py::array_t<uint8_t>& array) {
   if (buf.ndim != 2 && buf.ndim != 3) {
     throw std::runtime_error("number of dimensions must be 2 or 3");
   }
-  if (buf.format != py::format::format_descriptor<uint8_t>::format()) {
+  if (buf.format != py::format_descriptor<uint8_t>::format()) {
     throw std::runtime_error("only uint8 format is supported");
   }
   int rows = static_cast<int>(buf.shape[0]);  // height

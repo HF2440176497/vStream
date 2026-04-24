@@ -29,6 +29,42 @@ else()
   message(FATAL_ERROR "GLog not found! Please ensure GLog is installed and set GLOG_ROOT_DIR or CMAKE_PREFIX_PATH")
 endif()
 
+# ---[ libyuv
+if(DEFINED VSTREAM_HAS_BUILT_LIBYUV AND VSTREAM_HAS_BUILT_LIBYUV)
+  if(TARGET yuv)  # 根据 libyuv 内的 cmake 文件确定
+    list(APPEND VSTREAM_MODULES_3RDPARTY_LIBS yuv)
+  elseif(TARGET yuv_shared)
+    list(APPEND VSTREAM_MODULES_3RDPARTY_LIBS yuv_shared)
+  else()
+    message(FATAL_ERROR "libyuv not found. Please ensure libyuv is installed")
+  endif()
+  list(APPEND VSTREAM_MODULES_3RDPARTY_INCLUDE ${VSTREAM_ROOT_PATH}/3rdparty/libyuv/include)
+else()
+  message(FATAL_ERROR "libyuv has not built. Set BUILD_LIBYUV=ON in root CMakeLists.txt to build")
+endif()
+
+# ---[ FFmpeg
+include(${VSTREAM_ROOT_PATH}/cmake/FindFFmpeg.cmake)
+if(FFMPEG_FOUND)
+  list(APPEND VSTREAM_MODULES_3RDPARTY_INCLUDE ${FFMPEG_INCLUDE_DIR})
+  list(APPEND VSTREAM_MODULES_3RDPARTY_LIBS ${FFMPEG_LIBRARIES})
+  if(FFMPEG_ROOT_DIR)
+    list(APPEND VSTREAM_MODULES_3RDPARTY_LIBS ${VFFMPEG_ROOT_DIR}/lib)
+  endif()
+  message(STATUS "----- FFmpeg found Includes: ${FFMPEG_INCLUDE_DIR} Libraries: ${FFMPEG_LIBRARIES}")
+else()
+  message(FATAL_ERROR "FFmpeg not found! Please ensure FFmpeg is installed and set FFMPEG_ROOT_DIR")
+endif()
+
+# ---[ opencv
+include(${VSTREAM_ROOT_PATH}/cmake/FindOpenCV.cmake)
+if(OpenCV_FOUND)
+  list(APPEND VSTREAM_MODULES_3RDPARTY_INCLUDE ${OpenCV_INCLUDE_DIRS})
+  list(APPEND VSTREAM_MODULES_3RDPARTY_LIBS ${OpenCV_LIBS})
+else()
+  message(FATAL_ERROR "OpenCV not found. Please ensure OpenCV is installed")
+endif()
+
 # ---[ nlohmann/json
 list(APPEND VSTREAM_MODULES_3RDPARTY_INCLUDE ${VSTREAM_ROOT_PATH}/3rdparty/nlohmann-json/include)
 
@@ -49,42 +85,6 @@ option(VSTREAM_MODULES_BUILD_SOURCE "build module source" ON)
 option(VSTREAM_MODULES_BUILD_INFERENCE "build module inference" ON)
 option(VSTREAM_MODULES_BUILD_OSD "build module osd" ON)
 option(VSTREAM_MODULES_BUILD_VA "build stream_va" ON)
-
-# ---[ opencv
-include(${VSTREAM_ROOT_PATH}/cmake/FindOpenCV.cmake)
-if(OpenCV_FOUND)
-  list(APPEND VSTREAM_MODULES_3RDPARTY_INCLUDE ${OpenCV_INCLUDE_DIRS})
-  list(APPEND VSTREAM_MODULES_3RDPARTY_LIBS ${OpenCV_LIBS})
-else()
-  message(FATAL_ERROR "OpenCV not found. Please ensure OpenCV is installed")
-endif()
-
-# ---[ FFmpeg
-include(${VSTREAM_ROOT_PATH}/cmake/FindFFmpeg.cmake)
-if(FFMPEG_FOUND)
-  list(APPEND VSTREAM_MODULES_3RDPARTY_INCLUDE ${FFMPEG_INCLUDE_DIR})
-  list(APPEND VSTREAM_MODULES_3RDPARTY_LIBS ${FFMPEG_LIBRARIES})
-  if(FFMPEG_ROOT_DIR)
-    list(APPEND VSTREAM_MODULES_3RDPARTY_LIBS ${VFFMPEG_ROOT_DIR}/lib)
-  endif()
-  message(STATUS "----- FFmpeg found Includes: ${FFMPEG_INCLUDE_DIR} Libraries: ${FFMPEG_LIBRARIES}")
-else()
-  message(FATAL_ERROR "FFmpeg not found! Please ensure FFmpeg is installed and set FFMPEG_ROOT_DIR")
-endif()
-
-# ---[ libyuv
-if(DEFINED VSTREAM_HAS_BUILT_LIBYUV AND VSTREAM_HAS_BUILT_LIBYUV)
-  if(TARGET yuv)  # 根据 libyuv 内的 cmake 文件确定
-    list(APPEND VSTREAM_MODULES_3RDPARTY_LIBS yuv)
-  elseif(TARGET yuv_shared)
-    list(APPEND VSTREAM_MODULES_3RDPARTY_LIBS yuv_shared)
-  else()
-    message(FATAL_ERROR "libyuv not found. Please ensure libyuv is installed")
-  endif()
-  list(APPEND VSTREAM_MODULES_3RDPARTY_INCLUDE ${VSTREAM_ROOT_PATH}/3rdparty/libyuv/include)
-else()
-  message(FATAL_ERROR "libyuv has not built. Set BUILD_LIBYUV=ON in root CMakeLists.txt to build")
-endif()
 
 set(module_list "")
 if(VSTREAM_MODULES_BUILD_SOURCE)

@@ -30,9 +30,9 @@ namespace py = pybind11;
 namespace cnstream {
 
 py::dtype GetNpDType(int depth);
-std::vector<std::size_t> GetMatShape(cv::Mat& m);
-py::capsule MakeCapsule(cv::Mat& m);
-py::array MatToArray(cv::Mat& m);
+std::vector<std::size_t> GetMatShape(const cv::Mat& m);
+py::capsule MakeCapsule(const cv::Mat& m);
+py::array MatToArray(const cv::Mat& m);
 cv::Mat ArrayToMat(py::array_t<uint8_t>& array);
 
 }  // namespace cnstream

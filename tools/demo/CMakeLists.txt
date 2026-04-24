@@ -8,6 +8,10 @@ set(DEMO_SOURCES
 foreach(demo_source ${DEMO_SOURCES})
   get_filename_component(demo_name ${demo_source} NAME_WE)
   add_executable(${demo_name} ${demo_source})
+  target_include_directories(${demo_name}
+   PRIVATE
+    ${VSTREAM_TOOLS_3RDPARTY_INCLUDE}
+  )
   target_link_libraries(${demo_name} 
    PUBLIC
     ${VSTREAM_TOOLS_DEPENDENCIES}

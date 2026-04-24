@@ -87,7 +87,7 @@ void DataFrameWrapper(const py::module &m) {
         // eg: data_frame.stride = new_strides
         [](std::shared_ptr<DataFrame> data_frame, py::array_t<int> strides) {
             py::buffer_info strides_buf = strides.request();
-            int size = std::min(static_cast<int>(strides_buf.size), FRAME_MAX_PLANES);
+            int size = std::min(static_cast<int>(strides_buf.size), static_cast<int>(FRAME_MAX_PLANES));
             memcpy(data_frame->stride_, strides_buf.ptr, size * sizeof(int));
         });
 
@@ -102,15 +102,15 @@ void DataFrameWrapper(const py::module &m) {
       .value("PIXEL_FORMAT_RGBA32", DataFormat::PIXEL_FORMAT_RGBA32)
       .value("PIXEL_FORMAT_BGRA32", DataFormat::PIXEL_FORMAT_BGRA32);
 
+  py::enum_<DevType>(m, "DevType")
+    .value("INVALID", DevType::INVALID)
+    .value("CPU", DevType::CPU)
+    .value("CUDA", DevType::CUDA);
+
   py::class_<DevContext>(m, "DevContext")
       .def(py::init())
       .def_readwrite("device_type", &DevContext::device_type)
       .def_readwrite("device_id", &DevContext::device_id);
-
-  py::enum_<DevContext::DevType>(m, "DevType")
-    .value("INVALID", DevContext::DevType::INVALID)
-    .value("CPU", DevContext::DevType::CPU)
-    .value("CUDA", DevContext::DevType::CUDA);
 }
 
 void InferObjsWrapper(const py::module &m) {

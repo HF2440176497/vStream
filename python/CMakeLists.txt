@@ -32,6 +32,29 @@ else()
   message(FATAL_ERROR "GLog not found! Please ensure GLog is installed and set GLOG_ROOT_DIR or CMAKE_PREFIX_PATH")
 endif()
 
+# ---[ libyuv
+if(DEFINED VSTREAM_HAS_BUILT_LIBYUV AND VSTREAM_HAS_BUILT_LIBYUV)
+  if(TARGET yuv)  # 根据 libyuv 内的 cmake 文件确定
+    list(APPEND VSTREAM_PYTHON_3RDPARTY_LIBS yuv)
+  elseif(TARGET yuv_shared)
+    list(APPEND VSTREAM_PYTHON_3RDPARTY_LIBS yuv_shared)
+  else()
+    message(FATAL_ERROR "libyuv not found. Please ensure libyuv is installed")
+  endif()
+  list(APPEND VSTREAM_PYTHON_3RDPARTY_INCLUDE ${VSTREAM_ROOT_PATH}/3rdparty/libyuv/include)
+else()
+  message(FATAL_ERROR "libyuv has not built. Set BUILD_LIBYUV=ON in root CMakeLists.txt to build")
+endif()
+
+# ---[ opencv
+include(${VSTREAM_ROOT_PATH}/cmake/FindOpenCV.cmake)
+if(OpenCV_FOUND)
+  list(APPEND VSTREAM_PYTHON_3RDPARTY_INCLUDE ${OpenCV_INCLUDE_DIRS})
+  list(APPEND VSTREAM_PYTHON_3RDPARTY_LIBS ${OpenCV_LIBS})
+else()
+  message(FATAL_ERROR "OpenCV not found. Please ensure OpenCV is installed")
+endif()
+
 # ---[ nlohmann/json
 list(APPEND VSTREAM_PYTHON_3RDPARTY_INCLUDE ${VSTREAM_ROOT_PATH}/3rdparty/nlohmann-json/include)
 
@@ -71,15 +94,6 @@ else()
   endif()
 endif()
 
-# ---[ opencv
-include(${VSTREAM_ROOT_PATH}/cmake/FindOpenCV.cmake)
-if(OpenCV_FOUND)
-  list(APPEND VSTREAM_PYTHON_3RDPARTY_INCLUDE ${OpenCV_INCLUDE_DIRS})
-  list(APPEND VSTREAM_PYTHON_3RDPARTY_LIBS ${OpenCV_LIBS})
-else()
-  message(FATAL_ERROR "OpenCV not found. Please ensure OpenCV is installed")
-endif()
-
 # ---[ vstream_python srcs
 set(vstream_pybind_srcs "")
 file(GLOB vstream_pybind_srcs ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp)
@@ -95,17 +109,13 @@ target_include_directories(vstream_python
 )
 
 target_link_libraries(vstream_python 
- PUBLIC
-  ${VSTREAM_PYTHON_DEPENDENCIES}
  PRIVATE
+  ${VSTREAM_PYTHON_DEPENDENCIES}
   ${VSTREAM_PYTHON_3RDPARTY_LIBS}
 )
 
 set_target_properties(vstream_python PROPERTIES
   OUTPUT_NAME "vstream"
-  LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/vstream
+  LIBRARY_OUTPUT_DIRECTORY ${VSTREAM_ROOT_PATH}/lib
 )
 
-if(VSTREAM_BUILD_TESTS)
-  add_subdirectory(unittest)
-endif()

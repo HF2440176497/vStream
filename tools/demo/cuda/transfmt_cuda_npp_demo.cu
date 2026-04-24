@@ -607,7 +607,7 @@ bool TestOpenCVConversionConsistency(TestFrame& frame, uint8_t expected_r, uint8
 
   int width = frame.width;
   int height = frame.height;
-  size_t total_pixels = width * height;
+  // size_t total_pixels = width * height;
   size_t b_errors = 0, g_errors = 0, r_errors = 0;
 
   for (int y = 0; y < height; ++y) {

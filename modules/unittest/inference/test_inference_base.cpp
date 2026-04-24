@@ -14,10 +14,10 @@
 #include "model_loader.hpp"
 #include "inference.hpp"
 #include "infer_engine.hpp"
+#include "cnstream_logging.hpp"
+#include "util/cnstream_queue.hpp"
 
 #include "affine_trans.hpp"
-#include "cnstream_queue.hpp"
-#include "cnstream_logging.hpp"
 
 #include <iostream>
 #include <opencv2/opencv.hpp>
