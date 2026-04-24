@@ -29,56 +29,56 @@ std::string process_module_name = "ProcessOne";
 static bool has_save_frame_mat = false;
 static std::string save_file = "save_image/test_source_save.jpg";
 
-class InferenceProcess: public Module, public ModuleCreator<InferenceProcess> {
+class TestSourceProcessModule: public Module, public ModuleCreator<TestSourceProcessModule> {
   public:
-    InferenceProcess(const std::string &name) : Module(name) {}
-    ~InferenceProcess() {}
+    TestSourceProcessModule(const std::string &name) : Module(name) {}
+    ~TestSourceProcessModule() {}
     bool Open(ModuleParamSet params) override {
       return true;
     }
     uint64_t frame_count_ = 0;
 
     void Close() override {
-      LOGI(InferenceProcess) << "Close";
+      LOGI(TestSourceProcessModule) << "Close";
     }
 
     void OnEos(const std::string& stream_id) override {
-      LOGI(InferenceProcess) << "OnEos: " << stream_id;
+      LOGI(TestSourceProcessModule) << "OnEos: " << stream_id;
     }
 
     int Process(std::shared_ptr<FrameInfo> frame_info) override {
       frame_count_++;
       DataFramePtr frame = frame_info->collection.Get<DataFramePtr>(kDataFrameTag);
       if (!frame) {
-        LOGE(InferenceProcess) << "frame is empty";
+        LOGE(TestSourceProcessModule) << "frame is empty";
         return -1;
       }
       // 打印 DataFrame 的相关信息
-      // LOGD(InferenceProcess) << "--- frame [" << frame_count_ << "] datafmt: " << DataFormat2Str(frame->GetFmt());
-      // LOGD(InferenceProcess) << "--- frame [" << frame_count_ << "] devtype: " << DevType2Str(frame->GetCtx().device_type);
-      // LOGD(InferenceProcess) << "--- frame [" << frame_count_ << "] devid: " << frame->GetCtx().device_id;
-      // LOGD(InferenceProcess) << "--- frame [" << frame_count_ << "] image height: " << frame->GetHeight();
-      // LOGD(InferenceProcess) << "--- frame [" << frame_count_ << "] image width: " << frame->GetWidth() << "; stride: " << frame->GetStride(0);
+      // LOGD(TestSourceProcessModule) << "--- frame [" << frame_count_ << "] datafmt: " << DataFormat2Str(frame->GetFmt());
+      // LOGD(TestSourceProcessModule) << "--- frame [" << frame_count_ << "] devtype: " << DevType2Str(frame->GetCtx().device_type);
+      // LOGD(TestSourceProcessModule) << "--- frame [" << frame_count_ << "] devid: " << frame->GetCtx().device_id;
+      // LOGD(TestSourceProcessModule) << "--- frame [" << frame_count_ << "] image height: " << frame->GetHeight();
+      // LOGD(TestSourceProcessModule) << "--- frame [" << frame_count_ << "] image width: " << frame->GetWidth() << "; stride: " << frame->GetStride(0);
 
       // 打印 SyncMem 状态
       for (int i = 0; i < frame->GetPlanes(); ++i) {
         std::string mem_status_info = frame->data_[i]->StatusToString();
-        LOGD(InferenceProcess) << "--- frame [" << frame_count_ << "] plane " << i << " mem status: " << mem_status_info;
+        LOGD(TestSourceProcessModule) << "--- frame [" << frame_count_ << "] plane " << i << " mem status: " << mem_status_info;
       }
 
       // 尝试通过 SyncMem 落地图片
       if (frame->HasImage()) {
-        LOGW(InferenceProcess) << "before get image, frame_mat_ should be empty";
+        LOGW(TestSourceProcessModule) << "before get image, frame_mat_ should be empty";
       }
       cv::Mat frame_mat = frame->GetImage();
       if (frame_mat.empty()) {
-        LOGE(InferenceProcess) << "frame_mat_ is empty";
+        LOGE(TestSourceProcessModule) << "frame_mat_ is empty";
         return -1;
       }
 
       if (frame_count_ % 100 == 0) {
         CudaMemInspect inspect(0);
-        LOGD(InferenceProcess) << inspect.GetBriefInfo();
+        LOGD(TestSourceProcessModule) << inspect.GetBriefInfo();
       }
       if (!has_save_frame_mat) {
         cv::imwrite(save_file, frame_mat);
@@ -88,7 +88,7 @@ class InferenceProcess: public Module, public ModuleCreator<InferenceProcess> {
     }
 };
 
-REGISTER_MODULE(InferenceProcess);
+REGISTER_MODULE(TestSourceProcessModule);
 
 class EosObserver : public StreamMsgObserver {
  public:
@@ -202,7 +202,7 @@ TEST_F(SourceModuleTest, PipelineInit) {
 /**
  * 读取图片
  */
-TEST_F(SourceModuleTest, Loop) {
+TEST_F(SourceModuleTest, RUN) {
   // 提取 pipeline 中的 DataSource 模块
   EXPECT_NE(pipeline_, nullptr);
   Module* module_in_pipeline = pipeline_->GetModule("decoder");
@@ -294,7 +294,7 @@ TEST_F(SourceModuleTest, MutilStream) {
 /**
  * 单独使用一个 pipeline 测试 video_handler
  */
-TEST_F(VideoSourceTest, DISABLED_Loop) {
+TEST_F(VideoSourceTest, DISABLED_RUN) {
 // TEST_F(VideoSourceTest, Loop) {
   EXPECT_NE(pipeline_, nullptr);
   Module* module_in_pipeline = pipeline_->GetModule("decoder");

@@ -55,7 +55,7 @@ else()
   message(FATAL_ERROR "OpenCV not found. Please ensure OpenCV is installed")
 endif()
 
-if(build_tests)
+if(VSTREAM_BUILD_TESTS)
   add_definitions(-DUNIT_TEST)
 endif()
 
@@ -78,6 +78,6 @@ target_link_libraries(vstream_core
 )
 
 # unitest
-if(build_tests)
+if(VSTREAM_BUILD_TESTS)
   add_subdirectory(unittest)
 endif()

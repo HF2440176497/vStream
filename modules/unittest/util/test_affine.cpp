@@ -5,7 +5,7 @@
 #include "affine_trans.hpp"
 #include "base.hpp"
 
-static const std::string image_path = "test_image.png";
+static const std::string image_path = "image.png";
 
 static const int dst_w = 640;
 static const int dst_h = 640;

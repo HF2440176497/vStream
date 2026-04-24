@@ -20,7 +20,7 @@
 namespace cnstream {
 
 static std::string test_pipeline_send_json = "pipeline_source_send.json";
-static std::string test_image_path = "test_image.png";
+static std::string test_image_path = "image.png";
 
 
 class SourceSendTest : public testing::Test {
@@ -77,7 +77,7 @@ TEST_F(SourceSendTest, TestSend) {
   EXPECT_NE(decode_queue, nullptr);
 
   image_ = cv::imread(test_image_path, cv::IMREAD_COLOR);
-  ASSERT_FALSE(image_.empty()) << "Failed to read test_image.png";
+  ASSERT_FALSE(image_.empty()) << "Failed to load " << test_image_path;
 
   std::atomic<bool> running{true};
 

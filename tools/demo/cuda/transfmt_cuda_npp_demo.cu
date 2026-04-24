@@ -21,7 +21,7 @@
 #include "libyuv/convert_from_argb.h"
 
 
-#define DEFAULT_IMAGE_PATH "test_image.png"
+#define DEFAULT_IMAGE_PATH "image.png"
 
 #define CHECK_CUDA_RUNTIME(op) __check_cuda_runtime((op), #op, __FILE__, __LINE__)
 

@@ -100,14 +100,14 @@ class TensorShape {
 
   std::string ToString() const {
     if (shape_.empty()) {
-      return "TensorShape()";
+      return "[]";
     }
     std::stringstream ss;
-    ss << "TensorShape[";
+    ss << "[";
     for (int i = 0; i < shape_.size(); ++i) {
       ss << shape_[i];
       if (i < shape_.size() - 1) {
-        ss << " x ";
+        ss << "x";
       }
     }
     ss << "]";

@@ -112,6 +112,11 @@ class ModuleProfiler: private NonCopyable {
    */
   ModuleProfile GetProfile();
 
+  /**
+   * @brief 获得指定 process 的 profile
+   */
+  ProcessProfile GetProcessProfile(const std::string& process_name);
+
   /*!
    * @brief Clears profiling data of the stream named by ``stream_name``, as the end of the stream is reached.
    *

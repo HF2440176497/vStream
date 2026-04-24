@@ -99,6 +99,7 @@ class InferEngine {
   TimeoutHelper timeout_helper_;
   std::shared_ptr<InferThreadPool> thread_pool_ = nullptr;
   std::function<void(const std::string& err_msg)> error_func_;
+  ModuleProfiler* profiler_ = nullptr;
 
   BatchingDoneInput batched_finfos_;
   std::vector<std::shared_ptr<InferObject>> batched_objs_;

@@ -41,6 +41,14 @@ void ModuleProfiler::RecordProcessDropped(const std::string& process_name, const
   }
 }
 
+ProcessProfile ModuleProfiler::GetProcessProfile(const std::string& process_name) {
+  if (process_profilers_.find(process_name) == process_profilers_.end()) {
+    LOGE(CORE) << "Process " << process_name << " is not registered.";
+    return ProcessProfile();
+  }
+  return process_profilers_[process_name]->GetProfile();  // process lock inside
+}
+
 ModuleProfile ModuleProfiler::GetProfile() {
   std::lock_guard<std::mutex> lock(mutex_);
   

@@ -40,7 +40,7 @@ TimeoutHelper::~TimeoutHelper() {
 
 int TimeoutHelper::SetTimeout(float timeout) {
   if (timeout < 0) {
-    LOGE(INFERENCER) << "TimeoutHelper: Timeout must be greater than 0.";
+    LOGE(INFER) << "TimeoutHelper: Timeout must be greater than 0.";
     return -1;
   } else {
     std::lock_guard<std::mutex> lk(mtx_);
@@ -51,7 +51,7 @@ int TimeoutHelper::SetTimeout(float timeout) {
 
 int TimeoutHelper::Reset(const std::function<void()>& func) {
   if (STATE_EXIT == state_) {
-    LOGW(INFERENCER) << "Timeout Operator has been exit.";
+    LOGW(INFER) << "Timeout Operator has been exit.";
     return -1;
   }
   func_ = func;
@@ -61,7 +61,7 @@ int TimeoutHelper::Reset(const std::function<void()>& func) {
     } else if (STATE_DO == state_ || STATE_RESET == state_) {
       state_ = STATE_RESET;
     } else {
-      LOGF(INFERENCER) << "TimeoutHelper: Unexpected state: " << state_;
+      LOGF(INFER) << "TimeoutHelper: Unexpected state: " << state_;
       return -1;
     }
   } else {
@@ -90,12 +90,12 @@ void TimeoutHelper::HandleFunc() {
     } else if (STATE_EXIT == state_) {
       break;
     } else if (STATE_DO == state_) {
-      LOGF_IF(INFERENCER, static_cast<bool>(func_) == false) << "state_ is STATE_DO, but function is NULL.";
+      LOGF_IF(INFER, static_cast<bool>(func_) == false) << "state_ is STATE_DO, but function is NULL.";
       func_();
       timeout_print_cnt_++;
       if (timeout_print_cnt_ == TIMEOUT_PRINT_INTERVAL) {
         timeout_print_cnt_ = 0;
-        LOGI(INFERENCER) << "Batching timeout. The trigger frequency of timeout processing can be reduced by"
+        LOGI(INFER) << "Batching timeout. The trigger frequency of timeout processing can be reduced by"
                      " increasing the timeout time(see batching_timeout parameter of the inferencer module). If the"
                      " decoder memory is reused, the trigger frequency of timeout processing can also be reduced by"
                      " increasing the number of cache blocks output by the decoder(see output_buf_number parameter of"
@@ -104,7 +104,7 @@ void TimeoutHelper::HandleFunc() {
       func_ = NULL;  // unbind resources.
       state_ = STATE_NO_FUNC;
     } else {
-      LOGF(INFERENCER) << "TimeoutHelper: Unexpected state: " << state_;
+      LOGF(INFER) << "TimeoutHelper: Unexpected state: " << state_;
       break;
     }
   }

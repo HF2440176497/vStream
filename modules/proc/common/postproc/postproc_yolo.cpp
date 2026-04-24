@@ -107,28 +107,29 @@ class Yolov8Postproc: public Postproc {
     if (params_.find(key_config_file) != params_.end()) {
       config_file_ = params_[key_config_file];
     } else {
+      LOGE(POSTPROC) << "Init config_file must be in custom_postproc_params.";
       return false;
     }
 #ifdef UNIT_TEST
-    LOGI(Postproc) << "Init config_file: " << config_file_;
+    LOGI(POSTPROC) << "Init config_file: " << config_file_;
 #endif
     std::ifstream file(config_file_);
     if (!file.is_open()) {
-      LOGE(Postproc) << "Init Could not open file " << config_file_;
+      LOGE(POSTPROC) << "Init Could not open file " << config_file_;
       return false;
     }
     nlohmann::ordered_json data = nlohmann::ordered_json::parse(file);
     if (!data.is_object()) {
-      LOGE(Postproc) << "Init config file must be object type.";
+      LOGE(POSTPROC) << "Init config file must be object type.";
       return false;
     }
     // 解析阈值字典
     if (!data.contains(key_threshold_map)) {
-      LOGE(Postproc) << "Threshold must be in config file.";
+      LOGE(POSTPROC) << "Threshold must be in config file.";
       return false;
     } 
     if (!data[key_threshold_map].is_object()) {
-      LOGE(Postproc) << "Threshold must be object type.";
+      LOGE(POSTPROC) << "Threshold must be object type.";
       return false;
     }
     for (auto it = data[key_threshold_map].begin(); it != data[key_threshold_map].end(); ++it) {
@@ -145,7 +146,7 @@ class Yolov8Postproc: public Postproc {
   int Execute(const std::vector<float*>& cpu_outputs, ModelLoader* model,
               const std::shared_ptr<cnstream::FrameInfo>& package) {
 
-    LOGI(Postproc) << "Postproc Execute for data: " << package->GetStreamId() << ", timestamp: " << package->GetTimestamp();
+    LOGI(POSTPROC) << "Execute for data: " << package->GetStreamId() << ", timestamp: " << package->GetTimestamp();
  
     DataFramePtr frame = package->collection.Get<DataFramePtr>(cnstream::kDataFrameTag);
     const int img_w = frame->GetWidth();

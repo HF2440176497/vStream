@@ -73,7 +73,7 @@ class InferencePrivate: public NonCopyable {
   std::mutex ctx_mtx_;
 
   void InferEngineErrorHandleFunc(const std::string& err_msg) {
-    LOGE(INFERENCER) << err_msg;
+    LOGE(INFER) << err_msg;
   }
 
   /**
@@ -87,7 +87,7 @@ class InferencePrivate: public NonCopyable {
     // model_path 拼接上 CNS_JSON_DIR_PARAM_NAME 参数
     std::string model_path = GetPathRelativeToTheJSONFile(params.model_path, param_set);
 
-    LOGI(INFERENCER) << "[" << module_name_ << "] load model [path: " << model_path << "]";
+    LOGI(INFER) << "[" << module_name_ << "] load model [path: " << model_path << "]";
 
     // TODO: 推理模块的参数用于查找推理后端
     auto device_type = params.device_type;
@@ -95,37 +95,37 @@ class InferencePrivate: public NonCopyable {
     auto& factory = ModelLoaderFactory::Instance();
 
     if (device_type != DevType::CPU && device_id == -1) {
-      LOGE(INFERENCER) << "[" << module_name_ << "] device_type [" << DevType2Str(device_type) << "] not CPU. but device_id is -1";
+      LOGE(INFER) << "[" << module_name_ << "] device_type [" << DevType2Str(device_type) << "] not CPU. but device_id is -1";
       return false;
     }
 
     // LoadEngine - ParBinding
     model_loader_ = factory.CreateModelLoader(device_type, device_id);
     if (!model_loader_) {
-      LOGE(INFERENCER) << "[" << module_name_ << "] create model loader failed. device_type: "
+      LOGE(INFER) << "[" << module_name_ << "] create model loader failed. device_type: "
                  << DevType2Str(device_type) << ", device_id: " << device_id;
       return false;
     }
 
     if (!model_loader_->Init(model_path, params)) {
-      LOGE(INFERENCER) << "[" << module_name_ << "] init model failed. path: " << model_path;
+      LOGE(INFER) << "[" << module_name_ << "] init model failed. path: " << model_path;
       return false;
     }
 
     if (params.trans_data_size > 0) {
       trans_data_size_ = params.trans_data_size;
     } else {
-      LOGW(INFERENCER) << "[" << module_name_ << "] trans_data_size is 0. use default:" << trans_data_size_;
+      LOGW(INFER) << "[" << module_name_ << "] trans_data_size is 0. use default:" << trans_data_size_;
     }
 
     if (params.object_infer) {
-      LOGI(INFERENCER) << "[" << module_name_ << "] inference mode: inference with objects.";
+      LOGI(INFER) << "[" << module_name_ << "] inference mode: inference with objects.";
       if (!params.obj_filter_name.empty()) {
         obj_filter_ = std::shared_ptr<ObjFilter>(ObjFilter::Create(params.obj_filter_name));
         if (obj_filter_) {
-          LOGI(INFERENCER) << "[" << module_name_ << "] Object filter set:" << params.obj_filter_name;
+          LOGI(INFER) << "[" << module_name_ << "] Object filter set:" << params.obj_filter_name;
         } else {
-          LOGE(INFERENCER) << "Can not find ObjFilter implemention by name: "
+          LOGE(INFER) << "Can not find ObjFilter implemention by name: "
                      << params.obj_filter_name;
           return false;
         }
@@ -137,21 +137,21 @@ class InferencePrivate: public NonCopyable {
       if (params.object_infer) {
         obj_preproc_ = std::shared_ptr<ObjPreproc>(ObjPreproc::Create(params.preproc_name));
         if (!obj_preproc_) {
-          LOGE(INFERENCER) << "Can not find ObjPreproc implemention by name: " << params.preproc_name;
+          LOGE(INFER) << "Can not find ObjPreproc implemention by name: " << params.preproc_name;
           return false;
         }
         if (!obj_preproc_->Init(params.custom_preproc_params)) {
-          LOGE(INFERENCER) << "Preprocessor init failed.";
+          LOGE(INFER) << "Preprocessor init failed.";
           return false;
         }
       } else {
         preproc_ = std::shared_ptr<Preproc>(Preproc::Create(params.preproc_name));
         if (!preproc_) {
-          LOGE(INFERENCER) << "Can not find Preproc implemention by name: " << params.preproc_name;
+          LOGE(INFER) << "Can not find Preproc implemention by name: " << params.preproc_name;
           return false;
         }
         if (!preproc_->Init(params.custom_preproc_params)) {
-          LOGE(INFERENCER) << "Preprocessor init failed.";
+          LOGE(INFER) << "Preprocessor init failed.";
           return false;
         }
       }
@@ -162,21 +162,21 @@ class InferencePrivate: public NonCopyable {
       if (params.object_infer) {
         obj_postproc_ = std::shared_ptr<ObjPostproc>(ObjPostproc::Create(params.postproc_name));
         if (!obj_postproc_) {
-          LOGE(INFERENCER) << "Can not find ObjPostproc implemention by name: " << params.postproc_name;
+          LOGE(INFER) << "Can not find ObjPostproc implemention by name: " << params.postproc_name;
           return false;
         }
         if (!obj_postproc_->Init(params.custom_postproc_params)) {
-          LOGE(INFERENCER) << "Postprocessor init failed.";
+          LOGE(INFER) << "Postprocessor init failed.";
           return false;
         }
       } else {
         postproc_ = std::shared_ptr<Postproc>(Postproc::Create(params.postproc_name));
         if (!postproc_) {
-          LOGE(INFERENCER) << "Can not find Postproc implemention by name: " << params.postproc_name;
+          LOGE(INFER) << "Can not find Postproc implemention by name: " << params.postproc_name;
           return false;
         }
         if (!postproc_->Init(params.custom_postproc_params)) {
-          LOGE(INFERENCER) << "Postprocessor init failed.";
+          LOGE(INFER) << "Postprocessor init failed.";
           return false;
         }
       }
@@ -240,7 +240,7 @@ Inference::Inference(const std::string& name) : Module(name) {
       " as well as preprocessing and postprocessing.");
   
   param_manager_ = std::make_shared<InferParamManager>();
-  LOGF_IF(INFERENCER, !param_manager_) << "Inference::Inference new InferParams failed.";
+  LOGF_IF(INFER, !param_manager_) << "Inference::Inference new InferParams failed.";
   param_manager_->RegisterAll(&param_register_);
 }
 
@@ -254,25 +254,25 @@ bool Inference::Open(ModuleParamSet raw_params) {
   }
   d_ptr_ = new (std::nothrow) InferencePrivate(this);
   if (!d_ptr_) {
-    LOGE(INFERENCER) << "Inference::Open() new InferencePrivate failed";
+    LOGE(INFER) << "Inference::Open() new InferencePrivate failed";
     return false;
   }
 
   InferParams params;
   // 调用 parser 将解析通过的参数赋值给 params
   if (!param_manager_->ParseBy(raw_params, &params)) {
-    LOGE(INFERENCER) << "[" << GetName() << "] parse parameters failed.";
+    LOGE(INFER) << "[" << GetName() << "] parse parameters failed.";
     return false;
   }
 
   // 在 InferencePrivate 中初始化 engine
   if (!d_ptr_->InitByParams(params, raw_params)) {
-    LOGE(INFERENCER) << "[" << GetName() << "] init resources failed.";
+    LOGE(INFER) << "[" << GetName() << "] init resources failed.";
     return false;
   }
 
   if (container_ == nullptr) {
-    LOGI(INFERENCER) << name_ << " has not been added into pipeline.";
+    LOGI(INFER) << name_ << " has not been added into pipeline.";
   } else {
     if (GetProfiler()) {
       if (!params.preproc_name.empty()) {

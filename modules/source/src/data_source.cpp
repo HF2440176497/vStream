@@ -109,12 +109,12 @@ bool DataSource::CheckParamSet(const ModuleParamSet &paramSet) const {
   ParametersChecker checker;
   for (auto &it : paramSet) {
     if (!param_register_.IsRegisted(it.first)) {
-      LOGW(SOURCE) << "[DataSource] unknown param: " << it.first << "; Maybe for handler usage";
+      LOGW(SOURCE) << "unknown param: " << it.first << "; maybe for handler usage";
     }
   }
   std::string err_msg;
   if (!checker.IsNum({key_device_id}, paramSet, err_msg, true)) {
-    LOGE(SOURCE) << "[DataSource] " << err_msg;
+    LOGE(SOURCE) << "device_id check failed: " << err_msg;
     return false;
   }
   int device_id = GetDeviceId(paramSet);

@@ -64,7 +64,7 @@ static bool STR2U32(const std::string &value, uint32_t *ret) {
     if (t > std::numeric_limits<uint32_t>::max()) return false;
     *ret = t;
   } catch (std::exception &e) {
-    LOGE(INFERENCER) << "STR2U32 failed. value is " << value;
+    LOGE(INFER) << "STR2U32 failed. value is " << value;
     return false;
   }
   return true;
@@ -341,14 +341,14 @@ bool InferParamManager::ParseBy(const ModuleParamSet &raw_params, InferParams *p
     // 在 raw_params 找到就采用设置值，否则采用默认值
     // 调用回调函数进行校验
     if (!desc.parser(value, pout)) {
-      LOGE(INFERENCER) << "Parse parameter [" << desc.name << "] failed. value is [" << value << "]";
+      LOGE(INFER) << "Parse [" << desc.name << "] failed. value is [" << value << "]";
       return false;
     }
   }
   // 应当剩下 CNS_JSON_DIR_PARAM_NAME 参数
   for (const auto &it : raws) {
     if (it.first != CNS_JSON_DIR_PARAM_NAME) {
-      LOGE(INFERENCER) << "Parameter named [" << it.first << "] did not registered.";
+      LOGE(INFER) << "Parameter named [" << it.first << "] did not registered.";
       return false;
     }
   }

@@ -59,7 +59,7 @@ std::vector<std::shared_ptr<InferTask>> H2DBatchingDoneStage::BatchingDone(const
     assert(finfos.size() == batchsize_);
 
     for (uint32_t bidx = 0; bidx < batchsize_; bidx++) {
-      LOGI(H2DBatchingDoneStage) << "bidx: " << bidx << "; [" << finfos[bidx].first->stream_id << "], ts: " << finfos[bidx].first->timestamp;
+      LOGI(H2D) << "bidx: " << bidx << "; [" << finfos[bidx].first->stream_id << "], ts: " << finfos[bidx].first->timestamp;
     }
 #endif
 
@@ -114,13 +114,12 @@ std::vector<std::shared_ptr<InferTask>> InferBatchingDoneStage::BatchingDone(con
     assert(finfos.size() == batchsize_);
 
     for (uint32_t bidx = 0; bidx < batchsize_; bidx++) {
-      LOGD(InferBatchingDoneStage) << "bidx: " << bidx << "; [" << finfos[bidx].first->stream_id << "], ts: " << finfos[bidx].first->timestamp;
+      LOGD(INFER) << "bidx: " << bidx << "; [" << finfos[bidx].first->stream_id << "], ts: " << finfos[bidx].first->timestamp;
     }
 #endif
 
     if (profiler_) {  // module profiler
-      for (auto it : finfos)
-        profiler_->RecordProcessStart("INFER", std::make_pair(it.first->stream_id, it.first->timestamp));
+      profiler_->RecordProcessStart(key_profile_inference, std::make_pair(finfos[0].first->stream_id, finfos[0].first->timestamp));
     }
     // debug for net_input
     if (!dump_resized_image_dir_.empty()) {
@@ -129,8 +128,7 @@ std::vector<std::shared_ptr<InferTask>> InferBatchingDoneStage::BatchingDone(con
     model_->RunSync(net_input_value.ptrs, net_output_value.ptrs);
 
     if (profiler_) {
-      for (auto it : finfos)
-        profiler_->RecordProcessEnd("INFER", std::make_pair(it.first->stream_id, it.first->timestamp));
+      profiler_->RecordProcessEnd(key_profile_inference, std::make_pair(finfos[0].first->stream_id, finfos[0].first->timestamp));
     }
 
     this->net_input_res_->DeallingDone();
@@ -158,7 +156,7 @@ std::vector<std::shared_ptr<InferTask>> D2HBatchingDoneStage::BatchingDone(const
     assert(finfos.size() == batchsize_);
 
     for (uint32_t bidx = 0; bidx < batchsize_; bidx++) {
-      LOGI(D2HBatchingDoneStage) << "bidx: " << bidx << "; [" << finfos[bidx].first->stream_id << "], ts: " << finfos[bidx].first->timestamp;
+      LOGI(D2H) << "bidx: " << bidx << "; [" << finfos[bidx].first->stream_id << "], ts: " << finfos[bidx].first->timestamp;
     }
 #endif
 

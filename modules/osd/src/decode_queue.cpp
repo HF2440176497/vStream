@@ -135,13 +135,13 @@ bool DecodeQueue::CheckParamSet(const ModuleParamSet& paramSet) const {
   ParametersChecker checker;
   for (auto &it : paramSet) {
     if (!param_register_.IsRegisted(it.first)) {
-      LOGW(DECODE_QUEUE) << "[DecodeQueue] unknown param: " << it.first << "; Maybe for handler usage";
+      LOGW(DECODE_QUEUE) << "unknown param: " << it.first;
     }
   }
   // 如果存在配置项，则进行对应检查
   std::string err_msg;
   if (!checker.IsNum({key_decode_queue_size}, paramSet, err_msg, true)) {
-    LOGE(DECODE_QUEUE) << "[DecodeQueue] " << err_msg;
+    LOGE(DECODE_QUEUE) << "queue_size check failed: " << err_msg;
     return false;
   }
   return ret;

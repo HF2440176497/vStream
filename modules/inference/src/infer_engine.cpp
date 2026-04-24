@@ -39,7 +39,8 @@ InferEngine::InferEngine(const InferOptions& options)
       postproc_on_device_(options.postproc_on_device()),
       batching_by_obj_(options.batching_by_obj()),
       module_name_(options.module_name()),
-      error_func_(options.error_handler()) {
+      error_func_(options.error_handler()),
+      profiler_(options.profiler()) {
 
   batchsize_ = model_->get_batch_size();
 
@@ -103,15 +104,18 @@ void InferEngine::StageAssemble() {
   }
 
   auto h2d_stage = std::make_shared<H2DBatchingDoneStage>(model_, batchsize_, device_id_, cpu_input_res_, net_input_res_);
+  h2d_stage->SetProfiler(profiler_);
   batching_done_stages_.push_back(h2d_stage);
 
   auto infer_stage =
       std::make_shared<InferBatchingDoneStage>(model_, batchsize_, device_id_, net_input_res_, net_output_res_);
+  infer_stage->SetProfiler(profiler_);
   batching_done_stages_.push_back(infer_stage);
 
   if (!postproc_on_device_) {
     auto d2h_stage =
       std::make_shared<D2HBatchingDoneStage>(model_, batchsize_, device_id_, net_output_res_, cpu_output_res_);
+    d2h_stage->SetProfiler(profiler_);
     batching_done_stages_.push_back(d2h_stage);
   }
 
@@ -123,10 +127,12 @@ void InferEngine::StageAssemble() {
     if (postproc_on_device_) {
       auto postproc_stage =
           std::make_shared<PostprocessingBatchingDoneStage>(model_, batchsize_, device_id_, postprocessor_, net_output_res_);
+      postproc_stage->SetProfiler(profiler_);
       batching_done_stages_.push_back(postproc_stage);
     } else {
       auto postproc_stage =
           std::make_shared<PostprocessingBatchingDoneStage>(model_, batchsize_, device_id_, postprocessor_, cpu_output_res_);
+      postproc_stage->SetProfiler(profiler_);
       batching_done_stages_.push_back(postproc_stage);
     }
   }

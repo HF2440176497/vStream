@@ -112,7 +112,7 @@ class ModelLoaderTest : public testing::Test {
   std::unique_ptr<ModelLoader> model_loader_owner_ = nullptr;
   ModelLoader* model_loader_ = nullptr;
   cv::Mat      input_image_;
-  std::string  image_file_ = "test_image.png";
+  std::string  image_file_ = "image.png";
   std::shared_ptr<MemOp> memop_ = nullptr;
 
   std::shared_ptr<void> input_mem_ = nullptr;  /** net_one_input */

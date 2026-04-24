@@ -448,7 +448,7 @@ void SaveImage(const ImageData& img, const std::string& filename) {
 }
 
 int main(int argc, char* argv[]) {
-  std::string image_path = "image/test_image.png";
+  std::string image_path = "image.png";
   cv::Mat     src_mat = cv::imread(image_path, cv::IMREAD_COLOR);
   if (src_mat.empty()) {
     std::cerr << "Failed to load image: " << image_path << std::endl;

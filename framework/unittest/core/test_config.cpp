@@ -6,7 +6,8 @@
 #include "base.hpp"
 #include "cnstream_config.hpp"
 
-static std::string test_pipeline_json = "pipeline_config.json";
+static std::string test_pipeline_json = "pipeline_inference.json";
+static std::string inference_name = "Inference";
 
 TEST(JSON, ReadFile) {
     std::string json_str = readFile(test_pipeline_json.c_str());
@@ -15,8 +16,8 @@ TEST(JSON, ReadFile) {
 
     EXPECT_TRUE(doc.contains("profiler_config")) << "Json file has no profiler_config field";
     EXPECT_TRUE(doc.contains("decoder")) << "Json file has no decoder field";
-    EXPECT_TRUE(doc.contains("sort_h")) << "Json file has no sort field";
-    EXPECT_TRUE(doc.contains("osd")) << "Json file has no osd field";
+    EXPECT_FALSE(doc.contains("sort_h"));
+    EXPECT_FALSE(doc.contains("osd"));
 }
 
 /**
@@ -28,13 +29,12 @@ TEST(JSON, ReadFile2Str) {
     EXPECT_FALSE(json_str.empty()) << "Read json file failed";
     nlohmann::json doc = nlohmann::json::parse(json_str);
 
-    std::string inference_name = "InferenceYolo";
-    EXPECT_TRUE(doc.contains(inference_name)) << "Json file has no InferenceYolo field";
+    EXPECT_TRUE(doc.contains(inference_name)) << "Json file has no inference field";
     const nlohmann::json& inference = doc[inference_name];
-    EXPECT_TRUE(inference.is_object()) << "InferenceYolo field is not object";
+    EXPECT_TRUE(inference.is_object()) << "Inference field is not object";
     
     std::string inference_str = inference.dump();
-    EXPECT_TRUE(!inference_str.empty()) << "InferenceYolo field is empty";
+    EXPECT_TRUE(!inference_str.empty()) << "Inference field is empty";
     LOGI(COREUNITEST) << "Inference field: " << inference_str << std::endl;
 }
 
@@ -61,10 +61,9 @@ TEST(CoreConfig, ModuleConfig) {
     EXPECT_FALSE(json_str.empty()) << "Read json file failed";
     nlohmann::json doc = nlohmann::json::parse(json_str);
 
-    std::string inference_name = "InferenceYolo";
-    EXPECT_TRUE(doc.contains(inference_name)) << "Json file has no InferenceYolo field";
+    EXPECT_TRUE(doc.contains(inference_name)) << "Json file has no [" << inference_name << "] field";
     const nlohmann::json& inference = doc[inference_name];
-    EXPECT_TRUE(inference.is_object()) << "InferenceYolo field is not object";
+    EXPECT_TRUE(inference.is_object()) << "[" << inference_name << "] field is not object";
     
     std::string inference_str = inference.dump();
 
@@ -77,7 +76,7 @@ TEST(CoreConfig, ModuleConfig) {
     EXPECT_EQ(inference_config.className, "cnstream::Inference");
     EXPECT_EQ(inference_config.next.size(), 1);  // next_modules 
 
-    LOGI(COREUNITEST) << "InferenceYolo next modules: ";
+    LOGI(COREUNITEST) << "Inference next modules: please check with file [" << test_pipeline_json << "]";
     for (const auto& elem : inference_config.next) {
         LOGI(COREUNITEST) << "module: " << elem << " ";
     }

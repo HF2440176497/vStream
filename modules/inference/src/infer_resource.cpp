@@ -73,7 +73,7 @@ static IOResValue allocate_input_iovalue(ModelLoader* model, std::shared_ptr<Mem
     value.datas[idx].batchsize = shape.N();
 
 #ifdef UNIT_TEST
-    LOGI(INPUT_IOVALUE) << "in idx: " << idx << " shape: " << shape << "; data_size: " << data_size;
+    LOGD(INPUT_IOVALUE) << "idx: " << idx << " shape: " << shape << "; data_size: " << data_size;
 #endif
 
   }
@@ -103,7 +103,7 @@ static IOResValue allocate_output_iovalue(ModelLoader* model, std::shared_ptr<Me
     value.datas[idx].batchsize = shape.N();
 
 #ifdef UNIT_TEST
-    LOGI(OUTPUT_IOVALUE) << "out idx: " << idx << " shape: " << shape << "; data_size: " << data_size;
+    LOGD(OUTPUT_IOVALUE) << "idx: " << idx << " shape: " << shape << "; data_size: " << data_size;
 #endif
 
   }

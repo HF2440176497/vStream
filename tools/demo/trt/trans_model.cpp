@@ -196,12 +196,11 @@ void CompileOutput::set_data(std::vector<uint8_t>&& data) { data_ = std::move(da
  * @return 是否编译成功
  */
 bool compile(
-    Mode mode,
     const ModelSource& source, 
     const CompileOutput& saveto,
     const CompileConfig& config) {
   
-  std::cout << "Compiling " << mode_string(mode) << " | " << source.descript().c_str() << std::endl;
+  std::cout << "Compiling: " << source.descript().c_str() << std::endl;
 
   // 1. 创建 Builder
   std::shared_ptr<IBuilder> builder(createInferBuilder(gLogger), destroy_trt_pointer<IBuilder>);
@@ -298,23 +297,10 @@ bool compile(
   builder_config->setMemoryPoolLimit(MemoryPoolType::kWORKSPACE, workspace_size);
   std::cout << "Workspace limit: " << workspace_size / 1024.0 / 1024.0 << " MB" << std::endl;
 
-  // 7. 设置精度模式
-
-  // BuilderFlag: FP16 INT8 deprecated, use strongly-typed mode instead
-  // 
-  // if (mode == Mode::FP16) {
-  //   builder_config->setFlag(BuilderFlag::kFP16);
-  //   std::cout << "Enabled FP16 mode" << std::endl;
-  // } else if (mode == Mode::INT8) {
-  //   // 关键：INT8 模式设置
-  //   builder_config->setFlag(BuilderFlag::kINT8);
-  //   std::cout << "Enabled INT8 mode" << std::endl;
-  // }
-
   // GPU 回退（如果某些层不支持目标精度，回退到 FP32）
   builder_config->setFlag(BuilderFlag::kGPU_FALLBACK);
 
-  // 8. 处理动态 Shape 和 Optimization Profile
+  // 7. 处理动态 Shape 和 Optimization Profile
   if (config.dynamic_batch) {
     auto* profile = builder->createOptimizationProfile();
     if (!profile) {
@@ -398,6 +384,13 @@ bool compile(
 }  // namespace TRT
 
 int main(int argc, char* argv[]) {
+  if (argc < 3) {
+    std::cerr << "Usage: " << argv[0] << " <onnx_path> <out_engine_path>" << std::endl;
+    return 1;
+  }
+
+  std::string onnx_path = argv[1];
+  std::string out_engine_path = argv[2];
 
   TRT::CompileConfig config;
   config.dynamic_batch = false;
@@ -405,9 +398,7 @@ int main(int argc, char* argv[]) {
   config.opt_batch_size = 8;
   config.strict_qdq = true;  // 关键：启用强类型模式
 
-  std::string onnx_path = "onnx_file/yolov8s_tracing_static_b8_quant_fix.onnx";
-  std::string out_engine_path = "onnx_file/yolov8s_tracing_static_b8_quant_fix.engine";
-  TRT::compile(TRT::Mode::INT8, TRT::ModelSource(onnx_path), TRT::CompileOutput(out_engine_path), config);
+  TRT::compile(TRT::ModelSource(onnx_path), TRT::CompileOutput(out_engine_path), config);
 
   return 0;
 }

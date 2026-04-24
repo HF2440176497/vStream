@@ -18,6 +18,7 @@
 
 #include "common.hpp"
 #include "inference.hpp"
+#include "infer_params.hpp"
 
 #include <opencv2/opencv.hpp>
 
@@ -85,7 +86,7 @@ TEST_F(StableTest, MultiStream) {
 
   auto profiler = inference_module->GetProfiler();
   if (profiler) {
-    ModuleProfile profile = profiler->GetProfile();
+    auto profile = profiler->GetProcessProfile(key_profile_inference);
     LOGI(StableTest) << "Inference profile: " << profile;
   }
 

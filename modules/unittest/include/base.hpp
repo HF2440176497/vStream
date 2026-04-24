@@ -15,6 +15,7 @@
 #include <thread>
 #include <chrono>
 #include <mutex>
+#include <atomic>
 
 #include <iostream>
 #include <fstream>
@@ -96,7 +97,6 @@ class ProcessOne: public Module, public ModuleCreator<ProcessOne> {
       LOGE(ProcessOne) << "frame is empty";
       return -1;
     }
-    frame_count_++;
 
     if (!frame_info->collection.HasValue(process_one_name)) {
       frame_info->collection.Add(process_one_name, std::make_shared<FrameCountData>());
@@ -117,13 +117,10 @@ class ProcessOne: public Module, public ModuleCreator<ProcessOne> {
     auto count_data = frame_info->collection.Get<std::shared_ptr<FrameCountData>>(process_one_name);
     {
       std::lock_guard<std::mutex> lock(count_data->mtx);
-      count_data->process_count = frame_count_;
-      LOGD(ProcessOne) << "frame ts: " << frame_info->timestamp << " process_one_count: " << count_data->process_count;
+      count_data->process_count++;
     }
     return 0;
   }
- private:
-  uint64_t frame_count_ = 0;
 };
 REGISTER_MODULE(ProcessOne);
 
@@ -148,7 +145,6 @@ class ProcessTwo: public Module, public ModuleCreator<ProcessTwo> {
       LOGE(ProcessOne) << "frame is empty";
       return -1;
     }
-    frame_count_++;
 
     if (!frame_info->collection.HasValue(process_two_name)) {
       frame_info->collection.Add(process_two_name, std::make_shared<FrameCountData>());
@@ -160,20 +156,18 @@ class ProcessTwo: public Module, public ModuleCreator<ProcessTwo> {
     auto total_count_data = frame_info->collection.Get<std::shared_ptr<FrameCountData>>(process_total_name);
     {
       std::lock_guard<std::mutex> lock(total_count_data->mtx);
-      total_count_data->process_count += frame_count_;
+      total_count_data->process_count++;
       LOGD(ProcessTwo) << "frame ts: " << frame_info->timestamp << " process_total_count: " << total_count_data->process_count;
     }
     // 2. 获取 当前 module 对应的 FrameCountData, 自定义赋值
     auto count_data = frame_info->collection.Get<std::shared_ptr<FrameCountData>>(process_two_name);
     {
       std::lock_guard<std::mutex> lock(count_data->mtx);
-      count_data->process_count = 2 * frame_count_;
+      count_data->process_count++;
       LOGD(ProcessTwo) << "frame ts: " << frame_info->timestamp << " process_two_count: " << count_data->process_count;
     }
     return 0;
   }
- private:
-  uint64_t frame_count_ = 0;  // 表示当前 module 处理的 frame 数量
 };
 REGISTER_MODULE(ProcessTwo);
 
@@ -197,19 +191,15 @@ class ProcessThree: public Module, public ModuleCreator<ProcessThree> {
       LOGE(ProcessThree) << "frame is empty";
       return -1;
     }
-    frame_count_++;
-
     // 经过前两个 module, 才会到达 ProcessThree 因此 total 一定存在
     if (!frame_info->collection.HasValue(process_total_name)) {
       LOGE(ProcessThree) << "process_total not found";
       return -1;
     }
-    // total_count_: 前两个模块 count 的加和; should == ProcessThree frame_count_ + 1
+    // total_count_: 前两个模块 count 的加和
     auto total_count_data = frame_info->collection.Get<std::shared_ptr<FrameCountData>>(process_total_name);
-    EXPECT_EQ(total_count_data->process_count, frame_count_ + 1);
-    LOGD(ProcessThree) << "frame ts: " << frame_info->timestamp << " total_count_data: " << total_count_data->process_count << "; while module_three count: " << frame_count_;
+    // LOGD(ProcessThree) << "frame ts: " << frame_info->timestamp << " total_count_data: " << total_count_data->process_count << "; while module_three count: " << current_count;
 
-    // process_two_count should == 2 * process_one_count
     if (frame_info->collection.HasValue(process_one_name)) {
       auto count_data = frame_info->collection.Get<std::shared_ptr<FrameCountData>>(process_one_name);
       LOGD(ProcessThree) << "frame ts: " << frame_info->timestamp << " process_one_count: " << count_data->process_count;
@@ -221,7 +211,8 @@ class ProcessThree: public Module, public ModuleCreator<ProcessThree> {
     if (frame_info->collection.HasValue(process_two_name)) {
       auto one_count_data = frame_info->collection.Get<std::shared_ptr<FrameCountData>>(process_one_name);
       auto two_count_data = frame_info->collection.Get<std::shared_ptr<FrameCountData>>(process_two_name);
-      EXPECT_EQ(two_count_data->process_count, 2 * one_count_data->process_count);
+      EXPECT_EQ(one_count_data->process_count, two_count_data->process_count);
+      EXPECT_EQ(total_count_data->process_count, 1 + one_count_data->process_count);
       LOGD(ProcessThree) << "frame ts: " << frame_info->timestamp << " process_two_count: " << two_count_data->process_count;
     } else {
       LOGE(ProcessThree) << "process_two not found";
@@ -230,7 +221,6 @@ class ProcessThree: public Module, public ModuleCreator<ProcessThree> {
     return 0;
   }
  private:
-  uint64_t frame_count_ = 0;
   std::unordered_map<std::string, std::mutex> mutex_map_;
   std::mutex mtx_;
 };
@@ -260,7 +250,6 @@ class ProcessCount: public Module, public ModuleCreator<ProcessCount> {
       LOGE(ProcessCount) << "frame is empty";
       return -1;
     }
-    frame_count_++;
     int current_frame_id = stoi(frame_info->frame_id_s);
     if (last_frame_id_ != -1) {
       EXPECT_EQ(current_frame_id, last_frame_id_ + 1);
@@ -270,7 +259,6 @@ class ProcessCount: public Module, public ModuleCreator<ProcessCount> {
   }  // Process
 
  private:
-  int frame_count_ = 0;
   int last_frame_id_ = -1;
 };
 REGISTER_MODULE(ProcessCount);

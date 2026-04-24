@@ -26,7 +26,7 @@ class YoloPreproc: public Preproc {
 int Execute(const std::vector<float*>& cpu_outputs, ModelLoader* model,
             const std::shared_ptr<cnstream::FrameInfo>& package) override {
 
-    LOGI(PREPROC) << "Preproc Execute for data: " << package->GetStreamId() << ", timestamp: " << package->GetTimestamp();
+    LOGI(PREPROC) << "Execute for data: " << package->GetStreamId() << ", timestamp: " << package->GetTimestamp();
     int channel = model->get_channel();
     if (channel != 3) {
         LOGE(PREPROC) << "model input shape not supported";
