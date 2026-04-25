@@ -71,7 +71,7 @@ class DataFrame : public NonCopyable {
   std::unique_ptr<CNSyncedMemory> data_[FRAME_MAX_PLANES];
   std::unique_ptr<IDataDeallocator> deAllocator_ = nullptr;
   
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
  public:
 #else
  private:
@@ -88,7 +88,7 @@ class DataFrame : public NonCopyable {
   
   friend class SourceRender;
 
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
   std::map<std::string, uint64_t> frame_count_map_;  // just for test
 #endif
 

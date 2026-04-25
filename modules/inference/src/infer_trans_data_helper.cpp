@@ -79,7 +79,6 @@ void InferTransDataHelper::Loop() {
     if (!running_.load()) break;
     card.WaitForCall();  // TODO: 有可能会阻塞
 
-    // 虽然在 Loop 线程，但是调用 TransmitData 时 module 的成员会加锁保护
     if (infer_) {
       infer_->TransmitData(finfo);
     }

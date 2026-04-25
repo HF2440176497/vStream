@@ -23,6 +23,7 @@
 #include "cnstream_logging.hpp"
 
 #include "data_common.hpp"
+#include "output_module.hpp"
 
 
 namespace cnstream {
@@ -33,7 +34,7 @@ inline const std::string key_decode_queue_size = "queue_size";
  * @brief DecodeQueue class
  * @details DecodeQueue is a module that is used to decode the results
  */
-class DecodeQueue : public Module, public ModuleCreator<DecodeQueue> {
+class DecodeQueue : public OutputModule, public ModuleCreator<DecodeQueue> {
  public:
   explicit DecodeQueue(const std::string& name);
   ~DecodeQueue();
@@ -42,8 +43,8 @@ class DecodeQueue : public Module, public ModuleCreator<DecodeQueue> {
   void Close() override;
   bool CheckParamSet(const ModuleParamSet& paramSet) const override;
   int  Process(std::shared_ptr<FrameInfo> data) override;
-  bool GetData(s_output_data& data, int wait_ms = 0);  // 默认为非阻塞等待
-  s_output_data GetData(int wait_ms = 0);
+  bool GetData(s_output_data& data, int wait_ms = 0) override;  // 默认为非阻塞等待
+  s_output_data GetData(int wait_ms = 0) override;
 
 private:
   void OnFrame(std::shared_ptr<FrameInfo> frame_info);

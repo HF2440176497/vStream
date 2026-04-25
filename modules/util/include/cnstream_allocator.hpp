@@ -44,7 +44,7 @@ class MemoryAllocator : private NonCopyable {
   virtual void free(void *p) = 0;
   int device_id() const { return device_id_; }
   void set_device_id(int device_id) { device_id_ = device_id; }
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
  public:
 #else
  protected:

@@ -52,7 +52,7 @@ class ModelLoaderTrt : public ModelLoader {
 
   nvinfer1::IExecutionContext* CreateExecutionContext();
 
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
  public:
 #else
  private:

@@ -82,7 +82,7 @@ int Execute(const std::vector<float*>& cpu_outputs, ModelLoader* model,
         memcpy(cpu_output + c * input_h * input_w, channels[c].ptr<float>(), input_h * input_w * sizeof(float));
     }
 
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
     if (!has_save_frame_mat_) {
         save_float_image_chw_cpu(cpu_output, input_h, input_w, save_file_, ChannelsArrange::RGB, true);
         has_save_frame_mat_ = true;
@@ -93,7 +93,7 @@ int Execute(const std::vector<float*>& cpu_outputs, ModelLoader* model,
 
  private:
   bool has_save_frame_mat_ = false;
-  std::string save_file_ = "save_image/test_preproc_save.jpg";
+  std::string save_file_ = "save/test_preproc_save.jpg";
 
  private:
   DECLARE_REFLEX_OBJECT_EX(YoloPreproc, cnstream::Preproc);

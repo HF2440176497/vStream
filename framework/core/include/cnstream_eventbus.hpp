@@ -138,7 +138,7 @@ class EventBus : private NonCopyable {
    */
   bool PostEvent(Event event);
 
-#ifndef UNIT_TEST
+#ifndef VSTREAM_UNIT_TEST
  private:  // NOLINT
 #else
   Event PollEventToTest();
@@ -181,7 +181,7 @@ class EventBus : private NonCopyable {
   mutable std::mutex watcher_mtx_;
   mutable RwLock watcher_rwlock_;
   ThreadSafeQueue<Event> queue_;
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
   ThreadSafeQueue<Event> test_eventq_;
   bool unit_test = true;
 #endif

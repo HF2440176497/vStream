@@ -78,7 +78,7 @@ else()
 endif()
 
 if(VSTREAM_BUILD_TESTS)
-  add_definitions(-DUNIT_TEST)
+  add_definitions(-DVSTREAM_UNIT_TEST)
 endif()
 
 option(VSTREAM_MODULES_BUILD_SOURCE "build module source" ON)

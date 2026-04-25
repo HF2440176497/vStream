@@ -118,7 +118,7 @@ class SourceModule : public Module {
    */
   int RemoveSources(bool force = false);
 
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
  public:  // NOLINT
 #else
  protected:  // NOLINT

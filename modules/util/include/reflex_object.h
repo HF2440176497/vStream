@@ -96,7 +96,7 @@ class ReflexObject {
   static bool Register(const ClassInfo<ReflexObject>& info);
 
   virtual ~ReflexObject() = 0;
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
   static void Remove(const std::string& name);
 #endif
 };  // class reflexobject<void>
@@ -169,8 +169,8 @@ bool ReflexObjectEx<T>::Register(const ClassInfo<T>& info) {
 template <typename T>
 ReflexObjectEx<T>::~ReflexObjectEx() {}
 
-#ifdef UNIT_TEST
-std::map<std::string, ClassInfo<ReflexObject>>& CheckGlobalObjMap();
+#ifdef VSTREAM_UNIT_TEST
+std::map<std::string, ClassInfo<ReflexObject>>& check_reflex_map();
 #endif
 
 }  // namespace cnstream

@@ -49,7 +49,7 @@ IMPLEMENT_REFLEX_OBJECT_EX(PostprocTest, cnstream::Postproc);
 
 
 TEST(REFLEX, Test) {
-  std::map<std::string, ClassInfo<ReflexObject>>& obj_map = CheckGlobalObjMap();
+  std::map<std::string, ClassInfo<ReflexObject>>& obj_map = check_reflex_map();
 
   for (auto it = obj_map.begin(); it != obj_map.end(); it++) {
     std::string name = it->first;

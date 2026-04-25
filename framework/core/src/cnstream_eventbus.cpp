@@ -74,7 +74,7 @@ bool EventBus::PostEvent(Event event) {
   }
   // LOGI(CORE) << "Receieve event from [" << event.module->GetName() << "] :" << event.message;
   queue_.Push(event);
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
   if (unit_test) {
     test_eventq_.Push(event);
     unit_test = false;  // just test only once
@@ -131,7 +131,7 @@ void EventBus::EventLoop() {
   LOGI(CORE) << "Event bus exit.";
 }
 
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
 Event EventBus::PollEventToTest() {
   Event event;
   event.type = EventType::EVENT_INVALID;

@@ -201,7 +201,7 @@ bool Pipeline::Stop() {
   }
   threads_.clear();
   LOGD(CORE) << "Pipeline [" << GetName() << "] " << "Task loop threads stopped";
-  event_bus_->Stop();  // Sasha: 此处暂不调用
+  event_bus_->Stop();
 
   // close other modules
   for (auto node = graph_->DFSBegin(); node != graph_->DFSEnd(); ++node) {
@@ -447,7 +447,7 @@ void Pipeline::OnPassThrough(NodeContext* context, const std::shared_ptr<FrameIn
   if (data->IsEos()) {
     // OnEos(context, data);
   }
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
   LOGD(CORE) << "[" << context->module->GetName() << "]" << " [" << data->stream_id << "] pass through all modules; data->IsEos = " << std::boolalpha << data->IsEos();
 #endif
 }
@@ -502,6 +502,11 @@ void Pipeline::TransmitData(NodeContext* context, const std::shared_ptr<FrameInf
     if (!PassedByAllParentNodes(&next_node->data, cur_mask)) continue;
     auto next_module = next_node->data.module;
     auto connector = next_module->GetConnector();
+    if (!connector) {
+      LOGE(CORE) << "Module [" << next_module->GetName() << "] has no connector.";
+      continue;
+    }
+    if (!connector->IsRunning()) continue;
     // push data to conveyor only after data passed by all parent nodes.
 
     if (IsProfilingEnabled() && !data->IsEos()) {

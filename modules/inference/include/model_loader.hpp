@@ -92,7 +92,7 @@ class ModelLoader {
 
   virtual bool RunSync(std::vector<std::shared_ptr<void>> inputs, std::vector<std::shared_ptr<void>> outputs) = 0;
 
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
  public:
 #else
  protected:

@@ -31,7 +31,7 @@
 
 namespace cnstream {
 
-// #ifdef UNIT_TEST
+// #ifdef VSTREAM_UNIT_TEST
 // 
 // static std::mutex stream_idx_lock;
 // static std::map<std::string, uint32_t> stream_idx_map;
@@ -177,12 +177,12 @@ int SourceModule::RemoveSource(const std::string &stream_id, bool force) {
     std::unique_lock<std::mutex> lock(mutex_);
     auto iter = source_map_.find(stream_id);
     if (iter == source_map_.end()) {
-      LOGW(CORE) << "stream named [" << stream_id << "] does not exist\n";
+      LOGW(CORE) << "[" << stream_id << "]: source does not exist";
       return 0;
     }
-    LOGI(CORE) << "[" << stream_id << "]: Stream closing...";
+    LOGI(CORE) << "[" << stream_id << "]: stream closing...";
     iter->second->Close();
-    LOGI(CORE) << "[" << stream_id << "]: Stream close done";
+    LOGI(CORE) << "[" << stream_id << "]: stream close done";
   }
   bool ret = CheckStreamEosReached(stream_id, force);
   if (!ret) {
@@ -242,13 +242,8 @@ int SourceModule::RemoveSources(bool force) {
       stream_ids.push_back(iter.first);
     }
   }
-#ifdef UNIT_TEST
   for (const auto &stream_id : stream_ids) {
-    std::cout << "RemoveSource stream_id: " << stream_id << "; ";
-  }
-  if (stream_ids.size() > 0) { std::cout << std::endl; }
-#endif
-  for (const auto &stream_id : stream_ids) {
+    LOGD(CORE) << "remove source stream_id: [" << stream_id << "]";
     RemoveSource(stream_id, force);
   }
   LOGI(CORE) << "Finish removing all streams";
@@ -262,7 +257,7 @@ bool SourceModule::SendData(const std::shared_ptr<FrameInfo> data) {
   if (!data->IsEos() && IsStreamRemoved(data->stream_id)) {
     return false;
   }
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
   LOGD(SourceModule) << "SendData, stream_id: " << data->stream_id << ", ts: " << data->timestamp << std::endl;
 #endif
   return TransmitData(data);

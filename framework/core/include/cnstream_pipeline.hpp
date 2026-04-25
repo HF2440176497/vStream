@@ -305,7 +305,7 @@ class Pipeline : private NonCopyable {
    */
   void RegisterFrameDoneCallBack(const std::function<void(std::shared_ptr<FrameInfo>)>& callback);
 
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
  public:
 #else
  private:

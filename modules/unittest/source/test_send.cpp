@@ -29,13 +29,10 @@ class SourceSendTest : public testing::Test {
   virtual void SetUp() {
     std::string json_content = readFile(test_pipeline_send_json.c_str());
     EXPECT_FALSE(json_content.empty()) << "Read json file failed";
-    cnstream::CNGraphConfig graph_config;
-    graph_config.ParseByJSONStr(json_content);
-    graph_config_ = graph_config;
 
     pipeline_ = std::make_shared<Pipeline>("pipeline");
     EXPECT_NE(pipeline_, nullptr);
-    EXPECT_TRUE(pipeline_->BuildPipeline(graph_config_));
+    EXPECT_TRUE(pipeline_->BuildPipelineByJSONFile(test_pipeline_send_json));
   }
 
  protected:
@@ -43,7 +40,6 @@ class SourceSendTest : public testing::Test {
   std::shared_ptr<SendHandler>  send_handler_ = nullptr;
   std::shared_ptr<DataSource>   module_ = nullptr;
   std::shared_ptr<Pipeline>     pipeline_ = nullptr;
-  cnstream::CNGraphConfig       graph_config_;
 
  protected:
    int send_count_ = 0;
@@ -70,10 +66,13 @@ TEST_F(SourceSendTest, TestSend) {
   EXPECT_EQ(source->AddSource(send_handler_), 0);
   EXPECT_TRUE(pipeline_->Start());
 
-  Module* consume_module = pipeline_->GetModule("osd");  // name in pipeline json
-  EXPECT_NE(consume_module, nullptr);
+  Module* osd_module = pipeline_->GetModule("osd");  // name in pipeline json
+  EXPECT_NE(osd_module, nullptr);
 
-  DecodeQueue* decode_queue = dynamic_cast<DecodeQueue*>(consume_module);
+  OutputModule* osd_ouput_module = dynamic_cast<OutputModule*>(osd_module);
+  EXPECT_NE(osd_ouput_module, nullptr);
+
+  DecodeQueue* decode_queue = dynamic_cast<DecodeQueue*>(osd_ouput_module);
   EXPECT_NE(decode_queue, nullptr);
 
   image_ = cv::imread(test_image_path, cv::IMREAD_COLOR);

@@ -24,19 +24,19 @@ static const std::string key_config_file = "config_file";
 static const std::string key_threshold_map = "threshold";  // 配置文件中的阈值字典对应的
 
 
-static float box_iou(float aleft, float atop, float aright, float abottom, float bleft, float btop,
-                                float bright, float bbottom) {
-    float cleft = std::max(aleft, bleft);
-    float ctop = std::max(atop, btop);
-    float cright = std::min(aright, bright);
-    float cbottom = std::min(abottom, bbottom);
+static float box_iou(float aleft, float atop, float aright, float abottom, 
+                    float bleft, float btop, float bright, float bbottom) {
+  float cleft = std::max(aleft, bleft);
+  float ctop = std::max(atop, btop);
+  float cright = std::min(aright, bright);
+  float cbottom = std::min(abottom, bbottom);
 
-    float c_area = std::max(cright - cleft, 0.0f) * std::max(cbottom - ctop, 0.0f);
-    if (c_area == 0.0f) return 0.0f;
+  float c_area = std::max(cright - cleft, 0.0f) * std::max(cbottom - ctop, 0.0f);
+  if (c_area == 0.0f) return 0.0f;
 
-    float a_area = std::max(0.0f, aright - aleft) * std::max(0.0f, abottom - atop);
-    float b_area = std::max(0.0f, bright - bleft) * std::max(0.0f, bbottom - btop);
-    return c_area / (a_area + b_area - c_area);
+  float a_area = std::max(0.0f, aright - aleft) * std::max(0.0f, abottom - atop);
+  float b_area = std::max(0.0f, bright - bleft) * std::max(0.0f, bbottom - btop);
+  return c_area / (a_area + b_area - c_area);
 }
 
 /**
@@ -110,9 +110,7 @@ class Yolov8Postproc: public Postproc {
       LOGE(POSTPROC) << "Init config_file must be in custom_postproc_params.";
       return false;
     }
-#ifdef UNIT_TEST
-    LOGI(POSTPROC) << "Init config_file: " << config_file_;
-#endif
+    LOGI(POSTPROC) << "model_name: " << model_name_ << ", post conf file: " << config_file_;
     std::ifstream file(config_file_);
     if (!file.is_open()) {
       LOGE(POSTPROC) << "Init Could not open file " << config_file_;
@@ -146,7 +144,7 @@ class Yolov8Postproc: public Postproc {
   int Execute(const std::vector<float*>& cpu_outputs, ModelLoader* model,
               const std::shared_ptr<cnstream::FrameInfo>& package) {
 
-    LOGI(POSTPROC) << "Execute for data: " << package->GetStreamId() << ", timestamp: " << package->GetTimestamp();
+    LOGD(POSTPROC) << "Execute for data: " << package->GetStreamId() << ", timestamp: " << package->GetTimestamp();
  
     DataFramePtr frame = package->collection.Get<DataFramePtr>(cnstream::kDataFrameTag);
     const int img_w = frame->GetWidth();
@@ -175,8 +173,8 @@ class Yolov8Postproc: public Postproc {
 
     TensorShape output_shape = model->OutputShape(output_index);
 
-    int num_bboxes = output_shape.shape(2);  // 8000
-    int output_cdim = output_shape.shape(1);  // 84
+    int num_bboxes = output_shape.shape(2);  // 8400
+    int output_cdim = output_shape.shape(1);  // 84（classes + bbox）
     const int num_classes = output_cdim - 4;  // 80
 
     const int stride = num_bboxes;  // 每个属性之间的步长
@@ -231,6 +229,7 @@ class Yolov8Postproc: public Postproc {
       obj->id = label;
       obj->score = confidence;
 
+      // note: 相对原图的实际坐标
       obj->bbox.x = left;
       obj->bbox.y = top;
       obj->bbox.w = right - left;
@@ -242,14 +241,14 @@ class Yolov8Postproc: public Postproc {
     }
     fast_nms(objs, max_boxes_num_, 0.5f);
 
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
     if (!has_save_frame_mat_) {
       cv::Mat img = frame->GetImage().clone();  // BGR
       for (auto& obj : objs) {
-        float x = obj->bbox.x * img_w;
-        float y = obj->bbox.y * img_h;
-        float w = obj->bbox.w * img_w;
-        float h = obj->bbox.h * img_h;
+        float x = obj->bbox.x;
+        float y = obj->bbox.y;
+        float w = obj->bbox.w;
+        float h = obj->bbox.h;
         cv::rectangle(img, cv::Rect(x, y, w, h), cv::Scalar(0, 255, 0), 2);
       }
       cv::imwrite(save_file_, img);
@@ -261,12 +260,12 @@ class Yolov8Postproc: public Postproc {
   }
 
  private:
-  const int max_boxes_num_ = 50;
+  const int max_boxes_num_ = 100;
   std::string model_name_;  ///< The name of the model.
 
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
   bool has_save_frame_mat_ = false;
-  std::string save_file_ = "save_image/test_postproc_save.jpg";
+  std::string save_file_ = "save/test_postproc_save.jpg";
 #endif
 
  private:

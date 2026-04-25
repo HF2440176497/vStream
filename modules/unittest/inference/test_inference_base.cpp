@@ -494,7 +494,7 @@ static const std::string g_channel_id = "channel_1";
  */
 TEST(InferenceBaseTest, Demo) {
 
-  std::map<std::string, ClassInfo<ReflexObject>>& obj_map = CheckGlobalObjMap();
+  std::map<std::string, ClassInfo<ReflexObject>>& obj_map = check_reflex_map();
   for (auto it = obj_map.begin(); it != obj_map.end(); it++) {
     std::string name = it->first;
     std::cout << "REFLEX: obj_map name = " << name << std::endl;

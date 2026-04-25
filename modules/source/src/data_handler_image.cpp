@@ -166,6 +166,8 @@ void ImageHandlerImpl::Loop() {
     controller.Control();
     frame_index_++;
     frame.pts = frame_index_ * 1000 / frame_rate_;  // ms
+    
+    if (!running_.load()) break;
     std::shared_ptr<FrameInfo> data = OnDecodeFrame(&frame);
     if (!module_ || !handler_) {
       LOGE(SOURCE) << "ImageHandler: [" << stream_id_ << "]: module_ or handler_ is null";

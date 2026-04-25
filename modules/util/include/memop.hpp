@@ -41,7 +41,7 @@ class MemoryBufferCollection {
   void ClearAll();
   size_t GetDeviceCount();
 
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
  public:
 #else
  private:

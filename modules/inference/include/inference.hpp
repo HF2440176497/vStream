@@ -73,7 +73,7 @@ class Inference : public Module, public ModuleCreator<Inference> {
  private:
   std::shared_ptr<InferParamManager> param_manager_ = nullptr;
 
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
   public:
 #else
   private:

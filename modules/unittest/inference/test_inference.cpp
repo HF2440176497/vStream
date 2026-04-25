@@ -29,13 +29,10 @@ class InferenceTest : public testing::Test {
   virtual void SetUp() {
     std::string json_content = readFile(test_pipeline_json.c_str());
     EXPECT_FALSE(json_content.empty()) << "Read json file failed";
-    cnstream::CNGraphConfig graph_config;
-    graph_config.ParseByJSONStr(json_content);
-    graph_config_ = graph_config;
 
     pipeline_ = std::make_shared<Pipeline>("pipeline");
     EXPECT_NE(pipeline_, nullptr);
-    EXPECT_TRUE(pipeline_->BuildPipeline(graph_config_));
+    EXPECT_TRUE(pipeline_->BuildPipelineByJSONFile(test_pipeline_json));
   }
 
   virtual void TearDown() {  // 当前用例结束
@@ -51,7 +48,6 @@ class InferenceTest : public testing::Test {
   std::shared_ptr<ImageHandler> image_handler_ = nullptr;
   std::shared_ptr<DataSource>   module_ = nullptr;
   std::shared_ptr<Pipeline>     pipeline_ = nullptr;
-  cnstream::CNGraphConfig       graph_config_;
 };
 
 /**
@@ -60,7 +56,7 @@ class InferenceTest : public testing::Test {
 TEST_F(InferenceTest, RunYOLO) {
 
   // 首先验证前后处理的注册
-  std::map<std::string, ClassInfo<ReflexObject>>& obj_map = CheckGlobalObjMap();
+  std::map<std::string, ClassInfo<ReflexObject>>& obj_map = check_reflex_map();
   for (auto it = obj_map.begin(); it != obj_map.end(); it++) {
     std::string name = it->first;
     LOGI(RUN_YOLO) << "REFLEX: obj_map name = " << name << std::endl;

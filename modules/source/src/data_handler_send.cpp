@@ -145,7 +145,7 @@ void SendHandlerImpl::Loop() {
               send_frame.image.cols * send_frame.image.elemSize());
       }
     }
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
     LOGD(SOURCE) << "SendHandlerImpl: Loop; image width: " << send_frame.image.cols << ", height: " << send_frame.image.rows << ", alloca data_size: " << data_size;
 #endif
 

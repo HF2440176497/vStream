@@ -84,7 +84,7 @@ class BatchingDoneStage {
     profiler_ = profiler;
   }
 
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
  public:
 #else
  protected:

@@ -158,6 +158,11 @@ class Module : private NonCopyable {
   virtual void OnEos(const std::string &stream_id) {}
 
   /**
+   * @brief Calls Pipeline::GetModuleIdx() to get the module index.
+   */
+  size_t GetId();
+
+  /**
    * @brief Gets the name of this module.
    *
    * @return Returns the name of this module.
@@ -225,12 +230,16 @@ class Module : private NonCopyable {
    */
   ParamRegister param_register_;
 
-
-#ifdef UNIT_TEST
- public:  // NOLINT
-#else
- protected:  // NOLINT
-#endif
+  /**
+   * @brief Transmits data to the following stages.
+   *
+   * Valid when the module has permission to transmit data by itself.
+   *
+   * @param[in] data A pointer to the information of the frame.
+   *
+   * @return Returns true if the data has been transmitted successfully. Otherwise, returns false.
+   */
+  bool TransmitData(std::shared_ptr<FrameInfo> data);
 
   friend class Pipeline;
   friend class FrameInfo;
@@ -265,27 +274,12 @@ class Module : private NonCopyable {
 
   bool DoTransmitData(const std::shared_ptr<FrameInfo> data);
 
-  /**
-   * @brief Transmits data to the following stages.
-   *
-   * Valid when the module has permission to transmit data by itself.
-   *
-   * @param[in] data A pointer to the information of the frame.
-   *
-   * @return Returns true if the data has been transmitted successfully. Otherwise, returns false.
-   */
-  bool TransmitData(std::shared_ptr<FrameInfo> data);
-
   Pipeline *container_ = nullptr;  ///< The container.
   RwLock container_lock_;
   std::string name_;                      ///< The name of the module.
   std::atomic<bool> hasTransmit_ {false};
 
-#ifdef UNIT_TEST
- public:  // NOLINT
-#else
- private:    // NOLINT
-#endif
+ protected:
 
   IModuleObserver *observer_ = nullptr;
   RwLock observer_lock_;
@@ -300,7 +294,6 @@ class Module : private NonCopyable {
     }
   }
 
-  size_t GetId();
   size_t id_ = INVALID_MODULE_ID;
   NodeContext* context_ = nullptr;  // 外界创建传入的 使用裸指针
   std::shared_ptr<Connector> connector_ = nullptr;  // 完全交给 Module

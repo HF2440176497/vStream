@@ -57,7 +57,7 @@ class Conveyor : private NonCopyable {
   uint32_t GetBufferSize();
   uint64_t GetFailTime();
 
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
  public:
 #else
  private:

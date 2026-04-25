@@ -56,7 +56,7 @@ else()
 endif()
 
 if(VSTREAM_BUILD_TESTS)
-  add_definitions(-DUNIT_TEST)
+  add_definitions(-DVSTREAM_UNIT_TEST)
 endif()
 
 aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR}/core/src core_srcs)

@@ -565,13 +565,13 @@ int main(int argc, char* argv[]) {
   std::cout << "----------------------------------------" << std::endl;
   std::cout << "Saving converted images for verification" << std::endl;
   std::cout << "----------------------------------------" << std::endl;
-  SaveImage(rgb24, "save_image/output_rgb24.jpg");
-  SaveImage(bgr24, "save_image/output_bgr24.jpg");
-  SaveImage(rgb24_from_nv12, "save_image/output_rgb24_from_nv12.jpg");
-  SaveImage(bgr24_from_nv12, "save_image/output_bgr24_from_nv12.jpg");
-  SaveImage(rgb24_from_nv21, "save_image/output_rgb24_from_nv21.jpg");
-  SaveImage(bgr24_from_nv21, "save_image/output_bgr24_from_nv21.jpg");
-  SaveImage(bgr24_roundtrip, "save_image/output_bgr24_roundtrip.jpg");
+  SaveImage(rgb24, "save/output_rgb24.jpg");
+  SaveImage(bgr24, "save/output_bgr24.jpg");
+  SaveImage(rgb24_from_nv12, "save/output_rgb24_from_nv12.jpg");
+  SaveImage(bgr24_from_nv12, "save/output_bgr24_from_nv12.jpg");
+  SaveImage(rgb24_from_nv21, "save/output_rgb24_from_nv21.jpg");
+  SaveImage(bgr24_from_nv21, "save/output_bgr24_from_nv21.jpg");
+  SaveImage(bgr24_roundtrip, "save/output_bgr24_roundtrip.jpg");
 
   std::cout << std::endl;
   std::cout << "========================================" << std::endl;

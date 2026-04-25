@@ -256,7 +256,7 @@ TEST(CudaMemOp, ConvertImageFormat_RGB24_BGR24) {
 }
 
 
-static std::string save_file = "save_image/output_memop_nv12.jpg";
+static std::string save_file = "save/output_memop_nv12.jpg";
 
 /**
  * 生成一张 NV12 图片,

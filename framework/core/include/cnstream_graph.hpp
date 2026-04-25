@@ -277,7 +277,7 @@ class CNGraph {
      */
     DFSIterator DFSEnd() const;
 
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
    public:
 #else
    private:
@@ -411,7 +411,7 @@ class CNGraph {
   bool InitEdges();
   void FindHeadsAndTails();
 
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
   public:
 #else
   private:

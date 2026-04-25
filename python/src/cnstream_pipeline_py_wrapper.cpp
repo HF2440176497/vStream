@@ -24,6 +24,7 @@
 
 #include "cnstream_pipeline.hpp"
 #include "cnstream_source.hpp"
+#include "output_module.hpp"
 
 #include <memory>
 #include <string>
@@ -57,12 +58,17 @@ void PipelineWrapper(py::module &m) {
       .def("start", &Pipeline::Start)
       .def("stop", &Pipeline::Stop, py::call_guard<py::gil_scoped_release>())
       .def("is_running", &Pipeline::IsRunning)
-      // Module 由 Pipeline 显式控制
       .def("get_source_module",
            [](Pipeline *pipeline, const std::string &module_name) {
               auto* module = pipeline->GetModule(module_name);
               if (!module) return static_cast<SourceModule *>(nullptr);
               return dynamic_cast<SourceModule *>(module);
+           },
+           py::return_value_policy::reference)
+      .def("get_output_module", [](Pipeline *pipeline, const std::string &module_name) {
+              auto* module = pipeline->GetModule(module_name);
+              if (!module) return static_cast<OutputModule *>(nullptr);
+              return dynamic_cast<OutputModule *>(module);
            },
            py::return_value_policy::reference)
       .def("get_module",

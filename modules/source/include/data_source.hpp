@@ -88,7 +88,7 @@ class DataSource : public SourceModule, public ModuleCreator<DataSource> {
    */
   DataSourceParam GetSourceParam() const;
 
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
   public:
 #else
   private:
@@ -119,7 +119,7 @@ class ImageHandler : public SourceHandler {
  private:
   explicit ImageHandler(DataSource *module, const std::string &stream_id);
 
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
  public:
 #else
  private:
@@ -145,7 +145,7 @@ class VideoHandler : public SourceHandler {
  private:
   explicit VideoHandler(DataSource *module, const std::string &stream_id);
 
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
  public:
 #else
  private:
@@ -171,7 +171,7 @@ class SendHandler : public SourceHandler {
  private:
   explicit SendHandler(DataSource *module, const std::string &stream_id);
 
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
  public:
 #else
  private:

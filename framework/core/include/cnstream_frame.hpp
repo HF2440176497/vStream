@@ -144,7 +144,7 @@ class FrameInfo : private NonCopyable {
 
   Collection collection;
 
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
  public:
   uint32_t test_idx = 0;
 #else

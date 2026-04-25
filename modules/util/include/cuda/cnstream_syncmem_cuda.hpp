@@ -74,7 +74,7 @@ public:
     return oss.str();
   }
 
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
  public:
 #else
  private:

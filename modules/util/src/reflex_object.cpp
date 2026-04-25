@@ -35,12 +35,9 @@ static std::map<std::string, ClassInfo<ReflexObject>>& GlobalObjMap() {
   return sg_obj_map;
 }
 
-#ifdef UNIT_TEST
-std::map<std::string, ClassInfo<ReflexObject>>& CheckGlobalObjMap() {
+std::map<std::string, ClassInfo<ReflexObject>>& check_reflex_map() {
   return GlobalObjMap();
 }
-#endif  // UNIT_TEST
-
 
 ReflexObject* ReflexObject::CreateObject(const std::string& name) {
   const auto& obj_map = GlobalObjMap();
@@ -69,7 +66,7 @@ bool ReflexObject::Register(const ClassInfo<ReflexObject>& info) {
 
 ReflexObject::~ReflexObject() {}
 
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
 void ReflexObject::Remove(const std::string& name) {
   auto& obj_map = GlobalObjMap();
   auto info_iter = obj_map.find(name);

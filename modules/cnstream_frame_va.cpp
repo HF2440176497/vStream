@@ -18,7 +18,7 @@ cv::Mat BGRToBGR(const DataFrame& frame) {
 
 static
 cv::Mat RGBToBGR(const DataFrame& frame) {
-// #ifdef UNIT_TEST
+// #ifdef VSTREAM_UNIT_TEST
 //   LOGD(FRAME) << "RGBToBGR: width = " << frame.GetWidth() << ", height = " << frame.GetHeight() << std::endl;
 //   LOGD(FRAME) << "RGBToBGR: stride = " << frame.GetStride(0) << std::endl;
 //   LOGD(FRAME) << "RGBToBGR: data = " << frame.data_[0]->StatusToString() << std::endl;
@@ -170,7 +170,7 @@ void DataFrame::CopyToSyncMem(DecodeFrame* dec_frame) {
     return;
   }
 
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
   LOGD(FRAME) << "CopyToSyncMem image width: " << width_ << ", height: " << height_ << ", alloca size: " << bytes;
   // LOGD(FRAME) << "------------- CopyToSyncMem sync mem status: " << this->data_[0]->StatusToString();
 #endif

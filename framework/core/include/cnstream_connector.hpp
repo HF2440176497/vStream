@@ -76,7 +76,7 @@ class Connector : private NonCopyable {
   bool IsRunning();
   void EmptyDataQueue();
 
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
  public:
 #else
  private:

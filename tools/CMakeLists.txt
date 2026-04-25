@@ -50,7 +50,7 @@ endif()
 include_directories(${VSTREAM_ROOT_PATH}/3rdparty/nlohmann-json/include)
 
 if(VSTREAM_BUILD_TESTS)
-  add_definitions(-DUNIT_TEST)
+  add_definitions(-DVSTREAM_UNIT_TEST)
 endif()
 
 # ---[ opencv

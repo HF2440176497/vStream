@@ -6,6 +6,7 @@
 #include "cnstream_pipeline.hpp"
 #include "cnstream_source.hpp"
 #include "decode_queue.hpp"
+#include "output_module.hpp"
 #include "data_common.hpp"
 #include "common_wrapper.hpp"
 
@@ -15,6 +16,57 @@
 namespace py = pybind11;
 
 namespace cnstream {
+
+namespace detail {
+
+/**
+ * @brief PyOutputModule 是 OutputModule 的 trampoline 类
+ * @details 允许 Python 继承 OutputModule 并 override 虚函数
+ */
+class PyOutputModule : public OutputModule {
+ public:
+  using OutputModule::OutputModule;
+
+  bool Open(ModuleParamSet params) override {
+    PYBIND11_OVERRIDE_PURE(
+        bool,
+        OutputModule,
+        open,
+        params);
+  }
+
+  void Close() override {
+    PYBIND11_OVERRIDE_PURE(
+        void,
+        OutputModule,
+        close);
+  }
+
+  int Process(std::shared_ptr<FrameInfo> data) override {
+    PYBIND11_OVERRIDE_PURE(
+        int,
+        OutputModule,
+        process,
+        data);
+  }
+
+  /**
+   * @brief 获取输出数据
+   * @param data 输出数据
+   * @param wait_ms 等待时间，单位毫秒
+   * @return true 成功获取数据
+   */
+  bool GetData(s_output_data& data, int wait_ms) override {
+    PYBIND11_OVERRIDE_PURE(
+        bool,
+        OutputModule,
+        get_data,
+        data,
+        wait_ms);
+  }
+};  // class PyOutputModule
+
+}  // namespace detail
 
 void OsdModuleWrapper(py::module &m) {
 
@@ -45,7 +97,6 @@ void OsdModuleWrapper(py::module &m) {
       .def_readwrite("objects_dict", &s_output_data::objects_dict)
       .def_readwrite("objects_json", &s_output_data::objects_json)
       .def_property("image_dict",
-        // getter 
         [](const s_output_data& data) {
           py::dict dict;
           for (auto& [key, mat] : data.image_dict) {
@@ -63,14 +114,24 @@ void OsdModuleWrapper(py::module &m) {
           }
         });
 
-  py::class_<DecodeQueue, Module, std::shared_ptr<DecodeQueue>>(m, "DecodeQueue")
+
+  py::class_<OutputModule, std::shared_ptr<OutputModule>, detail::PyOutputModule>(m, "OutputModule")
+      .def(py::init<const std::string&>())
+      .def("open", &OutputModule::Open)
+      .def("close", &OutputModule::Close)
+      .def("process", &OutputModule::Process)
+      // for py: ret, data = osd.get_data(wait_ms=10)
       .def("get_data",
-        [](DecodeQueue& self, int wait_ms) {
+        [](OutputModule& self, int wait_ms) {
           s_output_data data;
           bool ok = self.GetData(data, wait_ms);
           return std::make_pair(ok, data);
         },
         py::arg("wait_ms") = 0);
+
+  // <class, holder, base>
+  py::class_<DecodeQueue, OutputModule, std::shared_ptr<DecodeQueue>>(m, "DecodeQueue")
+      .def(py::init<const std::string&>());
 }
 
 }  // namespace cnstream

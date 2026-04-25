@@ -88,7 +88,10 @@ bool Module::PostEvent(Event e) {
 bool Module::DoTransmitData(const std::shared_ptr<FrameInfo> data) {
   RwLockReadGuard guard(container_lock_);
   if (container_) {
-    return container_->ProvideData(this, data);
+    if (container_->IsRunning()) {
+      return container_->ProvideData(this, data);
+    }
+    return false;
   } else {
     LOGE(CORE) << "[" << GetName() << "] module's container is not set";
     return false;

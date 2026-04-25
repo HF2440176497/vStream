@@ -112,7 +112,7 @@ class ModuleFactory {
     if (nullptr == pFunc) {
       return (false);
     }
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
     std::cout << "=== FACTORY REGISTRATION ===" << std::endl;
     std::cout << "Registering type: " << strTypeName << std::endl;
     std::cout << "=== REGISTRATION COMPLETE ===" << std::endl;
@@ -158,7 +158,7 @@ class ModuleFactory {
     return (map_.find(strTypeName) != map_.end());
   }
 
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
   void PrintRegistedModules() {
     std::vector<std::string> registed_modules = GetRegisted();
     std::cout << "------- registed_modules: ";
@@ -293,7 +293,7 @@ class IdxManager {
   size_t GetModuleIdx();
   void ReturnModuleIdx(size_t id_);
 
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
  public:
 #else
  private:

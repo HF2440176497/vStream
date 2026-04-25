@@ -31,7 +31,7 @@ std::shared_ptr<InferTask> IOBatchingStage::Batching(std::shared_ptr<FrameInfo> 
     QueuingTicket t = ticket;
     IOResValue value = this->output_res_->WaitResourceByTicket(&t);
 
-// #ifdef UNIT_TEST
+// #ifdef VSTREAM_UNIT_TEST
 //     LOGD(IOBatchingStage) << "bidx: " << bidx << "; [" << finfo->stream_id << "], ts: " << finfo->timestamp;
 // #endif
 
@@ -40,7 +40,7 @@ std::shared_ptr<InferTask> IOBatchingStage::Batching(std::shared_ptr<FrameInfo> 
     return 0;
   });
 
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
   task->task_msg = "IOBatchingStage, bidx: " + std::to_string(bidx);
 #endif
   

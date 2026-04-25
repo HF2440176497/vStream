@@ -48,7 +48,7 @@ public:
   void OnEndFrame();
   std::shared_ptr<FrameInfo> OnDecodeFrame(DecodeFrame* frame);
 
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
  public:
 #else
  private:

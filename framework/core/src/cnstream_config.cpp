@@ -43,7 +43,7 @@ bool IsProfilerItem(const std::string& item_name) {
 /**
  * @brief 获取路径的目录部分
  * @param path 文件路径
- * @example "save_image/test.jpg" -> "save_image/"
+ * @example "save/test.jpg" -> "save/"
  */
 static inline
 std::string GetPathDir(const std::string& path) {

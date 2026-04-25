@@ -10,7 +10,7 @@ namespace cnstream {
 /**
  * @brief DecodeQueue 不允许自己传输 frame_info 仍然需要借助 Pipeline 传输
  */
-DecodeQueue::DecodeQueue(const std::string& name) : Module(name) {
+DecodeQueue::DecodeQueue(const std::string& name) : OutputModule(name) {
   param_register_.SetModuleDesc("DecodeQueue is a module for decoding the results.");
   param_register_.Register(key_decode_queue_size, "Size of the decode queue.");
 }

@@ -54,7 +54,7 @@ std::vector<std::shared_ptr<InferTask>> H2DBatchingDoneStage::BatchingDone(const
     IOResValue cpu_value = this->cpu_input_res_->WaitResourceByTicket(&cir_ticket);
     IOResValue net_value = this->net_input_res_->WaitResourceByTicket(&mir_ticket);
 
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
     // std::this_thread::sleep_for(std::chrono::milliseconds(100));
     assert(finfos.size() == batchsize_);
 
@@ -109,7 +109,7 @@ std::vector<std::shared_ptr<InferTask>> InferBatchingDoneStage::BatchingDone(con
     IOResValue net_input_value = this->net_input_res_->WaitResourceByTicket(&nir_ticket);
     IOResValue net_output_value = this->net_output_res_->WaitResourceByTicket(&nor_ticket);
 
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
     // std::this_thread::sleep_for(std::chrono::milliseconds(800));
     assert(finfos.size() == batchsize_);
 
@@ -151,7 +151,7 @@ std::vector<std::shared_ptr<InferTask>> D2HBatchingDoneStage::BatchingDone(const
     IOResValue net_output_value = this->net_output_res_->WaitResourceByTicket(&mor_ticket);
     IOResValue cpu_output_value = this->cpu_output_res_->WaitResourceByTicket(&cor_ticket);
 
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
     // std::this_thread::sleep_for(std::chrono::milliseconds(100));
     assert(finfos.size() == batchsize_);
 
@@ -227,7 +227,7 @@ std::vector<std::shared_ptr<InferTask>> PostprocessingBatchingDoneStage::Batchin
           return 0;
         });  // task
     
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
     task->task_msg = "PostprocessingBatchingDoneStage, bidx: " + std::to_string(bidx);
 #endif
     tasks.push_back(task);

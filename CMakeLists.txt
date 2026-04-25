@@ -66,7 +66,7 @@ endif()
 
 # 当使用系统安装的 gtest，VSTREAM_HAS_BUILT_GTEST = FALSE
 if(VSTREAM_BUILD_TESTS)
-  add_definitions(-DUNIT_TEST)
+  add_definitions(-DVSTREAM_UNIT_TEST)
   # ---[ gtest
   include(${VSTREAM_ROOT_PATH}/cmake/FindGtest.cmake)
   if(GTEST_FOUND)

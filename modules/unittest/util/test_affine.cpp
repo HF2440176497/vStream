@@ -10,9 +10,9 @@ static const std::string image_path = "image.png";
 static const int dst_w = 640;
 static const int dst_h = 640;
 
-static const std::string output_path_resize = "save_image/test_affine_resize.jpg";
-static const std::string output_path_resize_swap = "save_image/test_affine_resize_swap.jpg";
-static const std::string output_path_resize_swap_norm = "save_image/test_affine_resize_swap_norm.jpg";
+static const std::string output_path_resize = "save/test_affine_resize.jpg";
+static const std::string output_path_resize_swap = "save/test_affine_resize_swap.jpg";
+static const std::string output_path_resize_swap_norm = "save/test_affine_resize_swap_norm.jpg";
 
 namespace cnstream {
 

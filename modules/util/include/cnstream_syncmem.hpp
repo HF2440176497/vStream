@@ -129,7 +129,7 @@ class CNSyncedMemory : private NonCopyable {
 public:
   virtual void ToCpu();
 
-#ifdef UNIT_TEST
+#ifdef VSTREAM_UNIT_TEST
  public:
 #else
  protected:

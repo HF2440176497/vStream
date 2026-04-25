@@ -71,25 +71,10 @@ void DataFrameWrapper(const py::module &m) {
       .def("data", [](const DataFrame& data_frame, int plane_idx) {
           return data_frame.data_[plane_idx].get();
       }, py::return_value_policy::reference_internal)
-      .def_readwrite("frame_id", &DataFrame::frame_id_)  // uint64_t
-      .def_readwrite("fmt", &DataFrame::fmt_)
-      .def_readwrite("width", &DataFrame::width_)
-      .def_readwrite("height", &DataFrame::height_)
-
-      // getter and setter for stride
-      .def_property("stride",
-        [](const DataFrame& data_frame) {
-          py::array_t<int> result(FRAME_MAX_PLANES);
-          py::buffer_info buf = result.request();
-          memcpy(buf.ptr, data_frame.stride_, FRAME_MAX_PLANES * sizeof(int));
-          return result;
-        },
-        // eg: data_frame.stride = new_strides
-        [](std::shared_ptr<DataFrame> data_frame, py::array_t<int> strides) {
-            py::buffer_info strides_buf = strides.request();
-            int size = std::min(static_cast<int>(strides_buf.size), static_cast<int>(FRAME_MAX_PLANES));
-            memcpy(data_frame->stride_, strides_buf.ptr, size * sizeof(int));
-        });
+      .def("get_frame_id", &DataFrame::GetFrameId)  // uint64_t
+      .def("get_fmt", &DataFrame::GetFmt)
+      .def("get_width", &DataFrame::GetWidth)
+      .def("get_height", &DataFrame::GetHeight);
 
   py::enum_<DataFormat>(m, "DataFormat")
       .value("INVALID", DataFormat::INVALID)
