@@ -97,7 +97,7 @@ struct StreamMsg {
   StreamMsgType type;      /*!< The type of a message. */
   std::string stream_id;   /*!< Stream ID, set in FrameInfo::stream_id. */
   std::string module_name; /*!< The module that posts this event. */
-  int64_t pts = -1;        /*!< The PTS (Presentation Timestamp) of this frame. */
+  uint64_t pts;        /*!< The PTS (Presentation Timestamp) of this frame. */
 };
 
 /**

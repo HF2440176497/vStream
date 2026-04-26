@@ -10,8 +10,6 @@ from datetime import datetime
 import numpy as np
 import cv2
 
-# 手动添加路径，例如：
-sys.path.insert(0, "../../lib")
 import vstream
 
 
@@ -43,7 +41,7 @@ def create_pipeline_json(output_path: str, mode: str = "image") -> None:
                 "parallelism": 1,
                 "max_input_queue_size": 20,
                 "class_name": "cnstream::DataSource",
-                "next_modules": ["process"],
+                "next_modules": ["osd"],
                 "custom_params": {
                     "output_type": "cpu",
                     "decoder_type": "cpu",
@@ -51,18 +49,20 @@ def create_pipeline_json(output_path: str, mode: str = "image") -> None:
                     "frame_rate": "30"
                 }
             },
-            "process": {
+            "osd": {
                 "parallelism": 1,
                 "max_input_queue_size": 20,
-                "class_name": "cnstream::ProcessOne",
-                "next_modules": []
+                "class_name": "cnstream::DecodeQueue",
+                "next_modules": [],
+                "custom_params": {
+                    "queue_size": "30"
+                }
             }
         }
     elif mode == "send":
         config = {
             "profiler_config": {
-                "enable_profile": False,
-                "enable_tracing": False
+                "enable_profile": False
             },
             "decoder": {
                 "parallelism": 1,
@@ -80,7 +80,7 @@ def create_pipeline_json(output_path: str, mode: str = "image") -> None:
                 "class_name": "cnstream::DecodeQueue",
                 "next_modules": [],
                 "custom_params": {
-                    "queue_size": "100"
+                    "queue_size": "30"
                 }
             }
         }
@@ -200,11 +200,6 @@ def test_send_pipeline():
     assert ok, "Pipeline start failed"
     print("Pipeline started")
 
-    # 准备测试图像
-    test_image = create_test_image(480, 640)
-    # 保存一张临时图片供 C++ ImageHandler 读取（如果用到）
-    cv2.imwrite("image.png", test_image)
-
     running = True
     send_count = 0
     receive_count = 0
@@ -214,8 +209,8 @@ def test_send_pipeline():
         while running:
             pts = get_timestamp_ms()
             frame_id_s = str(send_count)
-            # 深拷贝图像数据发送
-            ok = send_handler.send(pts, frame_id_s, test_image.copy())
+            test_image = create_test_image(480, 640)
+            ok = send_handler.send(pts, frame_id_s, test_image)
             if ok != 0:
                 print(f"Warning: send returned {ok}")
             send_count += 1
@@ -247,10 +242,10 @@ def test_send_pipeline():
 
     print(f"Total sent: {send_count}, total received: {receive_count}")
 
-    # 停止 handler 并关闭
-    send_handler.stop()
-    send_handler.close()
-    print("SendHandler stopped and closed")
+    # note: 可以直接 pipeline stop
+    # send_handler.stop()
+    # send_handler.close()
+    # print("SendHandler stopped and closed")
 
     pipeline.stop()
     print("Pipeline stopped")

@@ -54,7 +54,7 @@ typedef struct objIn_ {
  */
 typedef struct outputData_ {
   int result = -1;      // 结果码
-  int timestamp = -1;   // 时间戳
+  uint64_t timestamp;   // 时间戳
   std::string frame_id_s;  // frame
   std::vector<s_obj_in> objects;    // 检测框
   std::vector<std::map<std::string,std::string>> objects_dict;

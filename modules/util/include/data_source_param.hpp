@@ -183,7 +183,7 @@ struct DecodeFrame {
     }
   }
   bool valid;
-  int64_t pts;
+  uint64_t pts;
   std::string frame_id_s;
   int32_t height;
   int32_t width; 

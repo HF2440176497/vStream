@@ -5,3 +5,5 @@ lib/
 bin/
 docs/
 **/build/
+python/test/*
+!python/test/*.py

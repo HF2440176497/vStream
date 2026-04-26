@@ -32,7 +32,7 @@ void PipelineWrapper(py::module &);
 void DataHandlerWrapper(const py::module &);
 void OsdModuleWrapper(py::module &);
 
-PYBIND11_MODULE(cnstream, m) {
+PYBIND11_MODULE(vstream, m) {
   m.doc() = "vstream python api";
   FrameInfoWrapper(m);
   FrameVaWrapper(m);

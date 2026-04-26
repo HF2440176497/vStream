@@ -8,6 +8,8 @@
 
 namespace py = pybind11;
 
+namespace cnstream {
+
 py::dtype GetNpDType(int depth) {
   switch (depth) {
     case CV_8U:  return py::dtype::of<uint8_t>();
@@ -68,8 +70,10 @@ cv::Mat ArrayToMat(py::array_t<uint8_t>& array) {
   int cols = static_cast<int>(buf.shape[1]);  // width
   int channels = (buf.ndim == 3) ? buf.shape[2] : 1;
   size_t step = static_cast<size_t>(buf.strides[0]);
-  cv::Mat mat(rows, cols, 
-              (channels == 1) ? CV_8UC1 : CV_8UC3, 
+  cv::Mat mat(rows, cols,
+              (channels == 1) ? CV_8UC1 : CV_8UC3,
               static_cast<uint8_t*>(buf.ptr), step);
   return mat.clone();
 }
+
+}  // namespace cnstream

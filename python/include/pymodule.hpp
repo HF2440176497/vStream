@@ -45,6 +45,7 @@ class __attribute__((visibility("default"))) PyModule : public ModuleEx, public 
   bool instance_has_transmit_ = false;
 };  // class PyModule
 
+REGISTER_MODULE(cnstream::PyModule);
 
 }  // namespace cnstream
 

@@ -139,7 +139,7 @@ class FrameInfo : private NonCopyable {
 
   std::string stream_id;  /*!< The data stream aliases where this frame is located to. */
   std::string frame_id_s;  // for send handler, 用来额外标记 frame
-  int64_t timestamp = -1; /*!< The time stamp of this frame. */
+  uint64_t timestamp; /*!< The time stamp of this frame. */
   size_t flags = 0;       /*!< The mask for this frame, ``DataFrameFlag``. */
 
   Collection collection;

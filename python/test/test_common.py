@@ -8,10 +8,17 @@ import threading
 from datetime import datetime
 
 import numpy as np
-
-# 手动添加路径，例如：
-sys.path.insert(0, "../../lib")
 import vstream
+
+
+def get_timestamp_ms() -> int:
+    return int(datetime.now().timestamp() * 1000)
+
+def create_test_image(height: int = 480, width: int = 640) -> np.ndarray:
+    """创建一张测试用的 BGR 图像（numpy uint8 数组）。"""
+    image = np.zeros((height, width, 3), dtype=np.uint8)
+    image[:] = (128, 64, 32)  # BGR
+    return image
 
 def test_data_structures():
     print("=" * 60)
@@ -33,7 +40,7 @@ def test_data_structures():
     infer_objs = vstream.InferObjs()
     obj = vstream.InferObject()
     obj.id = 1
-    obj.track_id = 100
+    obj.track_id = "100"
     obj.score = 0.95
     obj.bbox = vstream.InferBoundingBox(10.0, 20.0, 30.0, 40.0)
     infer_objs.push_back(obj)

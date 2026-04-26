@@ -7,14 +7,25 @@ import json
 import threading
 from datetime import datetime
 
+# 获取当前脚本所在目录，添加到 sys.path 以便 C++ 能 import 到 test_module
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+if _script_dir not in sys.path:
+    sys.path.insert(0, _script_dir)
+
 import numpy as np
 import cv2
 
-# 手动添加路径，例如：
-sys.path.insert(0, "../../lib")
-sys.path.insert(0, "../../python/test")
-
 import vstream
+
+
+def get_timestamp_ms() -> int:
+    return int(datetime.now().timestamp() * 1000)
+
+def create_test_image(height: int = 480, width: int = 640) -> np.ndarray:
+    """创建一张测试用的 BGR 图像（numpy uint8 数组）。"""
+    image = np.zeros((height, width, 3), dtype=np.uint8)
+    image[:] = (128, 64, 32)  # BGR
+    return image
 
 
 class MyPythonModule(vstream.Module):
@@ -24,7 +35,7 @@ class MyPythonModule(vstream.Module):
     """
 
     def __init__(self, name: str):
-        super().__init__(name)
+        vstream.Module.__init__(self, name)
         self.frame_count = 0
         self.last_frame = None
         self.has_save_frame = False
@@ -38,14 +49,16 @@ class MyPythonModule(vstream.Module):
 
     def process(self, data) -> int:
         data_frame = data.get_data_frame()
-        cur_image = data_frame.get_frame()
-        cv2.putText(cur_image, f"Frame {self.frame_count}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        cur_image = data_frame.get_image()
 
-        # 保存上一次 data 取出并修改的 frame
+        # 保存 （1） 上一次 data 取出并修改的 frame, （2） 当前 data 取出的 frame
+        # 两者应该不同 last_frame 是存在标记的
         if self.last_frame is not None and not self.has_save_frame:
-            cv2.imwrite("last_frame.jpg", self.last_frame)
+            cv2.imwrite(f"py_last_frame.jpg", self.last_frame)
+            cv2.imwrite(f"py_cur_frame.jpg", cur_image)
             self.has_save_frame = True
 
+        cv2.putText(cur_image, f"Frame {self.frame_count}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
         self.last_frame = cur_image
 
         self.frame_count += 1
@@ -124,9 +137,6 @@ def test_python_module():
     assert ok, "Pipeline start failed"
     print("Pipeline started")
 
-    test_image = create_test_image(480, 640)
-    cv2.imwrite("image.png", test_image)
-
     running = True
     send_count = 0
     receive_count = 0
@@ -136,7 +146,8 @@ def test_python_module():
         while running:
             pts = get_timestamp_ms()
             frame_id_s = str(send_count)
-            send_handler.send(pts, frame_id_s, test_image.copy())
+            test_image = create_test_image(480, 640)
+            send_handler.send(pts, frame_id_s, test_image)
             send_count += 1
             time.sleep(0.02)
 
