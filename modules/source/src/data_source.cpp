@@ -53,7 +53,7 @@ static int GetDeviceId(ModuleParamSet paramSet) {
   }
   std::stringstream ss;
   int device_id;
-  ss << paramSet[key_device_id];
+  ss << paramSet.at(key_device_id);
   ss >> device_id;
   /*check device_id valid or not,FIXME*/
   return device_id;
@@ -68,17 +68,17 @@ bool DataSource::Open(ModuleParamSet paramSet) {
     return false;
   }
   if (paramSet.find(key_output_type) != paramSet.end()) {
-    std::string out_type = paramSet[key_output_type];
+    std::string out_type = paramSet.at(key_output_type);
     param_.output_type_ = param_output_map_.at(out_type);
   }
   if (paramSet.find(key_decoder_type) != paramSet.end()) {
-    std::string dec_type = paramSet[key_decoder_type];
+    std::string dec_type = paramSet.at(key_decoder_type);
     param_.decoder_type_ = param_decoder_map_.at(dec_type);
   }
   if (paramSet.find(key_interval) != paramSet.end()) {
     std::stringstream ss;
     int interval;
-    ss << paramSet[key_interval];
+    ss << paramSet.at(key_interval);
     ss >> interval;
     if (interval <= 0) {
       LOGE(SOURCE) << "interval : invalid";
@@ -88,7 +88,7 @@ bool DataSource::Open(ModuleParamSet paramSet) {
   }
   param_.device_id_ = GetDeviceId(paramSet);
   if (paramSet.find(key_only_key_frame) != paramSet.end()) {
-    param_.only_key_frame_ = (paramSet[key_only_key_frame] == "true");
+    param_.only_key_frame_ = (paramSet.at(key_only_key_frame) == "true");
   }
   param_.param_set_ = paramSet;
   param_set_ = paramSet;  // of SourceModule, for handlers

@@ -1,6 +1,6 @@
 
-#ifndef MODULE_OSD_DATA_COMMON_HPP
-#define MODULE_OSD_DATA_COMMON_HPP
+#ifndef MODULE_SINK_DATA_COMMON_HPP
+#define MODULE_SINK_DATA_COMMON_HPP
 
 
 #include <string>
@@ -66,4 +66,4 @@ typedef struct outputData_ {
 
 }  // namespace cnstream
 
-#endif  // MODULE_OSD_DATA_COMMON_HPP
+#endif  // MODULE_SINK_DATA_COMMON_HPP

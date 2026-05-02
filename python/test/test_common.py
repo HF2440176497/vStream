@@ -47,7 +47,7 @@ def test_data_structures():
     assert len(infer_objs.objs) == 1
     print("InferObjs OK")
 
-    # class_infos / obj_in / output_data (OSD 相关结构)
+    # class_infos / obj_in / output_data (sink 相关结构)
     cls = vstream.class_infos()
     cls.id = 0
     cls.model_name = "model"

@@ -41,7 +41,7 @@ def create_pipeline_json(output_path: str, mode: str = "image") -> None:
                 "parallelism": 1,
                 "max_input_queue_size": 20,
                 "class_name": "cnstream::DataSource",
-                "next_modules": ["osd"],
+                "next_modules": ["sink"],
                 "custom_params": {
                     "output_type": "cpu",
                     "decoder_type": "cpu",
@@ -49,10 +49,10 @@ def create_pipeline_json(output_path: str, mode: str = "image") -> None:
                     "frame_rate": "30"
                 }
             },
-            "osd": {
+            "sink": {
                 "parallelism": 1,
                 "max_input_queue_size": 20,
-                "class_name": "cnstream::DecodeQueue",
+                "class_name": "cnstream::DataSink",
                 "next_modules": [],
                 "custom_params": {
                     "queue_size": "30"
@@ -68,16 +68,16 @@ def create_pipeline_json(output_path: str, mode: str = "image") -> None:
                 "parallelism": 1,
                 "max_input_queue_size": 20,
                 "class_name": "cnstream::DataSource",
-                "next_modules": ["osd"],
+                "next_modules": ["sink"],
                 "custom_params": {
                     "output_type": "cpu",
                     "decoder_type": "cpu"
                 }
             },
-            "osd": {
+            "sink": {
                 "parallelism": 1,
                 "max_input_queue_size": 20,
-                "class_name": "cnstream::DecodeQueue",
+                "class_name": "cnstream::DataSink",
                 "next_modules": [],
                 "custom_params": {
                     "queue_size": "30"
@@ -125,13 +125,13 @@ def test_image_source_pipeline():
     print("Pipeline built successfully")
 
     # 获取 DataSource 模块
-    source_module = pipeline.get_source_module("decoder")
-    assert source_module is not None, "get_source_module('decoder') returned None"
-    print(f"Source module type: {type(source_module)}")
+    source = pipeline.get_data_source("decoder")
+    assert source is not None, "get_data_source('decoder') returned None"
+    print(f"Source module type: {type(source)}")
 
     # 创建 ImageHandler
     stream_id = "channel-1"
-    image_handler = vstream.ImageHandler(source_module, stream_id)
+    image_handler = vstream.ImageHandler(source, stream_id)
     assert image_handler is not None
     print(f"ImageHandler created, stream_id={image_handler.get_stream_id()}")
 
@@ -142,7 +142,7 @@ def test_image_source_pipeline():
     assert pipeline.is_running()
 
     # 添加源流
-    ret = source_module.add_source(image_handler)
+    ret = source.add_source(image_handler)
     assert ret == 0, f"AddSource failed, ret={ret}"
     print("ImageHandler added to source module")
 
@@ -161,11 +161,11 @@ def test_image_source_pipeline():
 
 
 # ---------------------------------------------------------------------------
-# 3. 测试 DataSource + SendHandler + DecodeQueue（参考 test_send.cpp）
+# 3. 测试 DataSource + SendHandler + DataSink（参考 test_send.cpp）
 # ---------------------------------------------------------------------------
 def test_send_pipeline():
     print("=" * 60)
-    print("TEST: Send source pipeline with DecodeQueue")
+    print("TEST: Send source pipeline with DataSink")
     print("=" * 60)
 
     json_path = "pipeline_source_send.json"
@@ -177,24 +177,31 @@ def test_send_pipeline():
     print("Pipeline built successfully")
 
     # 获取 DataSource 模块
-    source_module = pipeline.get_source_module("decoder")
-    assert source_module is not None
-    print(f"Source module type: {type(source_module)}")
+    source = pipeline.get_data_source("decoder")
+    assert source is not None
+    print(f"Source module type: {type(source)}")
 
     # 创建 SendHandler
     stream_id = "channel-1"
-    send_handler = vstream.SendHandler(source_module, stream_id)
+    send_handler = vstream.SendHandler(source, stream_id)
     assert send_handler is not None
     print(f"SendHandler created, stream_id={send_handler.get_stream_id()}")
 
-    # 获取 DecodeQueue 模块（消费端）
-    osd_module = pipeline.get_output_module("osd")
-    assert osd_module is not None
-    print(f"OutputModule module type: {type(osd_module)}")
+    sink = pipeline.get_data_sink("sink")
+    assert sink is not None
+    print(f"DataSink module type: {type(sink)}")
 
     # 添加源流并启动流水线
-    ret = source_module.add_source(send_handler)
+    ret = source.add_source(send_handler)
     assert ret == 0, f"AddSource failed, ret={ret}"
+
+    queue_handler = vstream.QueueHandler(sink, stream_id)
+    assert queue_handler is not None
+    print(f"QueueHandler created, stream_id={queue_handler.get_stream_id()}")
+
+    ret = sink.add_sink(queue_handler)
+    assert ret == 0, f"AddSink failed, ret={ret}"
+    print("DataSink added to sink module")
 
     ok = pipeline.start()
     assert ok, "Pipeline start failed"
@@ -220,7 +227,7 @@ def test_send_pipeline():
         nonlocal receive_count
         while running:
             # get_data 返回 (ok, data)
-            ok, data = osd_module.get_data(wait_ms=10)
+            ok, data = queue_handler.get_data(wait_ms=10)
             if not ok:
                 time.sleep(0.01)
                 continue
@@ -249,7 +256,7 @@ def test_send_pipeline():
 
     pipeline.stop()
     print("Pipeline stopped")
-    print("PASS: Send source pipeline with DecodeQueue")
+    print("PASS: Send source pipeline with DataSink")
 
 
 # ---------------------------------------------------------------------------

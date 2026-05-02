@@ -24,7 +24,8 @@
 
 #include "cnstream_pipeline.hpp"
 #include "cnstream_source.hpp"
-#include "output_module.hpp"
+#include "data_source.hpp"
+#include "data_sink.hpp"
 
 #include <memory>
 #include <string>
@@ -58,17 +59,17 @@ void PipelineWrapper(py::module &m) {
       .def("start", &Pipeline::Start)
       .def("stop", &Pipeline::Stop, py::call_guard<py::gil_scoped_release>())
       .def("is_running", &Pipeline::IsRunning)
-      .def("get_source_module",
+      .def("get_data_source",
            [](Pipeline *pipeline, const std::string &module_name) {
               auto* module = pipeline->GetModule(module_name);
-              if (!module) return static_cast<SourceModule *>(nullptr);
-              return dynamic_cast<SourceModule *>(module);
+              if (!module) return static_cast<DataSource *>(nullptr);
+              return dynamic_cast<DataSource *>(module);
            },
            py::return_value_policy::reference)
-      .def("get_output_module", [](Pipeline *pipeline, const std::string &module_name) {
+      .def("get_data_sink", [](Pipeline *pipeline, const std::string &module_name) {
               auto* module = pipeline->GetModule(module_name);
-              if (!module) return static_cast<OutputModule *>(nullptr);
-              return dynamic_cast<OutputModule *>(module);
+              if (!module) return static_cast<DataSink *>(nullptr);
+              return dynamic_cast<DataSink *>(module);
            },
            py::return_value_policy::reference)
       .def("get_module",

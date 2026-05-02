@@ -60,12 +60,12 @@ void VideoHandler::Stop() {
 }
 
 void VideoHandler::RegisterHandlerParams() {
-  param_register_.Register(key_stream_url, "URL of the video stream (rtsp/rtmp/file).");
+  param_register_.Register(key_input_url, "URL of the video stream (rtsp/rtmp/file).");
   param_register_.Register(key_frame_rate, "Framerate for video playback. Default is 25.");
 }
 
 bool VideoHandler::CheckHandlerParams(const ModuleParamSet& params) {
-  if (params.find(key_stream_url) == params.end()) {
+  if (params.find(key_input_url) == params.end()) {
     LOGE(SOURCE) << "[VideoHandler] stream_url is required";
     return false;
   }
@@ -124,6 +124,11 @@ int VideoHandlerImpl::init_hwdevice_conf() {
   return -1;
 }
 
+static int interrupt_cb(void *ctx) {
+    auto *self = static_cast<VideoHandlerImpl*>(ctx);
+    return !self->running_.load() ? 1 : 0;
+}
+
 int VideoHandlerImpl::input_format_init() {
   int ret = 0;
   ret = avformat_network_init();
@@ -137,6 +142,8 @@ int VideoHandlerImpl::input_format_init() {
     LOGE(SOURCE) << "avformat_alloc_context error";
     return -1;
   }
+  this->ifmt_ctx_->interrupt_callback.callback = interrupt_cb;
+  this->ifmt_ctx_->interrupt_callback.opaque = this;
 
   AVDictionary* opts = nullptr;
   av_dict_set(&opts, "buffer_size", "1024000", 0);
@@ -246,7 +253,6 @@ int VideoHandlerImpl::hw_decoder_init() {
 }
 
 /**
- * 定义将 CUDA 格式的解码帧转换为 CPU 上的 BGR24 格式
  * cv_buf_ 是为 cv_frame_ 分配的内存，用于存储转换后的帧数据
  */
 int VideoHandlerImpl::convert_frame_init() {
@@ -300,102 +306,18 @@ int VideoHandlerImpl::decode_write() {
     std::shared_ptr<FrameInfo> data = nullptr;
 
     if (output_type_ == OutputType::OUTPUT_CPU) {
-      if (p_frame->format == hw_pix_fmt) {
-        if ((ret = av_hwframe_transfer_data(sw_frame, p_frame, 0)) < 0) {
-          LOGE(SOURCE) << "Error transferring the data to system memory: " << ret;
-          av_frame_free(&p_frame);
-          av_frame_free(&sw_frame);
-          break;
-        }
-        s_frame_ = sw_frame;
-      } else {
-        LOGE(SOURCE) << "VideoHandlerImpl: p_frame format not supported: " << p_frame->format;
-        break;
-      }
-      if (!s_frame_) {
-        LOGE(SOURCE) << "VideoHandlerImpl: s_frame_ is null";
-        break;
-      }
-
-      DataFormat nv_fmt = DataFormat::INVALID;
-      if (s_frame_->format == AV_PIX_FMT_NV12) {
-        nv_fmt = DataFormat::PIXEL_FORMAT_YUV420_NV12;
-      } else if (s_frame_->format == AV_PIX_FMT_NV21) {
-        nv_fmt = DataFormat::PIXEL_FORMAT_YUV420_NV21;
-      } else {
-        LOGE(SOURCE) << "VideoHandlerImpl: s_frame_ format not supported: " << s_frame_->format;
-        ret = -1;
-        break;
-      }
-
-      // 传输到 CPU 的格式 NV12 or NV21
-      DecodeFrame frame(s_frame_->height, s_frame_->width, nv_fmt);
-      frame.device_type = DevType::CPU;
-      frame.planeNum = 2;
-      frame.pts = s_frame_->pts;
-
-      int width = s_frame_->width;
-      int height = s_frame_->height;
-      size_t y_size = width * height;  // width * height 
-      size_t uv_size = width * height / 2;  // width * height / 2
-
-      uint8_t* y_buffer = new (std::nothrow) uint8_t[y_size];
-      uint8_t* uv_buffer = new (std::nothrow) uint8_t[uv_size];
-      if (!y_buffer || !uv_buffer) {
-        LOGE(SOURCE) << "Failed to allocate memory for frame data";
-        delete[] y_buffer;
-        delete[] uv_buffer;
-        ret = -1;
-        break;
-      }
-      // src: according to linesize, dst: according to width
-      for (int i = 0; i < height; ++i) {
-        memcpy(y_buffer + i * width, s_frame_->data[0] + i * s_frame_->linesize[0], width);
-      }
-      for (int i = 0; i < height / 2; ++i) {
-        memcpy(uv_buffer + i * width, s_frame_->data[1] + i * s_frame_->linesize[1], width);
-      }
-
-      frame.plane[0] = y_buffer;
-      frame.plane[1] = uv_buffer;
-      frame.stride[0] = width;
-      frame.stride[1] = width;
-      frame.buf_ref = std::make_unique<MatBufRefNV12>(y_buffer, uv_buffer);  // 后续可能 zero-copy，因此需要创建 buf_ref
-
-      data = OnDecodeFrame(&frame);
-
-    } else if (output_type_ == OutputType::OUTPUT_CUDA) {
-
-      if (p_frame->format != AV_PIX_FMT_CUDA) {
-        LOGE(SOURCE) << "VideoHandlerImpl: p_frame format not supported: " << p_frame->format;
-        ret = -1;
-        break;
-      }
-
-      DecodeFrame frame(p_frame->height, p_frame->width, DataFormat::PIXEL_FORMAT_YUV420_NV12);
-      frame.device_type = DevType::CUDA;
-      frame.device_id = device_id_;
-      frame.planeNum = 2;
-      frame.pts = p_frame->pts;
-
-      frame.plane[0] = p_frame->data[0];
-      frame.plane[1] = p_frame->data[1];
-      frame.stride[0] = p_frame->linesize[0];
-      frame.stride[1] = p_frame->linesize[1];
-
-      if (frame.stride[0] != frame.stride[1]) {
-        LOGW(SOURCE) << "VideoHandlerImpl: stride[0] != stride[1]: " << frame.stride[0] << " != " << frame.stride[1];
-      }
-
-      // （1）创建 CUDA memop 调用 CopyToSyncMem 从 dec_frame 拷贝到 CSyncMem
-      // （2）frameinfo->data_[i]: CUDA sync mem
-      // 因此不需要 buf_ref
-      data = OnDecodeFrame(&frame);
-    } else {
-      LOGF(SOURCE) << "VideoHandler: nsupported output type: " << static_cast<int>(output_type_);
+      data = ProcessFrameCPU(p_frame, sw_frame, ret);
+    }
+#ifdef VSTREAM_USE_CUDA
+    else if (output_type_ == OutputType::OUTPUT_CUDA) {
+      data = ProcessFrameCUDA(p_frame, ret);
+    }
+#endif
+    else {
+      LOGF(SOURCE) << "VideoHandler: unsupported output type: " << static_cast<int>(output_type_);
       ret = -1;
       break;
-    }  // end if (output_type_ == OutputType::OUTPUT_CPU)
+    }
 
     if (!module_ || !handler_) {
       LOGE(SOURCE) << "[" << stream_id_ << "]: module_ or handler_ is null";
@@ -420,6 +342,97 @@ int VideoHandlerImpl::decode_write() {
   return ret;
 }
 
+std::shared_ptr<FrameInfo> VideoHandlerImpl::ProcessFrameCPU(AVFrame *p_frame, AVFrame *sw_frame, int &ret) {
+  if (p_frame->format == hw_pix_fmt) {
+    if ((ret = av_hwframe_transfer_data(sw_frame, p_frame, 0)) < 0) {
+      LOGE(SOURCE) << "Error transferring the data to system memory: " << ret;
+      return nullptr;
+    }
+    s_frame_ = sw_frame;
+  } else {
+    LOGE(SOURCE) << "VideoHandlerImpl: p_frame format not supported: " << p_frame->format;
+    return nullptr;
+  }
+
+  if (!s_frame_) {
+    LOGE(SOURCE) << "VideoHandlerImpl: s_frame_ is null";
+    return nullptr;
+  }
+
+  DataFormat nv_fmt = DataFormat::INVALID;
+  if (s_frame_->format == AV_PIX_FMT_NV12) {
+    nv_fmt = DataFormat::PIXEL_FORMAT_YUV420_NV12;
+  } else if (s_frame_->format == AV_PIX_FMT_NV21) {
+    nv_fmt = DataFormat::PIXEL_FORMAT_YUV420_NV21;
+  } else {
+    LOGE(SOURCE) << "VideoHandlerImpl: s_frame_ format not supported: " << s_frame_->format;
+    ret = -1;
+    return nullptr;
+  }
+
+  DecodeFrame frame(s_frame_->height, s_frame_->width, nv_fmt);
+  frame.device_type = DevType::CPU;
+  frame.planeNum = 2;
+  frame.pts = s_frame_->pts;
+
+  int width = s_frame_->width;
+  int height = s_frame_->height;
+  size_t y_size = width * height;
+  size_t uv_size = width * height / 2;
+
+  uint8_t* y_buffer = new (std::nothrow) uint8_t[y_size];
+  uint8_t* uv_buffer = new (std::nothrow) uint8_t[uv_size];
+  if (!y_buffer || !uv_buffer) {
+    LOGE(SOURCE) << "Failed to allocate memory for frame data";
+    delete[] y_buffer;
+    delete[] uv_buffer;
+    ret = -1;
+    return nullptr;
+  }
+
+  for (int i = 0; i < height; ++i) {
+    memcpy(y_buffer + i * width, s_frame_->data[0] + i * s_frame_->linesize[0], width);
+  }
+  for (int i = 0; i < height / 2; ++i) {
+    memcpy(uv_buffer + i * width, s_frame_->data[1] + i * s_frame_->linesize[1], width);
+  }
+
+  frame.plane[0] = y_buffer;
+  frame.plane[1] = uv_buffer;
+  frame.stride[0] = width;
+  frame.stride[1] = width;
+  frame.buf_ref = std::make_unique<MatBufRefNV12>(y_buffer, uv_buffer);
+
+  return OnDecodeFrame(&frame);
+}
+
+#ifdef VSTREAM_USE_CUDA
+std::shared_ptr<FrameInfo> VideoHandlerImpl::ProcessFrameCUDA(AVFrame *p_frame, int &ret) {
+  if (p_frame->format != AV_PIX_FMT_CUDA) {
+    LOGE(SOURCE) << "VideoHandlerImpl: p_frame format not supported: " << p_frame->format;
+    ret = -1;
+    return nullptr;
+  }
+
+  DecodeFrame frame(p_frame->height, p_frame->width, DataFormat::PIXEL_FORMAT_YUV420_NV12);
+  frame.device_type = DevType::CUDA;
+  frame.device_id = device_id_;
+  frame.planeNum = 2;
+  frame.pts = p_frame->pts;
+
+  frame.plane[0] = p_frame->data[0];
+  frame.plane[1] = p_frame->data[1];
+  frame.stride[0] = p_frame->linesize[0];
+  frame.stride[1] = p_frame->linesize[1];
+
+  if (frame.stride[0] != frame.stride[1]) {
+    LOGW(SOURCE) << "VideoHandlerImpl: stride[0] != stride[1]: " << frame.stride[0] << " != " << frame.stride[1];
+  }
+
+  return OnDecodeFrame(&frame);
+}
+#endif
+
 void VideoHandlerImpl::clean_up() {
   av_frame_free(&s_frame_);
   av_frame_free(&cv_frame_);
@@ -442,7 +455,7 @@ void VideoHandlerImpl::clean_up() {
 }
 
 bool VideoHandlerImpl::Open() {
-  stream_url_ = param_set_.at(key_stream_url);
+  stream_url_ = param_set_.at(key_input_url);
   if (stream_url_.empty()) {
     LOGE(SOURCE) << "VideoHandlerImpl: stream_url is empty";
     return false;

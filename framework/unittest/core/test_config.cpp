@@ -17,7 +17,7 @@ TEST(JSON, ReadFile) {
     EXPECT_TRUE(doc.contains("profiler_config")) << "Json file has no profiler_config field";
     EXPECT_TRUE(doc.contains("decoder")) << "Json file has no decoder field";
     EXPECT_FALSE(doc.contains("sort_h"));
-    EXPECT_FALSE(doc.contains("osd"));
+    EXPECT_FALSE(doc.contains("sink"));
 }
 
 /**

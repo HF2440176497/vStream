@@ -94,15 +94,15 @@ def test_python_module():
             "parallelism": 1,
             "max_input_queue_size": 20,
             "class_name": "cnstream::PyModule",
-            "next_modules": ["osd"],
+            "next_modules": ["sink"],
             "custom_params": {
                 "pyclass_name": "test_module.MyPythonModule"
             }
         },
-        "osd": {
+        "sink": {
             "parallelism": 1,
             "max_input_queue_size": 20,
-            "class_name": "cnstream::DecodeQueue",
+            "class_name": "cnstream::DataSink",
             "next_modules": [],
             "custom_params": {
                 "queue_size": "100"
@@ -120,18 +120,24 @@ def test_python_module():
     print("Pipeline built successfully")
 
     # 获取模块
-    source_module = pipeline.get_source_module("decoder")
-    assert source_module is not None
+    source = pipeline.get_data_source("decoder")
+    assert source is not None
 
     stream_id = "channel-1"
-    send_handler = vstream.SendHandler(source_module, stream_id)
+    send_handler = vstream.SendHandler(source, stream_id)
     assert send_handler is not None
 
-    osd_module = pipeline.get_output_module("osd")
-    assert osd_module is not None
+    sink = pipeline.get_data_sink("sink")
+    assert sink is not None
 
-    ret = source_module.add_source(send_handler)
+    queue_handler = vstream.QueueHandler(sink, stream_id)
+    assert queue_handler is not None
+
+    ret = source.add_source(send_handler)
     assert ret == 0
+
+    ret = sink.add_sink(queue_handler)
+    assert ret == 0, f"AddSink failed, ret={ret}"
 
     ok = pipeline.start()
     assert ok, "Pipeline start failed"
@@ -154,7 +160,7 @@ def test_python_module():
     def receive_thread():
         nonlocal receive_count
         while running:
-            ok, data = osd_module.get_data(wait_ms=10)
+            ok, data = queue_handler.get_data(wait_ms=10)
             if not ok:
                 time.sleep(0.01)
                 continue

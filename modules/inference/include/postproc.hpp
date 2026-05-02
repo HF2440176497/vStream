@@ -107,11 +107,14 @@ class Postproc : virtual public ReflexObjectEx<Postproc> {
                       const std::vector<FrameInfoPtr> &packages) { return 0; }
 
  protected:
-  float threshold_ = 0;
+  struct ItemInfo {
+    std::string name;
+    float threshold = 0;
+  };
 
   std::map<std::string, std::string> params_;
   std::string config_file_;  // json 配置文件路径
-  std::map<int, float> threshold_map_;  // class_id -> threshold
+  std::map<int, ItemInfo> item_infos_;  // class_id -> item_info
 };  // class Postproc
 
 using PostprocPtr = std::shared_ptr<Postproc>;
@@ -185,7 +188,6 @@ class ObjPostproc : virtual public ReflexObjectEx<ObjPostproc> {
   }
 
  protected:
-  float threshold_ = 0;  // TODO: More information
   std::map<std::string, std::string> params_;
 };  // class ObjPostproc
 

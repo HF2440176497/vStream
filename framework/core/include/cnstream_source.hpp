@@ -212,7 +212,7 @@ class SourceHandler : private NonCopyable {
    *
    * @return No return value.
    */
-  virtual void Stop() { }
+  virtual void Stop() {}
 
   std::string GetStreamId() const { return stream_id_; }
 

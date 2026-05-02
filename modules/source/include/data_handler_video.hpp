@@ -75,6 +75,12 @@ class VideoHandlerImpl : public SourceRender {
   void clean_up();
 
  private:
+  std::shared_ptr<FrameInfo> ProcessFrameCPU(AVFrame *p_frame, AVFrame *sw_frame, int &ret);
+#ifdef VSTREAM_USE_CUDA
+  std::shared_ptr<FrameInfo> ProcessFrameCUDA(AVFrame *p_frame, int &ret);
+#endif
+
+ private:
   static enum AVPixelFormat get_hw_format(AVCodecContext *ctx, const enum AVPixelFormat *pix_fmts);
 
 #ifdef VSTREAM_UNIT_TEST

@@ -10,7 +10,7 @@
 #include "data_handler_image.hpp"
 #include "data_handler_send.hpp"
 
-#include "decode_queue.hpp"  // osd module
+#include "data_sink.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -66,14 +66,18 @@ TEST_F(SourceSendTest, TestSend) {
   EXPECT_EQ(source->AddSource(send_handler_), 0);
   EXPECT_TRUE(pipeline_->Start());
 
-  Module* osd_module = pipeline_->GetModule("osd");  // name in pipeline json
-  EXPECT_NE(osd_module, nullptr);
+  Module* sink_module = pipeline_->GetModule("sink");  // name in pipeline json
+  EXPECT_NE(sink_module, nullptr);
 
-  OutputModule* osd_ouput_module = dynamic_cast<OutputModule*>(osd_module);
-  EXPECT_NE(osd_ouput_module, nullptr);
+  DataSink *sink = dynamic_cast<DataSink*>(sink_module);
+  EXPECT_NE(sink, nullptr);
 
-  DecodeQueue* decode_queue = dynamic_cast<DecodeQueue*>(osd_ouput_module);
-  EXPECT_NE(decode_queue, nullptr);
+  std::shared_ptr<SinkHandler> sink_handler = QueueHandler::Create(sink, stream_id_);
+  EXPECT_NE(sink_handler, nullptr);
+
+  auto queue_handler = std::dynamic_pointer_cast<QueueHandler>(sink_handler);
+  EXPECT_NE(queue_handler, nullptr);
+  EXPECT_EQ(sink->AddSink(queue_handler), 0);
 
   image_ = cv::imread(test_image_path, cv::IMREAD_COLOR);
   ASSERT_FALSE(image_.empty()) << "Failed to load " << test_image_path;
@@ -94,14 +98,14 @@ TEST_F(SourceSendTest, TestSend) {
   std::thread receive_thread([&]() {
     int count = 0;
     while (running.load()) {
-      s_output_data data = decode_queue->GetData();
+      s_output_data data = queue_handler->GetData();
       if (data.result != 0) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
         continue;
       }
       count++;
       if (count % 20 == 0) {
-        LOGI(OSD) << "Receive: " << count << " frames; id_s: " << data.frame_id_s;
+        LOGI(SINK) << "Receive: " << count << " frames; id_s: " << data.frame_id_s;
       }
     }
   });

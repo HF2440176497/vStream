@@ -120,7 +120,8 @@ void InferEngine::StageAssemble() {
   }
 
   if (batching_by_obj_) {
-      obj_postproc_stage_ = std::make_shared<ObjPostprocessingBatchingDoneStage>(model_, batchsize_, device_id_,
+    // note: 对象后处理只考虑在 CPU
+    obj_postproc_stage_ = std::make_shared<ObjPostprocessingBatchingDoneStage>(model_, batchsize_, device_id_,
                                                                                  obj_postprocessor_, cpu_output_res_);
   } else {
     // TODO: device 上的后处理需要自己负责数据到 CPU 的拷贝

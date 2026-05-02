@@ -30,7 +30,7 @@ void ModuleWrapper(py::module &);
 void SourceModuleWrapper(const py::module &);
 void PipelineWrapper(py::module &);
 void DataHandlerWrapper(const py::module &);
-void OsdModuleWrapper(py::module &);
+void SinkModuleWrapper(py::module &);
 
 PYBIND11_MODULE(vstream, m) {
   m.doc() = "vstream python api";
@@ -40,7 +40,7 @@ PYBIND11_MODULE(vstream, m) {
   SourceModuleWrapper(m);
   PipelineWrapper(m);
   DataHandlerWrapper(m);
-  OsdModuleWrapper(m);
+  SinkModuleWrapper(m);
 }
 
 }  // namespace cnstream

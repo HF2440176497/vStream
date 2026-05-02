@@ -228,7 +228,7 @@ inline const std::string key_only_key_frame = "only_key_frame";
 
 inline const std::string key_file_path = "file_path";
 inline const std::string key_frame_rate = "frame_rate";
-inline const std::string key_stream_url = "stream_url";
+inline const std::string key_input_url = "url";
 
 /*!
  * @brief DataSourceParam is a structure for private usage.

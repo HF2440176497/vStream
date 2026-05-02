@@ -82,6 +82,7 @@ if(VSTREAM_BUILD_TESTS)
 endif()
 
 option(VSTREAM_MODULES_BUILD_SOURCE "build module source" ON)
+option(VSTREAM_MODULES_BUILD_SINK "build module sink" ON)
 option(VSTREAM_MODULES_BUILD_INFERENCE "build module inference" ON)
 option(VSTREAM_MODULES_BUILD_OSD "build module osd" ON)
 option(VSTREAM_MODULES_BUILD_VA "build stream_va" ON)
@@ -89,6 +90,10 @@ option(VSTREAM_MODULES_BUILD_VA "build stream_va" ON)
 set(module_list "")
 if(VSTREAM_MODULES_BUILD_SOURCE)
   list(APPEND module_list source)
+endif()
+
+if(VSTREAM_MODULES_BUILD_SINK)
+  list(APPEND module_list sink)
 endif()
 
 if(VSTREAM_MODULES_BUILD_INFERENCE)

@@ -121,18 +121,17 @@ class Yolov8Postproc: public Postproc {
       LOGE(POSTPROC) << "Init config file must be object type.";
       return false;
     }
-    // 解析阈值字典
-    if (!data.contains(key_threshold_map)) {
-      LOGE(POSTPROC) << "Threshold must be in config file.";
-      return false;
-    } 
-    if (!data[key_threshold_map].is_object()) {
-      LOGE(POSTPROC) << "Threshold must be object type.";
-      return false;
-    }
-    for (auto it = data[key_threshold_map].begin(); it != data[key_threshold_map].end(); ++it) {
+    for (auto it = data.begin(); it != data.end(); ++it) {
       const std::string& key = it.key();
-      threshold_map_[std::stoi(key)] = it.value().get<float>();
+      const nlohmann::ordered_json& value = it.value();
+      if (!value.is_object()) {
+        LOGE(POSTPROC) << "Invalid item format in conf file, key: " << key;
+        return false;
+      }
+      ItemInfo info;
+      info.name = value["name"].get<std::string>();
+      info.threshold = value["threshold"].get<float>();
+      item_infos_[std::stoi(key)] = info;
     }
     return true;
   }
@@ -166,7 +165,7 @@ class Yolov8Postproc: public Postproc {
     float pad_w = std::max(0, int(input_w - img_w * img_scale) / 2);
     float pad_h = std::max(0, int(input_h - img_h * img_scale) / 2);
     
-    float* output = cpu_outputs[output_index];
+    const float* output = cpu_outputs[output_index];
 
     InferObjsPtr objs_holder = package->collection.Get<InferObjsPtr>(cnstream::kInferObjsTag);
     ObjsVec &objs = objs_holder->objs_;
@@ -203,8 +202,8 @@ class Yolov8Postproc: public Postproc {
 
       // default threshold is zero
       float class_threshold = 0.0f;
-      if (threshold_map_.find(label) != threshold_map_.end()) {
-        class_threshold = threshold_map_[label];
+      if (item_infos_.find(label) != item_infos_.end()) {
+        class_threshold = item_infos_[label].threshold;
       } 
       if (confidence < class_threshold) {
         continue;
@@ -273,5 +272,165 @@ class Yolov8Postproc: public Postproc {
 };  // class Yolov8Postproc
 
 IMPLEMENT_REFLEX_OBJECT_EX(Yolov8Postproc, cnstream::Postproc);
+
+
+
+/**
+ * @brief YOLOv5 后处理类
+ * @note 此后处理假设输出已进行了 NMS
+ */
+class Yolov5PostprocNoNMS: public Postproc {
+
+ public:
+  /**
+   * @param params 后处理参数 custom_postproc_params
+   */
+  bool Init(const std::map<std::string, std::string> &params) override {
+    params_ = params;
+    if (params_.find(key_config_file) != params_.end()) {
+      config_file_ = params_[key_config_file];
+    } else {
+      LOGE(POSTPROC) << "Init config_file must be in custom_postproc_params.";
+      return false;
+    }
+    LOGI(POSTPROC) << "model_name: " << model_name_ << ", post conf file: " << config_file_;
+    std::ifstream file(config_file_);
+    if (!file.is_open()) {
+      LOGE(POSTPROC) << "Init Could not open file " << config_file_;
+      return false;
+    }
+    nlohmann::ordered_json data = nlohmann::ordered_json::parse(file);
+    if (!data.is_object()) {
+      LOGE(POSTPROC) << "Init config file must be object type.";
+      return false;
+    }
+    for (auto it = data.begin(); it != data.end(); ++it) {
+      const std::string& key = it.key();
+      const nlohmann::ordered_json& value = it.value();
+      if (!value.is_object()) {
+        LOGE(POSTPROC) << "Invalid item format in conf file, key: " << key;
+        return false;
+      }
+      ItemInfo info;
+      info.name = value["name"].get<std::string>();
+      info.threshold = value["threshold"].get<float>();
+      item_infos_[std::stoi(key)] = info;
+    }
+    return true;
+  }
+
+  int Execute(const std::vector<float*>& cpu_outputs, ModelLoader* model,
+              const std::shared_ptr<cnstream::FrameInfo>& package) {
+
+    LOGD(POSTPROC) << "Execute for data: " << package->GetStreamId() << ", timestamp: " << package->GetTimestamp();
+ 
+    DataFramePtr frame = package->collection.Get<DataFramePtr>(cnstream::kDataFrameTag);
+    const int img_w = frame->GetWidth();
+    const int img_h = frame->GetHeight();
+
+    if (model_name_.empty()) {
+      model_name_ = model->get_name();
+    }
+    int input_index = model->get_input_ordered_index();
+    int output_index = 0;  // output tensor index
+
+    const int input_w = model->get_width();
+    const int input_h = model->get_height();
+    float img_scale = std::min((float)(input_w) / (float)(img_w), (float)(input_h) / (float)(img_h));
+
+    float pad_w = std::max(0, int(input_w - img_w * img_scale) / 2);
+    float pad_h = std::max(0, int(input_h - img_h * img_scale) / 2);
+    
+    const float* output = cpu_outputs[output_index];
+    TensorShape output_shape = model->OutputShape(output_index);
+
+    InferObjsPtr objs_holder = package->collection.Get<InferObjsPtr>(cnstream::kInferObjsTag);
+    ObjsVec &objs = objs_holder->objs_;
+
+#ifdef VSTREAM_UNIT_TEST
+    LOGI(POSTPROC) << "YOLOv5 NoNMS output_shape: " << output_shape;
+#endif
+
+    int stride = 7;
+
+    for (int i = 0; i < max_boxes_num_; ++i) {
+      if (int(output[i * stride + stride - 1]) == 0) {  // flag
+        break;
+      }
+
+      const float* bbox = output + i * stride;
+      int detect_class =int(output[i*stride+5]);
+      float score = output[i*stride+4];
+
+      float class_threshold = 0.0f;
+      if (item_infos_.find(detect_class) != item_infos_.end()) {
+        class_threshold = item_infos_[detect_class].threshold;
+      }
+
+      if (score < class_threshold) {
+        continue;
+      }
+
+      float left = bbox[0];
+      float top = bbox[1];
+      float right = bbox[2];
+      float bottom = bbox[3];
+
+      left   = (left   - pad_w) / img_scale;
+      top    = (top    - pad_h) / img_scale;
+      right  = (right  - pad_w) / img_scale;
+      bottom = (bottom - pad_h) / img_scale;
+
+      left   = std::max(0.0f, std::min(left,   (float)img_w));  // 先限制右边界，再左边界
+      top    = std::max(0.0f, std::min(top,    (float)img_h));
+      right  = std::max(0.0f, std::min(right,  (float)img_w));
+      bottom = std::max(0.0f, std::min(bottom, (float)img_h));
+
+      auto obj = std::make_shared<InferObject>();
+      obj->id = detect_class;
+      obj->score = score;
+
+      obj->bbox.x = left;
+      obj->bbox.y = top;
+      obj->bbox.w = right - left;
+      obj->bbox.h = bottom - top;
+      obj->model_name = model_name_;
+
+      std::lock_guard<std::mutex> objs_mutex(objs_holder->mutex_);
+      objs.push_back(obj);
+    }  // end for 
+
+#ifdef VSTREAM_UNIT_TEST
+    if (!has_save_frame_mat_) {
+      cv::Mat img = frame->GetImage().clone();  // BGR
+      for (auto& obj : objs) {
+        float x = obj->bbox.x;
+        float y = obj->bbox.y;
+        float w = obj->bbox.w;
+        float h = obj->bbox.h;
+        cv::rectangle(img, cv::Rect(x, y, w, h), cv::Scalar(0, 255, 0), 2);
+      }
+      cv::imwrite(save_file_, img);
+      has_save_frame_mat_ = true;
+    }
+#endif
+
+    return 0;
+  }
+
+ private:
+  const int max_boxes_num_ = 100;
+  std::string model_name_;  ///< The name of the model.
+
+#ifdef VSTREAM_UNIT_TEST
+  bool has_save_frame_mat_ = false;
+  std::string save_file_ = "save/test_postproc_save.jpg";
+#endif
+
+ private:
+  DECLARE_REFLEX_OBJECT_EX(Yolov5PostprocNoNMS, cnstream::Postproc);
+};  // class Yolov5PostprocNoNMS
+
+IMPLEMENT_REFLEX_OBJECT_EX(Yolov5PostprocNoNMS, cnstream::Postproc);
 
 }  // namespace cnstream
