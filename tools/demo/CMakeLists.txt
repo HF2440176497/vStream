@@ -20,7 +20,7 @@ foreach(demo_source ${DEMO_SOURCES})
   )
 endforeach()
 
-# add_subdirectory(ffmpeg)
+add_subdirectory(ffmpeg)
 
 if(VSTREAM_USE_CUDA)
   add_subdirectory(cuda)

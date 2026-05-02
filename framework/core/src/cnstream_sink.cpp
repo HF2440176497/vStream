@@ -107,7 +107,7 @@ int SinkModule::DispatchData(const std::shared_ptr<FrameInfo> data) {
     auto iter = sink_map_.find(data->stream_id);
     if (iter == sink_map_.end()) {
       LOGW(CORE) << "No sink handler for stream [" << data->stream_id << "]";
-      return -1;
+      return 0;  // 可能未添加该流的 sink handler
     }
     handler = iter->second;
   }

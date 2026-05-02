@@ -9,6 +9,8 @@
 #include <atomic>
 #include <csignal>
 
+#include "util/cnstream_queue.hpp"
+
 #include <opencv2/opencv.hpp>
 #include <opencv2/imgproc.hpp>
 
@@ -20,46 +22,7 @@ extern "C" {
 #include <libswscale/swscale.h>
 }
 
-template <typename T>
-class ThreadSafeQueue {
-public:
-    void push(const T& item) {
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            queue_.push(item);
-        }
-        cond_.notify_one();
-    }
-
-    bool pop(T& item) {
-        std::unique_lock<std::mutex> lock(mutex_);
-        cond_.wait(lock, [this] { return !queue_.empty() || stopped_; });
-        if (stopped_ && queue_.empty()) return false;
-        item = queue_.front();
-        queue_.pop();
-        return true;
-    }
-
-    void stop() {
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            stopped_ = true;
-        }
-        cond_.notify_all();
-    }
-
-    bool empty() const {
-        std::lock_guard<std::mutex> lock(mutex_);
-        return queue_.empty();
-    }
-
-private:
-    std::queue<T> queue_;
-    mutable std::mutex mutex_;
-    std::condition_variable cond_;
-    bool stopped_ = false;
-};
-
+using namespace cnstream;
 
 std::atomic<bool> g_running{true};
 
@@ -75,7 +38,7 @@ void producer(ThreadSafeQueue<cv::Mat>& queue,
     cv::Mat img = cv::imread(image_path, cv::IMREAD_COLOR);
     if (img.empty()) {
         std::cerr << "[Producer] Failed to load image: " << image_path << std::endl;
-        queue.stop();
+        queue.Stop();
         return;
     }
     std::cout << "[Producer] Image loaded: " << img.cols << "x" << img.rows << std::endl;
@@ -84,7 +47,7 @@ void producer(ThreadSafeQueue<cv::Mat>& queue,
     auto next_time = std::chrono::steady_clock::now();
 
     while (g_running.load()) {
-        queue.push(img.clone());
+        queue.Push(img.clone());
         next_time += frame_interval;
         auto now = std::chrono::steady_clock::now();
         if (next_time > now) {
@@ -93,7 +56,7 @@ void producer(ThreadSafeQueue<cv::Mat>& queue,
             next_time = now + frame_interval;  // 重置 next_time 用于下一次判断
         }
     }
-    queue.stop();
+    queue.Stop();
     std::cout << "[Producer] Stopped." << std::endl;
 }
 
@@ -107,14 +70,26 @@ struct StreamContext {
     int64_t          frame_idx = 0;
 };
 
+std::string get_format_from_url(const std::string& url) {
+    if (url.find("rtmp://") == 0) return "flv";
+    if (url.find("rtsp://") == 0) return "rtsp";
+    if (url.find("http://") == 0 || url.find("https://") == 0) return "mpegts";
+    return "flv"; // 默认
+}
+
 bool init_stream(StreamContext& ctx,
                  int width, int height,
                  int fps, int bitrate_kbps,
                  const std::string& rtmp_url)
 {
 
-    avformat_network_init();
-    int ret = avformat_alloc_output_context2(&ctx.fmt_ctx, nullptr, "flv", rtmp_url.c_str());
+    AVOutputFormat* fmt = const_cast<AVOutputFormat*>(av_guess_format(get_format_from_url(rtmp_url).c_str(), NULL, NULL));
+    if (!fmt) { 
+        std::cerr << "[Stream] Unknown format." << std::endl;
+        return false; 
+    }
+
+    int ret = avformat_alloc_output_context2(&ctx.fmt_ctx, nullptr, fmt->name, rtmp_url.c_str());
     if (ret < 0 || !ctx.fmt_ctx) {
         std::cerr << "[Stream] avformat_alloc_output_context2 failed." << std::endl;
         return false;
@@ -138,6 +113,9 @@ bool init_stream(StreamContext& ctx,
         return false;
     }
 
+    ctx.codec_ctx->codec_id = codec->id;
+    ctx.codec_ctx->codec_type = AVMEDIA_TYPE_VIDEO;
+
     ctx.codec_ctx->width     = width;
     ctx.codec_ctx->height    = height;
     ctx.codec_ctx->time_base = {1, fps};          // 编码器时间基=帧率倒数
@@ -147,13 +125,11 @@ bool init_stream(StreamContext& ctx,
     ctx.codec_ctx->gop_size  = fps;                // GOP大小
     ctx.codec_ctx->max_b_frames = 1;
 
-    // 设置编码器参数到 AVStream 的时间基
     ctx.stream->time_base = ctx.codec_ctx->time_base;
 
-    // 如果fmt_ctx支持全局header（FLV不需要），可设置
-    if (ctx.fmt_ctx->oformat->flags & AVFMT_GLOBALHEADER)
+    if (ctx.fmt_ctx->oformat->flags & AVFMT_GLOBALHEADER) {
         ctx.codec_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
-
+    }
 
     ret = avcodec_open2(ctx.codec_ctx, codec, nullptr);
     if (ret < 0) {
@@ -175,14 +151,15 @@ bool init_stream(StreamContext& ctx,
         }
     }
 
-    // 9. 写文件头
     ret = avformat_write_header(ctx.fmt_ctx, nullptr);
     if (ret < 0) {
         std::cerr << "[Stream] avformat_write_header failed." << std::endl;
         return false;
     }
 
-    ctx.sws_ctx = sws_getContext(
+    // src: BGR24 -> dst: YUV420P
+    ctx.sws_ctx = sws_getCachedContext(
+        ctx.sws_ctx,
         width, height, AV_PIX_FMT_BGR24,
         width, height, AV_PIX_FMT_YUV420P,
         SWS_BILINEAR, nullptr, nullptr, nullptr);
@@ -207,9 +184,11 @@ bool init_stream(StreamContext& ctx,
     return true;
 }
 
-// ==================== 发送一帧 ====================
+/**
+ * av_frame_get_buffer 会自动分配 frame->buf，并且 frame->data 指向缓冲区
+ * av_image_fill_arrays 不会产生新的缓冲区，只是指向给定的缓冲区
+ */
 bool send_frame(StreamContext& ctx, const cv::Mat& img) {
-    // 1. 创建临时 BGR 输入帧
     AVFrame* bgr_frame = av_frame_alloc();
     bgr_frame->format = AV_PIX_FMT_BGR24;
     bgr_frame->width  = ctx.codec_ctx->width;
@@ -221,40 +200,73 @@ bool send_frame(StreamContext& ctx, const cv::Mat& img) {
         return false;
     }
 
-    // 2. 将 cv::Mat 数据拷贝到 bgr_frame
-    // OpenCV Mat 默认 BGR 排列，每行可能补齐到 step 字节
-    int ret_ = av_frame_make_writable(bgr_frame);
-    if (ret_ < 0) { av_frame_free(&bgr_frame); return false; }
-    for (int y = 0; y < img.rows; y++) {
-        memcpy(bgr_frame->data[0] + y * bgr_frame->linesize[0],
-               img.ptr(y),
-               img.cols * 3);  // BGR24 = 3 bytes per pixel
+    cv::Mat img_pre;
+    if (img.cols != ctx.codec_ctx->width || img.rows != ctx.codec_ctx->height) {
+        cv::resize(img, img_pre, cv::Size(ctx.codec_ctx->width, ctx.codec_ctx->height));
+    } else {
+        img_pre = img;
     }
 
-    // 3. sws_scale: BGR24 -> YUV420P
-    ret_ = av_frame_make_writable(ctx.sws_frame);
-    if (ret_ < 0) { av_frame_free(&bgr_frame); return false; }
+    if (!img_pre.isContinuous()) {
+        std::cerr << "[WARN] Image is not continuous." << std::endl;
+    }
+    cv::Mat bgr = img_pre.isContinuous() ? img_pre : img_pre.clone();
+
+    const uint8_t* src_data[4] = { bgr.data, nullptr, nullptr, nullptr };
+    int src_linesize[4] = { static_cast<int>(bgr.step[0]), 0, 0, 0 };
+
+    ret = av_frame_make_writable(ctx.sws_frame);
+    if (ret < 0) {
+        std::cerr << "[Stream] av_frame_make_writable failed." << std::endl;
+        return false;
+    }
+
+    // int sws_scale(struct SwsContext * c,
+    //     const uint8_t *const 	srcSlice[],
+    //     const int 	srcStride[],
+    //     int 	srcSliceY,
+    //     int 	srcSliceH,
+    //     uint8_t *const 	dst[],
+    //     const int 	dstStride[] 
+    // )	
+
     sws_scale(ctx.sws_ctx,
-              bgr_frame->data, bgr_frame->linesize,
+              src_data, src_linesize,
               0, ctx.codec_ctx->height,
               ctx.sws_frame->data, ctx.sws_frame->linesize);
-    av_frame_free(&bgr_frame);
 
-    // 4. 设置 PTS
+    // 将 cv::Mat 数据拷贝到 bgr_frame
+    // int ret_ = av_frame_make_writable(bgr_frame);
+    // if (ret_ < 0) { av_frame_free(&bgr_frame); return false; }
+
+    // for (int y = 0; y < img.rows; y++) {
+    //     memcpy(bgr_frame->data[0] + y * bgr_frame->linesize[0],
+    //            img.ptr(y),
+    //            bgr_frame->linesize[0]);
+    // }
+
+    // ret_ = av_frame_make_writable(ctx.sws_frame);
+    // if (ret_ < 0) { av_frame_free(&bgr_frame); return false; }
+    // sws_scale(ctx.sws_ctx,
+    //           bgr_frame->data, bgr_frame->linesize,
+    //           0, ctx.codec_ctx->height,
+    //           ctx.sws_frame->data, ctx.sws_frame->linesize);
+    // av_frame_free(&bgr_frame);
+
     ctx.sws_frame->pts = ctx.frame_idx++;
-
-    // 5. 送入编码器
     ret = avcodec_send_frame(ctx.codec_ctx, ctx.sws_frame);
     if (ret < 0) {
         std::cerr << "[Stream] avcodec_send_frame error: " << ret << std::endl;
         return false;
     }
 
-    // 6. 收取编码包并写入
     AVPacket* pkt = av_packet_alloc();
     while (true) {
         ret = avcodec_receive_packet(ctx.codec_ctx, pkt);
-        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
+
+        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+            break;
+        }
         if (ret < 0) {
             std::cerr << "[Stream] avcodec_receive_packet error." << std::endl;
             av_packet_free(&pkt);
@@ -276,7 +288,12 @@ bool send_frame(StreamContext& ctx, const cv::Mat& img) {
 
 void consumer(ThreadSafeQueue<cv::Mat>& queue, StreamContext& ctx) {
     cv::Mat frame;
-    while (queue.pop(frame)) {
+    while (g_running.load()) {
+        if (!queue.TryPop(frame)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            continue;
+        }
+        if (frame.empty()) continue;
         if (!send_frame(ctx, frame)) {
             std::cerr << "[Consumer] send_frame failed, stopping." << std::endl;
             break;
@@ -306,7 +323,6 @@ void cleanup(StreamContext& ctx) {
             avio_closep(&ctx.fmt_ctx->pb);
         avformat_free_context(ctx.fmt_ctx);
     }
-    avformat_network_deinit();
     std::cout << "[Stream] Cleanup done." << std::endl;
 }
 
@@ -314,14 +330,13 @@ void cleanup(StreamContext& ctx) {
 int main(int argc, char* argv[]) {
     // 参数解析
     std::string image_path = (argc > 1) ? argv[1] : "image.png";
-    std::string rtmp_url   = (argc > 2) ? argv[2] : "rtmp://localhost/live/stream";
+    std::string rtmp_url   = (argc > 2) ? argv[2] : "rtmp://127.0.0.1:1935/live/stream";
     int fps                = (argc > 3) ? std::stoi(argv[3]) : 25;
     int width              = (argc > 4) ? std::stoi(argv[4]) : 640;
     int height             = (argc > 5) ? std::stoi(argv[5]) : 480;
     int bitrate_kbps       = (argc > 6) ? std::stoi(argv[6]) : 800;
     int duration_sec       = (argc > 7) ? std::stoi(argv[7]) : 30;
 
-    std::cout << "========== RTMP Streamer Demo ==========" << std::endl;
     std::cout << "Image: " << image_path << std::endl;
     std::cout << "RTMP:  " << rtmp_url << std::endl;
     std::cout << "FPS:   " << fps << std::endl;
@@ -340,23 +355,15 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    // 创建线程安全队列
     ThreadSafeQueue<cv::Mat> queue;
-
-    // 启动消费者
     std::thread consumer_thread(consumer, std::ref(queue), std::ref(ctx));
-
-    // 启动生产者
     std::thread producer_thread(producer, std::ref(queue), image_path, fps);
 
-    // 定时停止
     std::this_thread::sleep_for(std::chrono::seconds(duration_sec));
     g_running = false;
 
     producer_thread.join();
     consumer_thread.join();
-
-    // 清理资源
     cleanup(ctx);
 
     std::cout << "========== Demo Finished ==========" << std::endl;
