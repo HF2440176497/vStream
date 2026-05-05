@@ -2,6 +2,7 @@
 #ifndef CNSTREAM_FRAMEWORK_CORE_INCLUDE_PROFILER_PROFILE_HPP_
 #define CNSTREAM_FRAMEWORK_CORE_INCLUDE_PROFILER_PROFILE_HPP_
 
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <ostream>

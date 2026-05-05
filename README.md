@@ -33,6 +33,30 @@
 
 ## 🔨 编译
 
+- 编译安装 gflags 和 glog 库
+
+
+```bash
+cd 3rdparty/gflags
+cmake -DBUILD_SHARED_LIBS=ON -DBUILD_STATIC_LIBS=ON -DINSTALL_HEADERS=ON -DINSTALL_SHARED_LIBS=ON -DINSTALL_STATIC_LIBS=ON ..
+make -j$(nproc)
+make install
+cd ..
+```
+
+
+
+
+```bash
+cd 3rdparty/glog
+cmake -DBUILD_SHARED_LIBS=ON ..
+make -j$(nproc)
+make install
+cd ..
+```
+
+- 编译安装 vStream 项目
+
 ```bash
 mkdir build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_MODULES=ON -DBUILD_TESTS=ON

@@ -40,6 +40,12 @@ option(VSTREAM_BUILD_TOOLS "build tools" ON)
 option(VSTREAM_BUILD_LIBYUV "build libyuv" ON)
 option(VSTREAM_BUILD_PYBIND11 "build pybind11" ON)
 
+# Python 路径配置
+set(VSTREAM_PYTHON_ROOT_DIR ""
+    CACHE PATH "Custom Python root directory (e.g. /usr/local/python3.12). If not set, use system default.")
+set(VSTREAM_PYTHON_EXECUTABLE ""
+    CACHE FILEPATH "Custom Python executable (e.g. /usr/local/python3.12/bin/python3.12). If not set, use system default.")
+
 # 静态库 and 动态库输出目录
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${VSTREAM_ROOT_PATH}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${VSTREAM_ROOT_PATH}/lib)
@@ -59,8 +65,28 @@ endif()
 # ---[ pybind11
 if (VSTREAM_BUILD_PYBIND11)
   message(STATUS "Pybind11 building from 3rdparty/pybind11")
+
+  # 如果用户指定了自定义 Python 路径，则强制使用
+  if(VSTREAM_PYTHON_ROOT_DIR)
+    set(Python_ROOT_DIR "${VSTREAM_PYTHON_ROOT_DIR}" CACHE PATH "Python root directory" FORCE)
+    message(STATUS "Using custom Python_ROOT_DIR: ${VSTREAM_PYTHON_ROOT_DIR}")
+  endif()
+  if(VSTREAM_PYTHON_EXECUTABLE)
+    set(Python_EXECUTABLE "${VSTREAM_PYTHON_EXECUTABLE}" CACHE FILEPATH "Python executable" FORCE)
+    set(PYTHON_EXECUTABLE "${VSTREAM_PYTHON_EXECUTABLE}" CACHE FILEPATH "Python executable" FORCE)
+    message(STATUS "Using custom Python_EXECUTABLE: ${VSTREAM_PYTHON_EXECUTABLE}")
+  endif()
+
   set(PYBIND11_PYTHON_VERSION 3)
   add_subdirectory(${VSTREAM_ROOT_PATH}/3rdparty/pybind11)
+  find_package(Python3 REQUIRED COMPONENTS Interpreter Development.Module Development.Embed)
+
+  message(STATUS "VSTREAM_BUILD_PYBIND11: using Python ")
+  message(STATUS "  Interpreter  : ${Python3_EXECUTABLE}")
+  message(STATUS "  Version      : ${Python3_VERSION}")
+  message(STATUS "  Include dir  : ${Python3_INCLUDE_DIRS}")
+  message(STATUS "  Library      : ${Python3_LIBRARIES}")
+
   set(VSTREAM_HAS_BUILT_PYBIND11 TRUE)
 endif()
 
