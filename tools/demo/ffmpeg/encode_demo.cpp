@@ -335,7 +335,7 @@ int main(int argc, char* argv[]) {
     int width              = (argc > 4) ? std::stoi(argv[4]) : 640;
     int height             = (argc > 5) ? std::stoi(argv[5]) : 480;
     int bitrate_kbps       = (argc > 6) ? std::stoi(argv[6]) : 800;
-    int duration_sec       = (argc > 7) ? std::stoi(argv[7]) : 30;
+    int duration_sec       = (argc > 7) ? std::stoi(argv[7]) : 60;
 
     std::cout << "Image: " << image_path << std::endl;
     std::cout << "RTMP:  " << rtmp_url << std::endl;

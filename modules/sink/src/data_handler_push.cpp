@@ -73,12 +73,12 @@ class PushHandlerImpl {
     Close();
   }
 
-  static std::optional<int> GetIntParam(const std::unordered_map<std::string, std::string>& m, const std::string& key) {
+  static std::optional<int> GetIntParam(const ModuleParamSet& m, const std::string& key) {
     auto it = m.find(key);
     return it != m.end() ? std::optional<int>(std::stoi(it->second)) : std::nullopt;
   }
 
-  static std::optional<std::string> GetStrParam(const std::unordered_map<std::string, std::string>& m, const std::string& key) {
+  static std::optional<std::string> GetStrParam(const ModuleParamSet& m, const std::string& key) {
     auto it = m.find(key);
     return it != m.end() ? std::optional<std::string>(it->second) : std::nullopt;
   }
@@ -365,7 +365,7 @@ class PushHandlerImpl {
       return SendFrame(frame, src_pix_fmt);
     }
 #endif
-    LOGW(SINK) << "[" << stream_id_ << "]: unknown device type " << frame->GetCtx().device_type;
+    LOGW(SINK) << "[" << stream_id_ << "]: unknown device type " << DevType2Str(frame->GetCtx().device_type);
     return true;
   }
 
@@ -436,16 +436,13 @@ class PushHandlerImpl {
     }
 #endif
 
-    void* cuda_data = const_cast<void*>(
-        static_cast<const CNSyncedMemoryCuda*>(frame->data_[0].get())->GetCudaData());
-
+    const void* cuda_data = frame->data_[0]->GetDevData();
     int ret = av_frame_make_writable(ctx_.hw_frame);
     if (ret < 0) {
       LOGE(SINK) << "[" << stream_id_ << "]: av_frame_make_writable (hw_frame) failed";
       return false;
     }
 
-    CUstream cuda_stream = 0;
     int npp_ret = -1;
 
     uint8_t* dst_y  = ctx_.hw_frame->data[0];
@@ -487,7 +484,7 @@ class PushHandlerImpl {
    */
   bool SendFrameCpuFallback(const DataFramePtr& frame, AVPixelFormat src_pix_fmt) {
     // const void* pointer
-    auto src_data = frame->data_[0]->GetCpuData();
+    auto src_data = static_cast<const uint8_t*>(frame->data_[0]->GetCpuData());
     int src_stride = frame->GetStride(0);
 
     EnsureSwsContext(src_pix_fmt, frame->GetWidth(), frame->GetHeight());
@@ -570,6 +567,9 @@ class PushHandlerImpl {
     LOGI(SINK) << "[" << stream_id_ << "]: Stream clean done";
   }
 
+  friend class PushHandler;
+
+ private:
   DataSink *module_ = nullptr;
   std::string stream_id_;
   std::atomic<bool> running_{false};
@@ -590,7 +590,7 @@ class PushHandlerImpl {
   int sws_src_height_ = 0;
   std::atomic<bool> hw_ctx_initialized_{false};
   int device_id_ = -1;  // 默认使用 CPU 编码
-};
+};  // class PushHandlerImpl
 
 std::shared_ptr<SinkHandler> PushHandler::Create(DataSink *module, const std::string &stream_id) {
   if (!module) {

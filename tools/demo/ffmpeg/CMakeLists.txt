@@ -17,6 +17,7 @@ set(VSTREAM_TOOLS_DEMO_FFMPEG_3RDPARTY_LIBS "")
 
 set(VSTREAM_TOOLS_DEMO_FFMPEG_SOURCES
   encode_demo.cpp
+  encode_nv_demo.cpp
 )
 
 

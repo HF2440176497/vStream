@@ -166,5 +166,6 @@ void SinkModuleWrapper(py::module &m) {
       .def("open", &PushHandler::Open)
       .def("close", &PushHandler::Close)
       .def("stop", &PushHandler::Stop);
+}
 
 }  // namespace cnstream

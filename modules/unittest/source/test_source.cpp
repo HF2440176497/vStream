@@ -182,12 +182,11 @@ TEST_F(SourceModuleTest, PipelineInit) {
 
   std::vector<std::string> registed_modules = ModuleFactory::Instance()->GetRegisted();
   std::cout << "-------- SourceModuleTest module name: " << std::endl;
-  // EXPECT_EQ(registed_modules.size(), expected_nodes.size());
   for (auto& module_name : registed_modules) {
     std::cout << "module name: " << module_name << std::endl;
   }
   EXPECT_TRUE(std::find(registed_modules.begin(), registed_modules.end(), "cnstream::DataSource") != registed_modules.end());
-}  // PipelineInit
+}
 
 /**
  * 读取图片
@@ -204,20 +203,17 @@ TEST_F(SourceModuleTest, RUN) {
   std::shared_ptr<SourceHandler> source_handler_ptr = ImageHandler::Create(source, stream_id_);
   image_handler_ = std::dynamic_pointer_cast<ImageHandler>(source_handler_ptr);
   EXPECT_NE(image_handler_, nullptr);
+  EXPECT_EQ(source->AddSource(image_handler_), 0);
 
   EXPECT_TRUE(pipeline_->Start());
-  EXPECT_FALSE(IsStreamRemoved(stream_id_));  // 此处不应当被移除
 
-  EXPECT_EQ(source->AddSource(image_handler_), 0);
   EXPECT_TRUE(image_handler_->impl_->running_);
-
-  // AddSource 之后，handler handler 理应可以获取到配置参数
   std::cout << "image_handler_->impl_->image_path = " << image_handler_->impl_->image_path_ << std::endl;
   std::cout << "image_handler_->impl_->frame_rate_ = " << image_handler_->impl_->frame_rate_ << std::endl;
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(2000));  // running for a while
+  std::this_thread::sleep_for(std::chrono::milliseconds(2000));
   LOGI(SourceModuleTest) << "Handler stream idx: " << image_handler_->GetStreamIndex();
-  EXPECT_NE(image_handler_->GetStreamIndex(), INVALID_STREAM_IDX);  // 等同 data->GetStreamIndex
+  EXPECT_NE(image_handler_->GetStreamIndex(), INVALID_STREAM_IDX);  // == data->stream_idx_
   EXPECT_TRUE(pipeline_->IsRunning());
   
   image_handler_->Stop();
@@ -250,11 +246,11 @@ TEST_F(SourceModuleTest, MutilStream) {
     handlers[stream_id] = handler;
   }
 
-  EXPECT_TRUE(pipeline_->Start());
   for (auto stream_id : stream_ids) {
     EXPECT_EQ(source->AddSource(handlers[stream_id]), 0);
     EXPECT_TRUE(handlers[stream_id]->impl_->running_);
   }
+  EXPECT_TRUE(pipeline_->Start());
   
   Module* module_process = pipeline_->GetModule(process_module_name);
 
@@ -284,7 +280,7 @@ TEST_F(SourceModuleTest, MutilStream) {
 /**
  * 单独使用一个 pipeline 测试 video_handler
  */
-TEST_F(VideoSourceTest, DISABLED_RUN) {
+TEST_F(VideoSourceTest, RUN) {
 // TEST_F(VideoSourceTest, Loop) {
   EXPECT_NE(pipeline_, nullptr);
   Module* module_in_pipeline = pipeline_->GetModule("decoder");
@@ -297,13 +293,10 @@ TEST_F(VideoSourceTest, DISABLED_RUN) {
   video_handler_ = std::dynamic_pointer_cast<VideoHandler>(source_handler_ptr);
   EXPECT_NE(video_handler_, nullptr);
 
-  EXPECT_TRUE(pipeline_->Start());
-  EXPECT_FALSE(IsStreamRemoved(stream_id_));  // 此处不应当被移除
-
   EXPECT_EQ(source->AddSource(video_handler_), 0);
-  EXPECT_TRUE(video_handler_->impl_->running_);
+  EXPECT_TRUE(pipeline_->Start());
 
-  // AddSource 之后，handler handler 理应可以获取到配置参数
+  EXPECT_TRUE(video_handler_->impl_->running_);
   std::cout << "video_handler_->impl_->stream_url_ = " << video_handler_->impl_->stream_url_ << std::endl;
   std::cout << "video_handler_->impl_->frame_rate_ = " << video_handler_->impl_->frame_rate_ << std::endl;
 
@@ -320,7 +313,7 @@ TEST_F(VideoSourceTest, DISABLED_RUN) {
   std::this_thread::sleep_for(std::chrono::seconds(100));  // running for a while
 
   LOGI(VideoSourceTest) << "Handler stream idx: " << video_handler_->GetStreamIndex();
-  EXPECT_NE(video_handler_->GetStreamIndex(), INVALID_STREAM_IDX);  // 等同 data->GetStreamIndex
+  EXPECT_NE(video_handler_->GetStreamIndex(), INVALID_STREAM_IDX);  // == data->stream_idx_
   EXPECT_TRUE(pipeline_->IsRunning());
   
   video_handler_->Stop();

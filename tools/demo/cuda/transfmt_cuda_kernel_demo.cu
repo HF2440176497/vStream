@@ -101,10 +101,10 @@ bool AllocateGpuMemory(TestFrame& frame) {
   size_t y_size = frame.width * frame.height;
   size_t uv_size = frame.width * frame.height / 2;
 
-  if (d_y_plane) cudaFree(d_y_plane);
-  if (d_uv_plane) cudaFree(d_uv_plane);
-  if (d_rgb_plane) cudaFree(d_rgb_plane);
-  if (d_bgr_plane) cudaFree(d_bgr_plane);
+  if (frame.d_y_plane) cudaFree(frame.d_y_plane);
+  if (frame.d_uv_plane) cudaFree(frame.d_uv_plane);
+  if (frame.d_rgb_plane) cudaFree(frame.d_rgb_plane);
+  if (frame.d_bgr_plane) cudaFree(frame.d_bgr_plane);
 
   CHECK_CUDA_RUNTIME(cudaMalloc(&frame.d_y_plane, y_size));
   CHECK_CUDA_RUNTIME(cudaMalloc(&frame.d_uv_plane, uv_size));
@@ -351,7 +351,7 @@ __global__ void nv12ToBGR24Kernel(const uint8_t* yPlane, const uint8_t* uvPlane,
 
 
 bool TestNV12ToRGB24_CUDA(TestFrame& frame, std::string output_file) {
-  std::cout << "\n=== Testing NV12 -> RGB24 (CUDA Kernel) ===" << std::endl;
+  std::cout << "\n===  NV12 -> RGB24 (CUDA Kernel) ===" << std::endl;
 
   dim3 block(16, 16);
   dim3 grid((frame.width + block.x - 1) / block.x, (frame.height + block.y - 1) / block.y);
@@ -383,7 +383,7 @@ bool TestNV12ToRGB24_CUDA(TestFrame& frame, std::string output_file) {
 }
 
 bool TestNV12ToBGR24_CUDA(TestFrame& frame, std::string output_file) {
-  std::cout << "\n=== Testing NV12 -> BGR24 (CUDA Kernel) ===" << std::endl;
+  std::cout << "\n===  NV12 -> BGR24 (CUDA Kernel) ===" << std::endl;
 
   dim3 block(16, 16);
   dim3 grid((frame.width + block.x - 1) / block.x, (frame.height + block.y - 1) / block.y);
@@ -411,7 +411,7 @@ bool TestNV12ToBGR24_CUDA(TestFrame& frame, std::string output_file) {
 
 // 每次转换会覆盖 frame.bgr_plane d_bgr_plane
 bool TestNV21ToBGR24_CUDA(TestFrame& frame, std::string output_file) {
-  std::cout << "\n=== Testing NV21 -> BGR24 (Kernel) ===" << std::endl;
+  std::cout << "\n===  NV21 -> BGR24 (Kernel) ===" << std::endl;
 
   dim3 block(16, 16);
   dim3 grid((frame.width + block.x - 1) / block.x, (frame.height + block.y - 1) / block.y);
@@ -435,7 +435,7 @@ bool TestNV21ToBGR24_CUDA(TestFrame& frame, std::string output_file) {
 
 
 bool TestNV21ToRGB24_CUDA(TestFrame& frame, std::string output_file) {
-  std::cout << "\n=== Testing NV21 -> RGB24 (Kernel) ===" << std::endl;
+  std::cout << "\n===  NV21 -> RGB24 (Kernel) ===" << std::endl;
 
   dim3 block(16, 16);
   dim3 grid((frame.width + block.x - 1) / block.x, (frame.height + block.y - 1) / block.y);
@@ -478,7 +478,7 @@ __global__ void RGB24ToBGR24Kernel(const uint8_t* __restrict__ rgb_in, uint8_t* 
 }
 
 bool TestRGB24ToBGR24_CUDA(TestFrame& frame, std::string output_file) {
-  std::cout << "\n=== Testing RGB24 -> BGR24 (CUDA) ===" << std::endl;
+  std::cout << "\n===  RGB24 -> BGR24 (CUDA) ===" << std::endl;
 
   if (frame.rgb_plane.empty()) {
     std::cerr << "RGB plane is empty, run NV12ToRGB24_CUDA first" << std::endl;
@@ -515,7 +515,7 @@ bool TestRGB24ToBGR24_CUDA(TestFrame& frame, std::string output_file) {
  * 使用 libyuv 将 frame 的 y_plane 和 uv_plane 转换为 BGR24 / RGB24 并保存到 output_file
  */
 bool TestWithLibyuvCPU(TestFrame& frame, std::string output_file_rgb, std::string output_file_bgr) {
-  std::cout << "\n=== Testing with libyuv (CPU) for comparison ===" << std::endl;
+  std::cout << "\n===  with libyuv (CPU) for comparison ===" << std::endl;
 
   std::vector<uint8_t> cpu_rgb(frame.width * frame.height * 3);
   std::vector<uint8_t> cpu_bgr(frame.width * frame.height * 3);
@@ -632,7 +632,7 @@ bool CreateUniformTestImage(int width, int height, uint8_t r_val, uint8_t g_val,
  * 检查经过核函数转换之后，每个通道的内存排列
  */
 bool TestChannelConsistency(TestFrame& frame, uint8_t expected_r, uint8_t expected_g, uint8_t expected_b) {
-  std::cout << "\n=== Testing channel consistency (Expected: R=" << (int)expected_r 
+  std::cout << "\n===  channel consistency (Expected: R=" << (int)expected_r 
             << ", G=" << (int)expected_g << ", B=" << (int)expected_b << ") ===" << std::endl;
 
   if (frame.bgr_plane.empty()) {
@@ -687,7 +687,7 @@ bool TestChannelConsistency(TestFrame& frame, uint8_t expected_r, uint8_t expect
 
 
 bool TestChannelConsistencyLibyuvCPU(TestFrame& frame, uint8_t expected_r, uint8_t expected_g, uint8_t expected_b) {
-  std::cout << "\n=== Testing with libyuv (CPU) channel consistency for comparison ===" << std::endl;
+  std::cout << "\n===  with libyuv (CPU) channel consistency for comparison ===" << std::endl;
 
   std::vector<uint8_t> cpu_rgb(frame.width * frame.height * 3);
   std::vector<uint8_t> cpu_bgr(frame.width * frame.height * 3);
@@ -795,8 +795,7 @@ int main(int argc, char** argv) {
   TestNV21ToRGB24_CUDA(frame, "save/nv21_to_rgb24_cuda.jpg");
   
   std::cout << "\n\n";
-  std::cout << "#  Channel Consistency Test (R=G=B)  #" << std::endl;
-
+  
   TestFrame uniform_frame;
   const int test_width = 640;
   const int test_height = 480;

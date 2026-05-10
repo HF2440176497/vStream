@@ -44,6 +44,13 @@ public:
   const void* GetCudaData();
   void* GetMutableCudaData();
 
+  virtual const void* GetDevData() override {
+    return GetCudaData();
+  }
+  virtual void* GetMutableDevData() override {
+    return GetMutableCudaData();
+  }
+
   StatusInfoCuda GetStatusInfoCuda() const {
     StatusInfoCuda info;
     info.size = GetSize();

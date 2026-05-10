@@ -90,6 +90,13 @@ class CNSyncedMemory : private NonCopyable {
   virtual const void* GetCpuData();
   virtual void* GetMutableCpuData();
 
+  virtual const void* GetDevData() {
+    return GetCpuData();
+  }
+  virtual void* GetMutableDevData() {
+    return GetMutableCpuData();
+  }
+
   SyncedHead GetHead() const { return head_; }
   /**
    * @brief Gets data bytes.

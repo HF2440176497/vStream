@@ -127,7 +127,7 @@ int NppRGB24ToNV12(void* dst_y, void* dst_uv,
   oSizeROI.width   = width;
   oSizeROI.height  = height;
 
-  const Npp8u** pSrc = static_cast<const Npp8u*>(src);
+  const Npp8u* pSrc = static_cast<const Npp8u*>(src);
 
   Npp8u* pDst[2] = {(Npp8u*)dst_y, (Npp8u*)dst_uv};
   int DstStep[2] = {y_stride, uv_stride};
@@ -168,7 +168,7 @@ int NppBGR24ToNV12(void* dst_y, void* dst_uv,
   oSizeROI.width   = width;
   oSizeROI.height  = height;
 
-  const Npp8u** pSrc = static_cast<const Npp8u*>(src);
+  const Npp8u* pSrc = static_cast<const Npp8u*>(src);
 
   Npp8u* pDst[2] = {(Npp8u*)dst_y, (Npp8u*)dst_uv};
   int DstStep[2] = {y_stride, uv_stride};

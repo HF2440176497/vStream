@@ -61,6 +61,8 @@ bool __check_npp(NppStatus code, const char* op, const char* file, int line) {
   return true;
 }
 
+static const int PITCH_ALIGN = 4;
+
 enum class DataFormat {
   INVALID = -1,
   PIXEL_FORMAT_YUV420_NV21 = 0,
@@ -86,6 +88,9 @@ struct TestFrame {
   void* d_uv_plane = nullptr;
   void* d_rgb_plane = nullptr;
   void* d_bgr_plane = nullptr;
+
+  int src_pitch = 0;
+  int dst_pitch = 0;
 
   NppiSize oSize;
 
@@ -150,19 +155,36 @@ bool LoadImageAndConvertToNV12(const std::string& image_path, TestFrame& frame) 
 
 /**
  * 将 NV12 格式的 frame 数据从 CPU 拷贝到 GPU
+ * 注意为了保证 NPP 的使用，我们需要保证 stride 的字节对齐
  */
 bool CopyToGpu(TestFrame& frame) {
-  size_t y_size = frame.width * frame.height;
-  size_t uv_size = frame.width * frame.height / 2;
+  int src_pitch = ((frame.width + PITCH_ALIGN - 1) / PITCH_ALIGN) * PITCH_ALIGN;
+  int dst_pitch = ((frame.width * 3 + PITCH_ALIGN - 1) / PITCH_ALIGN) * PITCH_ALIGN;
 
-  CHECK_CUDA_RUNTIME(cudaMemcpy(frame.d_y_plane, frame.y_plane.data(), y_size, cudaMemcpyHostToDevice));
-  CHECK_CUDA_RUNTIME(cudaMemcpy(frame.d_uv_plane, frame.uv_plane.data(), uv_size, cudaMemcpyHostToDevice));
+  frame.src_pitch = src_pitch;
+  frame.dst_pitch = dst_pitch;
 
+  cudaMalloc(&frame.d_y_plane,  src_pitch * frame.height);
+  cudaMalloc(&frame.d_uv_plane, src_pitch * frame.height / 2);
+  cudaMalloc(&frame.d_rgb_plane, dst_pitch * frame.height);
+  cudaMalloc(&frame.d_bgr_plane, dst_pitch * frame.height * 3);
+
+  CHECK_CUDA_RUNTIME(cudaMemcpy2D(frame.d_y_plane, src_pitch,
+              frame.y_plane.data(), frame.width,
+              frame.width, frame.height,
+              cudaMemcpyHostToDevice));
+
+  int uv_width  = frame.width;
+  int uv_height = frame.height / 2;
+  CHECK_CUDA_RUNTIME(cudaMemcpy2D(frame.d_uv_plane, src_pitch,
+              frame.uv_plane.data(), uv_width,
+              uv_width, uv_height,
+              cudaMemcpyHostToDevice));
   return true;
 }
 
 bool TestNV12ToRGB24_NPP(TestFrame& frame, std::string output_file) {
-  std::cout << "\n=== Testing NV12 -> RGB24 (NPP) ===" << std::endl;
+  std::cout << "\n===  NV12 -> RGB24 (NPP) ===" << std::endl;
 
   NppStreamContext npp_stream_ctx;
   NppStatus status = nppGetStreamContext(&npp_stream_ctx);
@@ -172,37 +194,46 @@ bool TestNV12ToRGB24_NPP(TestFrame& frame, std::string output_file) {
     static_cast<const Npp8u*>(frame.d_y_plane),
     static_cast<const Npp8u*>(frame.d_uv_plane),
   };
-  int aSrcStep = frame.width;
+  int aSrcStep = frame.src_pitch;
 
   Npp8u* pDst = static_cast<Npp8u*>(frame.d_rgb_plane);
-  int nDstStep = frame.width * 3;
+  int nDstStep = frame.dst_pitch;  // 对齐后的步长
 
   NppiSize oSizeROI;
-  oSizeROI.width   = frame.width;
-  oSizeROI.height  = frame.height;
-  
-  status = nppiNV12ToRGB_8u_P2C3R_Ctx(
+  oSizeROI.width  = frame.width;
+  oSizeROI.height = frame.height;
+
+  status = nppiNV12ToRGB_709HDTV_8u_P2C3R_Ctx(
     aSrc, aSrcStep,
     pDst, nDstStep,
     oSizeROI,
     npp_stream_ctx
   );
+
+  // status = nppiNV12ToRGB_8u_P2C3R_Ctx(
+  //   aSrc, aSrcStep,
+  //   pDst, nDstStep,
+  //   oSizeROI,
+  //   npp_stream_ctx
+  // );
   CHECK_NPP(status);
 
   CHECK_CUDA_RUNTIME(cudaGetLastError());
   CHECK_CUDA_RUNTIME(cudaDeviceSynchronize());
 
-  frame.rgb_plane.resize(frame.width * frame.height * 3);
+  frame.rgb_plane.resize(frame.width * frame.height * 3);  // 主机端准备紧密布局缓冲区（无填充）
   CHECK_CUDA_RUNTIME(
-      cudaMemcpy(frame.rgb_plane.data(), frame.d_rgb_plane, frame.width * frame.height * 3, cudaMemcpyDeviceToHost));
+      cudaMemcpy2D(frame.rgb_plane.data(), frame.width * 3,
+                  frame.d_rgb_plane, frame.dst_pitch,
+                  frame.width * 3, frame.height,
+                  cudaMemcpyDeviceToHost));
 
   cv::Mat rgb_mat(frame.height, frame.width, CV_8UC3, frame.rgb_plane.data());
+
   cv::Mat bgr_mat;
   cv::cvtColor(rgb_mat, bgr_mat, cv::COLOR_RGB2BGR);
-
-  // 拷贝到 frame 的 bgr_plane 方便后续进行内存位置的比较
   frame.bgr_plane.resize(frame.width * frame.height * 3);
-  memcpy(frame.bgr_plane.data(), bgr_mat.data, frame.width * frame.height * 3);
+  memcpy(frame.bgr_plane.data(), bgr_mat.data, frame.bgr_plane.size());
 
   cv::imwrite(output_file, bgr_mat);
   std::cout << "NV12 -> RGB24 (NPP) result saved to: " << output_file << std::endl;
@@ -211,7 +242,8 @@ bool TestNV12ToRGB24_NPP(TestFrame& frame, std::string output_file) {
 }
 
 bool TestNV12ToBGR24_NPP(TestFrame& frame, std::string output_file) {
-  std::cout << "\n=== Testing NV12 -> BGR24 (NPP) ===" << std::endl;
+
+  std::cout << "\n===  NV12 -> BGR24 (NPP) ===" << std::endl;
 
   NppStreamContext npp_stream_ctx;
   NppStatus status = nppGetStreamContext(&npp_stream_ctx);
@@ -221,22 +253,28 @@ bool TestNV12ToBGR24_NPP(TestFrame& frame, std::string output_file) {
     static_cast<const Npp8u*>(frame.d_y_plane),
     static_cast<const Npp8u*>(frame.d_uv_plane)
   };
-  int aSrcStep = frame.width;
+  int aSrcStep = frame.src_pitch;
 
   Npp8u* pDst = static_cast<Npp8u*>(frame.d_bgr_plane);
-  int nDstStep = frame.width * 3;
+  int nDstStep = frame.dst_pitch;
 
   NppiSize oSizeROI;
-  oSizeROI.width   = frame.width;
-  oSizeROI.height  = frame.height;
+  oSizeROI.width  = frame.width;
+  oSizeROI.height = frame.height;
 
-  status = nppiNV12ToBGR_8u_P2C3R_Ctx(
+  status = nppiNV12ToBGR_709HDTV_8u_P2C3R_Ctx(
     aSrc, aSrcStep,
     pDst, nDstStep,
     oSizeROI,
     npp_stream_ctx
   );
 
+  // status = nppiNV12ToBGR_8u_P2C3R_Ctx(
+  //   aSrc, aSrcStep, 
+  //   pDst, nDstStep,
+  //   oSizeROI, 
+  //   npp_stream_ctx
+  // );
   CHECK_NPP(status);
 
   CHECK_CUDA_RUNTIME(cudaGetLastError());
@@ -244,7 +282,10 @@ bool TestNV12ToBGR24_NPP(TestFrame& frame, std::string output_file) {
 
   frame.bgr_plane.resize(frame.width * frame.height * 3);
   CHECK_CUDA_RUNTIME(
-      cudaMemcpy(frame.bgr_plane.data(), frame.d_bgr_plane, frame.width * frame.height * 3, cudaMemcpyDeviceToHost));
+      cudaMemcpy2D(frame.bgr_plane.data(), frame.width * 3,
+                   frame.d_bgr_plane, frame.dst_pitch,
+                   frame.width * 3, frame.height,
+                   cudaMemcpyDeviceToHost));
 
   cv::Mat bgr_mat(frame.height, frame.width, CV_8UC3, frame.bgr_plane.data());
   cv::imwrite(output_file, bgr_mat);
@@ -270,36 +311,37 @@ static const Npp32f MATRIX_BGR_TO_YUV709[3][4] = {
  * RGB24 -> NV12 -> BGR24 (NPP)
  */
 bool TestRGB24ToNV12ToBGR_NPP(TestFrame& frame, std::string output_file) {
-  std::cout << "\n=== Testing RGB24 -> NV12 -> BGR24 (NPP) ===" << std::endl;
+  std::cout << "\n===  RGB24 -> NV12 -> BGR24 (NPP) ===" << std::endl;
 
   if (frame.rgb_plane.empty()) {
     std::cerr << "RGB plane is empty, run NV12ToRGB24_NPP first" << std::endl;
     return false;
   }
-
+  // 上传紧密 RGB 到设备对齐内存
   CHECK_CUDA_RUNTIME(
-      cudaMemcpy(frame.d_rgb_plane, frame.rgb_plane.data(), frame.width * frame.height * 3, cudaMemcpyHostToDevice));
+      cudaMemcpy2D(frame.d_rgb_plane, frame.dst_pitch,
+                   frame.rgb_plane.data(), frame.width * 3,
+                   frame.width * 3, frame.height,
+                   cudaMemcpyHostToDevice));
 
   NppStreamContext npp_stream_ctx;
   NppStatus status = nppGetStreamContext(&npp_stream_ctx);
   CHECK_NPP(status);
 
   NppiSize oSizeROI;
-  oSizeROI.width   = frame.width;
-  oSizeROI.height  = frame.height;
+  oSizeROI.width  = frame.width;
+  oSizeROI.height = frame.height;
 
   const Npp8u* pSrc = static_cast<const Npp8u*>(frame.d_rgb_plane);
-
-  Npp8u* pDst[2] = {(Npp8u*)frame.d_y_plane, (Npp8u*)frame.d_uv_plane};
-  int DstStep[2] = {frame.width, frame.width};
+  Npp8u* pDst[2] = { (Npp8u*)frame.d_y_plane, (Npp8u*)frame.d_uv_plane };
+  int DstStep[2] = { frame.src_pitch, frame.src_pitch };   // 使用对齐步长
 
   status = nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx(
-    pSrc, frame.width * 3,
+    pSrc, frame.dst_pitch,
     pDst, DstStep,
     oSizeROI,
     MATRIX_RGB_TO_YUV709,
-    npp_stream_ctx
-  );
+    npp_stream_ctx);
   CHECK_NPP(status);
 
   CHECK_CUDA_RUNTIME(cudaGetLastError());
@@ -308,15 +350,23 @@ bool TestRGB24ToNV12ToBGR_NPP(TestFrame& frame, std::string output_file) {
   frame.y_plane.resize(frame.width * frame.height);
   frame.uv_plane.resize(frame.width * frame.height / 2);
   CHECK_CUDA_RUNTIME(
-      cudaMemcpy(frame.y_plane.data(), frame.d_y_plane, frame.width * frame.height, cudaMemcpyDeviceToHost));
+      cudaMemcpy2D(frame.y_plane.data(), frame.width,
+                   frame.d_y_plane, frame.src_pitch,
+                   frame.width, frame.height,
+                   cudaMemcpyDeviceToHost));
   CHECK_CUDA_RUNTIME(
-      cudaMemcpy(frame.uv_plane.data(), frame.d_uv_plane, frame.width * frame.height / 2, cudaMemcpyDeviceToHost));
+      cudaMemcpy2D(frame.uv_plane.data(), frame.width,
+                   frame.d_uv_plane, frame.src_pitch,
+                   frame.width, frame.height / 2,
+                   cudaMemcpyDeviceToHost));
 
   std::vector<uint8_t> cpu_bgr(frame.width * frame.height * 3);
-  int ret = libyuv::NV12ToRGB24(frame.y_plane.data(), frame.width, frame.uv_plane.data(), frame.width,
-                                cpu_bgr.data(), frame.width * 3, frame.width, frame.height);
+  int ret = libyuv::NV12ToRGB24(frame.y_plane.data(), frame.width,
+                                frame.uv_plane.data(), frame.width,
+                                cpu_bgr.data(), frame.width * 3,
+                                frame.width, frame.height);
   if (ret != 0) {
-    std::cerr << "libyuv::NV12ToBGR24 failed with error: " << ret << std::endl;
+    std::cerr << "libyuv::NV12ToRGB24 failed with error: " << ret << std::endl;
     return false;
   }
 
@@ -328,54 +378,61 @@ bool TestRGB24ToNV12ToBGR_NPP(TestFrame& frame, std::string output_file) {
 
 
 bool TestBGR24ToNV12ToBGR_NPP(TestFrame& frame, std::string output_file) {
-  std::cout << "\n=== Testing BGR24 -> NV12 -> BGR24 (NPP) ===" << std::endl;
+  std::cout << "\n===  BGR24 -> NV12 -> BGR24 (NPP) ===" << std::endl;
 
   if (frame.bgr_plane.empty()) {
     std::cerr << "BGR plane is empty, run NV12ToBGR24_NPP first" << std::endl;
     return false;
   }
-
   CHECK_CUDA_RUNTIME(
-      cudaMemcpy(frame.d_bgr_plane, frame.bgr_plane.data(), frame.width * frame.height * 3, cudaMemcpyHostToDevice));
+      cudaMemcpy2D(frame.d_bgr_plane, frame.dst_pitch,
+                   frame.bgr_plane.data(), frame.width * 3,
+                   frame.width * 3, frame.height,
+                   cudaMemcpyHostToDevice));
 
   NppStreamContext npp_stream_ctx;
   NppStatus status = nppGetStreamContext(&npp_stream_ctx);
   CHECK_NPP(status);
 
   NppiSize oSizeROI;
-  oSizeROI.width   = frame.width;
-  oSizeROI.height  = frame.height;
+  oSizeROI.width  = frame.width;
+  oSizeROI.height = frame.height;
 
   const Npp8u* pSrc = static_cast<const Npp8u*>(frame.d_bgr_plane);
-
-  Npp8u* pDst[2] = {(Npp8u*)frame.d_y_plane, (Npp8u*)frame.d_uv_plane};
-  int DstStep[2] = {frame.width, frame.width};
+  Npp8u* pDst[2] = { (Npp8u*)frame.d_y_plane, (Npp8u*)frame.d_uv_plane };
+  int DstStep[2] = { frame.src_pitch, frame.src_pitch };
 
   status = nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx(
-    pSrc, frame.width * 3,
+    pSrc, frame.dst_pitch,
     pDst, DstStep,
     oSizeROI,
     MATRIX_BGR_TO_YUV709,
-    npp_stream_ctx
-  );
+    npp_stream_ctx);
   CHECK_NPP(status);
 
   CHECK_CUDA_RUNTIME(cudaGetLastError());
   CHECK_CUDA_RUNTIME(cudaDeviceSynchronize());
 
-  // 同样的步骤，将 NV12 转换为 BGR24
   frame.y_plane.resize(frame.width * frame.height);
   frame.uv_plane.resize(frame.width * frame.height / 2);
   CHECK_CUDA_RUNTIME(
-      cudaMemcpy(frame.y_plane.data(), frame.d_y_plane, frame.width * frame.height, cudaMemcpyDeviceToHost));
+      cudaMemcpy2D(frame.y_plane.data(), frame.width,
+                   frame.d_y_plane, frame.src_pitch,
+                   frame.width, frame.height,
+                   cudaMemcpyDeviceToHost));
   CHECK_CUDA_RUNTIME(
-      cudaMemcpy(frame.uv_plane.data(), frame.d_uv_plane, frame.width * frame.height / 2, cudaMemcpyDeviceToHost));
+      cudaMemcpy2D(frame.uv_plane.data(), frame.width,
+                   frame.d_uv_plane, frame.src_pitch,
+                   frame.width, frame.height / 2,
+                   cudaMemcpyDeviceToHost));
 
   std::vector<uint8_t> cpu_bgr(frame.width * frame.height * 3);
-  int ret = libyuv::NV12ToRGB24(frame.y_plane.data(), frame.width, frame.uv_plane.data(), frame.width,
-                                cpu_bgr.data(), frame.width * 3, frame.width, frame.height);
+  int ret = libyuv::NV12ToRGB24(frame.y_plane.data(), frame.width,
+                                frame.uv_plane.data(), frame.width,
+                                cpu_bgr.data(), frame.width * 3,
+                                frame.width, frame.height);
   if (ret != 0) {
-    std::cerr << "libyuv::NV12ToBGR24 failed with error: " << ret << std::endl;
+    std::cerr << "libyuv::NV12ToRGB24 failed with error: " << ret << std::endl;
     return false;
   }
 
@@ -386,37 +443,30 @@ bool TestBGR24ToNV12ToBGR_NPP(TestFrame& frame, std::string output_file) {
 }
 
 bool TestRGB24ToBGR24_NPP(TestFrame& frame, std::string output_file) {
-  std::cout << "\n=== Testing RGB24 -> BGR24 (NPP) ===" << std::endl;
+  std::cout << "\n===  RGB24 -> BGR24 (NPP) ===" << std::endl;
+  if (frame.rgb_plane.empty()) {
+    std::cerr << "RGB plane is empty, run NV12ToRGB24_NPP first" << std::endl;
+    return false;
+  }
+  CHECK_CUDA_RUNTIME(
+      cudaMemcpy2D(frame.d_rgb_plane, frame.dst_pitch,
+                   frame.rgb_plane.data(), frame.width * 3,
+                   frame.width * 3, frame.height,
+                   cudaMemcpyHostToDevice));
 
   NppStreamContext npp_stream_ctx;
   NppStatus status = nppGetStreamContext(&npp_stream_ctx);
   CHECK_NPP(status);
 
-  if (frame.rgb_plane.empty()) {
-    std::cerr << "RGB plane is empty, run NV12ToRGB24_NPP first" << std::endl;
-    return false;
-  }
-
-  CHECK_CUDA_RUNTIME(
-      cudaMemcpy(frame.d_rgb_plane, frame.rgb_plane.data(), frame.width * frame.height * 3, cudaMemcpyHostToDevice));
-
   NppiSize oSizeROI;
-  oSizeROI.width   = frame.width;
-  oSizeROI.height  = frame.height;
-
-  int nStep = frame.width * 3;
+  oSizeROI.width  = frame.width;
+  oSizeROI.height = frame.height;
 
   int aDstOrder[3] = { 2, 1, 0 };
   status = nppiSwapChannels_8u_C3R_Ctx(
-    static_cast<const Npp8u*>(frame.d_rgb_plane),
-    nStep,
-    static_cast<Npp8u*>(frame.d_bgr_plane),
-    nStep,
-    oSizeROI,
-    aDstOrder,
-    npp_stream_ctx
-  );
-
+      static_cast<const Npp8u*>(frame.d_rgb_plane), frame.dst_pitch,
+      static_cast<Npp8u*>(frame.d_bgr_plane), frame.dst_pitch,
+      oSizeROI, aDstOrder, npp_stream_ctx);
   CHECK_NPP(status);
 
   CHECK_CUDA_RUNTIME(cudaGetLastError());
@@ -424,59 +474,14 @@ bool TestRGB24ToBGR24_NPP(TestFrame& frame, std::string output_file) {
 
   frame.bgr_plane.resize(frame.width * frame.height * 3);
   CHECK_CUDA_RUNTIME(
-      cudaMemcpy(frame.bgr_plane.data(), frame.d_bgr_plane, frame.width * frame.height * 3, cudaMemcpyDeviceToHost));
+      cudaMemcpy2D(frame.bgr_plane.data(), frame.width * 3,
+                   frame.d_bgr_plane, frame.dst_pitch,
+                   frame.width * 3, frame.height,
+                   cudaMemcpyDeviceToHost));
 
   cv::Mat bgr_mat(frame.height, frame.width, CV_8UC3, frame.bgr_plane.data());
   cv::imwrite(output_file, bgr_mat);
   std::cout << "RGB24 -> BGR24 (NPP) result saved to: " << output_file << std::endl;
-
-  return true;
-}
-
-__global__ void RGB24ToBGR24Kernel(const uint8_t* __restrict__ rgb_in, uint8_t* __restrict__ bgr_out, int width,
-                                   int height, int stride) {
-  int x = blockIdx.x * blockDim.x + threadIdx.x;
-  int y = blockIdx.y * blockDim.y + threadIdx.y;
-
-  if (x >= width || y >= height) return;
-
-  int idx = y * stride + x * 3;
-  bgr_out[idx + 0] = rgb_in[idx + 2];
-  bgr_out[idx + 1] = rgb_in[idx + 1];
-  bgr_out[idx + 2] = rgb_in[idx + 0];
-}
-
-bool TestRGB24ToBGR24_CUDA(TestFrame& frame, std::string output_file) {
-  std::cout << "\n=== Testing RGB24 -> BGR24 (CUDA) ===" << std::endl;
-
-  if (frame.rgb_plane.empty()) {
-    std::cerr << "RGB plane is empty, run NV12ToRGB24_CUDA first" << std::endl;
-    return false;
-  }
-
-  // 从 vector<uint8_t> rgb_plane 到 void* d_rgb_plane
-  // TODO: 前面 TestNV12ToRGB24_CUDA 是 d_rgb_plane 拷贝到了 rgb_plane
-  CHECK_CUDA_RUNTIME(
-      cudaMemcpy(frame.d_rgb_plane, frame.rgb_plane.data(), frame.width * frame.height * 3, cudaMemcpyHostToDevice));
-
-  dim3 block(16, 16);
-  dim3 grid((frame.width + block.x - 1) / block.x, (frame.height + block.y - 1) / block.y);
-
-  RGB24ToBGR24Kernel<<<grid, block>>>(static_cast<const uint8_t*>(frame.d_rgb_plane),
-                                      static_cast<uint8_t*>(frame.d_bgr_plane), frame.width, frame.height,
-                                      frame.width * 3);
-
-  CHECK_CUDA_RUNTIME(cudaGetLastError());
-  CHECK_CUDA_RUNTIME(cudaDeviceSynchronize());
-
-  frame.bgr_plane.resize(frame.width * frame.height * 3);
-  CHECK_CUDA_RUNTIME(
-      cudaMemcpy(frame.bgr_plane.data(), frame.d_bgr_plane, frame.width * frame.height * 3, cudaMemcpyDeviceToHost));
-
-  cv::Mat bgr_mat(frame.height, frame.width, CV_8UC3, frame.bgr_plane.data());
-  cv::imwrite(output_file, bgr_mat);
-  std::cout << "RGB24 -> BGR24 (CUDA) result saved to: " << output_file << std::endl;
-
   return true;
 }
 
@@ -484,7 +489,7 @@ bool TestRGB24ToBGR24_CUDA(TestFrame& frame, std::string output_file) {
  * 使用 libyuv 将 frame 的 y_plane 和 uv_plane 转换为 BGR24 / RGB24 并保存到 output_file
  */
 bool TestWithLibyuvCPU(TestFrame& frame, std::string output_file_rgb, std::string output_file_bgr) {
-  std::cout << "\n=== Testing with libyuv (CPU) for comparison ===" << std::endl;
+  std::cout << "\n===  with libyuv (CPU) for comparison ===" << std::endl;
 
   std::vector<uint8_t> cpu_rgb(frame.width * frame.height * 3);
   std::vector<uint8_t> cpu_bgr(frame.width * frame.height * 3);
@@ -595,7 +600,7 @@ bool CreateUniformTestImage(int width, int height, uint8_t r_val, uint8_t g_val,
  * 检查经过核函数转换之后，每个通道的内存排列
  */
 bool TestChannelConsistency(TestFrame& frame, uint8_t expected_r, uint8_t expected_g, uint8_t expected_b) {
-  std::cout << "\n=== Testing channel consistency (Expected: R=" << (int)expected_r 
+  std::cout << "\n===  channel consistency (Expected: R=" << (int)expected_r 
             << ", G=" << (int)expected_g << ", B=" << (int)expected_b << ") ===" << std::endl;
 
   if (frame.bgr_plane.empty()) {
@@ -653,7 +658,7 @@ bool TestChannelConsistency(TestFrame& frame, uint8_t expected_r, uint8_t expect
  * 将 y_plane uv_plane 转换为 BGR24 图像, 对比 expected value
  */
 bool TestChannelConsistencyLibyuvCPU(TestFrame& frame, uint8_t expected_r, uint8_t expected_g, uint8_t expected_b) {
-  std::cout << "\n=== Testing with libyuv (CPU) channel consistency for comparison ===" << std::endl;
+  std::cout << "\n===  with libyuv (CPU) channel consistency for comparison ===" << std::endl;
 
   std::vector<uint8_t> cpu_rgb(frame.width * frame.height * 3);
   std::vector<uint8_t> cpu_bgr(frame.width * frame.height * 3);
@@ -729,7 +734,7 @@ bool TestChannelConsistencyLibyuvCPU(TestFrame& frame, uint8_t expected_r, uint8
  */
 bool TestOpenCVConversionConsistency(TestFrame& frame, uint8_t expected_r, uint8_t expected_g, uint8_t expected_b,
                                     std::string output_file) {
-  std::cout << "\n=== Testing libyuv NV12 -> BGR24 conversion ===" << std::endl;
+  std::cout << "\n===  libyuv NV12 -> BGR24 conversion ===" << std::endl;
 
   std::vector<uint8_t> opencv_bgr(frame.width * frame.height * 3);
   
@@ -824,10 +829,9 @@ int main(int argc, char** argv) {
   TestRGB24ToBGR24_NPP(frame, "save/rgb24_to_bgr24_npp.jpg");
   TestRGB24ToNV12ToBGR_NPP(frame, "save/rgb24_to_nv12_bgr24_npp.jpg");
   TestBGR24ToNV12ToBGR_NPP(frame, "save/bgr24_to_nv12_bgr24_npp.jpg");
-  TestWithLibyuvCPU(frame, "save/nv12_to_bgr24_libyuv.jpg");
+  TestWithLibyuvCPU(frame, "save/nv12_to_rgb24_libyuv.jpg", "save/nv12_to_bgr24_libyuv.jpg");
 
   std::cout << "\n\n";
-  std::cout << "#  Channel Consistency Test (R=G=B)  #" << std::endl;
 
   TestFrame uniform_frame;
   const int test_width = 640;

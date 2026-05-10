@@ -27,9 +27,6 @@ class SourceSendTest : public testing::Test {
 
  protected:
   virtual void SetUp() {
-    std::string json_content = readFile(test_pipeline_send_json.c_str());
-    EXPECT_FALSE(json_content.empty()) << "Read json file failed";
-
     pipeline_ = std::make_shared<Pipeline>("pipeline");
     EXPECT_NE(pipeline_, nullptr);
     EXPECT_TRUE(pipeline_->BuildPipelineByJSONFile(test_pipeline_send_json));

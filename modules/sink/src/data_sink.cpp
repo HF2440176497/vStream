@@ -67,9 +67,9 @@ bool DataSink::CheckParamSet(const ModuleParamSet &paramSet) const {
       return false;
     }
   }
-  if (paramSet.find(key_output_bitrate_kbps) != paramSet.end()) {
-    if (!checker.IsNum({key_output_bitrate_kbps}, paramSet, err_msg, false)) {
-      LOGE(SINK) << "output_bitrate_kbps check failed: " << err_msg;
+  if (paramSet.find(key_output_bitrate) != paramSet.end()) {
+    if (!checker.IsNum({key_output_bitrate}, paramSet, err_msg, false)) {
+      LOGE(SINK) << "output_bitrate check failed: " << err_msg;
       return false;
     }
   }

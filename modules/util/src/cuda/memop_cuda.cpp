@@ -95,7 +95,6 @@ int CudaMemOp::ConvertImageFormat(CNSyncedMemory* dst_mem, DataFormat dst_fmt,
                                 cudaMemcpyDeviceToDevice));
     return 0;
   }
-  // size_t dst_stride = width * 3;
   int ret = 0;
   switch (src_fmt) {
     case DataFormat::PIXEL_FORMAT_BGR24: {
