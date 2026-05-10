@@ -149,6 +149,7 @@ void SendHandlerImpl::Loop() {
     LOGD(SOURCE) << "SendHandlerImpl: Loop; image width: " << send_frame.image.cols << ", height: " << send_frame.image.rows << ", alloca data_size: " << data_size;
 #endif
 
+    // 对于 handler_image 和 handler_send ，已经确保是紧密排列的，所以手动确定 stride
     frame.stride[0] = frame.width * send_frame.image.elemSize();  // BGR格式每个像素3字节
     frame.plane[0] = buffer;
     frame.buf_ref = std::make_unique<MatBufRef>(buffer);
@@ -160,7 +161,9 @@ void SendHandlerImpl::Loop() {
       LOGE(SOURCE) << "SendHandlerImpl: [" << stream_id_ << "]: module_ or handler_ is null";
       break;
     }
-    handler_->SendData(data);
+    if (running_.load()) {
+      handler_->SendData(data);
+    }
   }
   OnEndFrame();
 }

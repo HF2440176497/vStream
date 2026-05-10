@@ -154,6 +154,17 @@ void SinkModuleWrapper(py::module &m) {
           return std::make_pair(ok, data);
         },
         py::arg("wait_ms") = 0);
-}
+
+  py::class_<PushHandler, std::shared_ptr<PushHandler>, SinkHandler>(m, "PushHandler")
+      .def(py::init([](DataSink *module, const std::string& stream_id) {
+        auto push_handler = PushHandler::Create(module, stream_id);
+        if (!push_handler) {
+          return std::shared_ptr<PushHandler>(nullptr);
+        }
+        return std::dynamic_pointer_cast<PushHandler>(push_handler);
+      }), py::arg("module"), py::arg("stream_id"))
+      .def("open", &PushHandler::Open)
+      .def("close", &PushHandler::Close)
+      .def("stop", &PushHandler::Stop);
 
 }  // namespace cnstream

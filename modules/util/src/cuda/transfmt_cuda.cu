@@ -22,6 +22,19 @@ static bool __check_npp(NppStatus code, const char* op, const char* file, int li
   return true;
 }
 
+static const Npp32f MATRIX_RGB_TO_YUV709[3][4] = {
+  { 0.183f,  0.614f,  0.062f,  16.0f },
+  {-0.101f, -0.339f,  0.439f, 128.0f },
+  { 0.439f, -0.399f, -0.040f, 128.0f }
+};
+
+static const Npp32f MATRIX_BGR_TO_YUV709[3][4] = {
+  { 0.062f,  0.614f,  0.183f,  16.0f },
+  { 0.439f, -0.339f, -0.101f, 128.0f },
+  {-0.040f, -0.399f,  0.439f, 128.0f }
+};
+
+
 int NppNV12ToRGB24(void* dst, int dst_stride,
                   const void* y_plane,
                   const void* uv_plane,
@@ -95,6 +108,86 @@ int NppNV12ToBGR24(void* dst, int dst_stride,
 
   return 0;
 }
+
+
+int NppRGB24ToNV12(void* dst_y, void* dst_uv,
+                  int y_stride, 
+                  int uv_stride,
+                  const void* src,
+                  int src_stride,
+                  int width, 
+                  int height, 
+                  cudaStream_t stream) {
+  NppStreamContext npp_stream_ctx;
+  NppStatus status = nppGetStreamContext(&npp_stream_ctx);
+  CHECK_NPP(status);
+  npp_stream_ctx.hStream = stream;
+
+  NppiSize oSizeROI;
+  oSizeROI.width   = width;
+  oSizeROI.height  = height;
+
+  const Npp8u** pSrc = static_cast<const Npp8u*>(src);
+
+  Npp8u* pDst[2] = {(Npp8u*)dst_y, (Npp8u*)dst_uv};
+  int DstStep[2] = {y_stride, uv_stride};
+
+  status = nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx(
+    pSrc, src_stride,
+    pDst, DstStep,
+    oSizeROI,
+    MATRIX_RGB_TO_YUV709,
+    npp_stream_ctx
+  );
+  CHECK_NPP(status);
+
+  CHECK_CUDA_RUNTIME(cudaGetLastError());
+  CHECK_CUDA_RUNTIME(cudaDeviceSynchronize());
+
+  return 0;
+}
+
+/**
+ * 仅改变矩阵，复用 NppRGB24ToNV12 的逻辑
+ */
+int NppBGR24ToNV12(void* dst_y, void* dst_uv,
+                  int y_stride, 
+                  int uv_stride,
+                  const void* src,
+                  int src_stride,
+                  int width, 
+                  int height, 
+                  cudaStream_t stream) {
+
+  NppStreamContext npp_stream_ctx;
+  NppStatus status = nppGetStreamContext(&npp_stream_ctx);
+  CHECK_NPP(status);
+  npp_stream_ctx.hStream = stream;
+
+  NppiSize oSizeROI;
+  oSizeROI.width   = width;
+  oSizeROI.height  = height;
+
+  const Npp8u** pSrc = static_cast<const Npp8u*>(src);
+
+  Npp8u* pDst[2] = {(Npp8u*)dst_y, (Npp8u*)dst_uv};
+  int DstStep[2] = {y_stride, uv_stride};
+
+  status = nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx(
+    pSrc, src_stride,
+    pDst, DstStep,
+    oSizeROI,
+    MATRIX_BGR_TO_YUV709,
+    npp_stream_ctx
+  );
+  CHECK_NPP(status);
+
+  CHECK_CUDA_RUNTIME(cudaGetLastError());
+  CHECK_CUDA_RUNTIME(cudaDeviceSynchronize());
+
+  return 0;
+}
+
 
 /**
  * BT.709 HDTV: 转换 NV21 到 RGB24

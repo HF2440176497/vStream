@@ -79,6 +79,9 @@ bool VideoHandler::SetHandlerParams(const ModuleParamSet& params) {
   return true;
 }
 
+/**
+ * @brief 检查是否支持 HW 设备类型；只需要调用一次
+ */
 bool VideoHandlerImpl::support_hwdevice() {
   enum AVHWDeviceType type = av_hwdevice_find_type_by_name(this->type_name_.c_str());
   if (type == AV_HWDEVICE_TYPE_NONE) {
@@ -100,6 +103,7 @@ enum AVPixelFormat VideoHandlerImpl::get_hw_format(AVCodecContext *ctx, const en
   return AV_PIX_FMT_NONE;
 }
 
+#ifdef VSTREAM_USE_CUDA
 /**
  * 作为 codec_init 的其中一步，保存支持的 HW 像素格式
  * 之后调用 hw_decoder_init 将信息附加到 codec_ctx_ 中
@@ -123,6 +127,7 @@ int VideoHandlerImpl::init_hwdevice_conf() {
   }
   return -1;
 }
+#endif
 
 static int interrupt_cb(void *ctx) {
     auto *self = static_cast<VideoHandlerImpl*>(ctx);
@@ -184,6 +189,7 @@ int VideoHandlerImpl::codec_init() {
   int ret = 0;
   AVStream* video_stream = ifmt_ctx_->streams[video_index_];
 
+#ifdef VSTREAM_USE_CUDA
   static std::unordered_map<enum AVCodecID, std::string> codeid_name_table = {
     {AV_CODEC_ID_H264, "h264_cuvid"},
     {AV_CODEC_ID_HEVC, "hevc_cuvid"},
@@ -199,16 +205,21 @@ int VideoHandlerImpl::codec_init() {
   } else {
     this->codec_ = const_cast<AVCodec*>(avcodec_find_decoder_by_name(it->second.c_str()));
   }
-
   if (!this->codec_) {
     LOGE(SOURCE) << "Codec not found";
     return -1;
   }
-
   if ((ret = init_hwdevice_conf()) != 0) {
     LOGE(SOURCE) << "init_hwdevice_conf error";
     return ret;
   }
+#else
+  this->codec_ = const_cast<AVCodec*>(avcodec_find_decoder(video_stream->codecpar->codec_id));
+  if (!this->codec_) {
+    LOGE(SOURCE) << "Codec not found";
+    return -1;
+  }
+#endif
 
   this->codec_ctx_ = avcodec_alloc_context3(this->codec_);
   if (!this->codec_ctx_) {
@@ -222,12 +233,16 @@ int VideoHandlerImpl::codec_init() {
   }
 
   this->codec_ctx_->pkt_timebase = video_stream->time_base;
+
+#ifdef VSTREAM_USE_CUDA
   this->codec_ctx_->get_format = get_hw_format;
 
+  // 将硬件设备上下文绑定到解码器上下文
   if ((ret = hw_decoder_init()) < 0) {
     LOGE(SOURCE) << "hw_decoder_init error";
     return ret;
   }
+#endif
 
   if ((ret = avcodec_open2(this->codec_ctx_, this->codec_, NULL)) < 0) {
     LOGE(SOURCE) << "Failed to open codec: " << ret;
@@ -252,32 +267,9 @@ int VideoHandlerImpl::hw_decoder_init() {
   return err;
 }
 
-/**
- * cv_buf_ 是为 cv_frame_ 分配的内存，用于存储转换后的帧数据
- */
-int VideoHandlerImpl::convert_frame_init() {
-  if (!cv_frame_) {
-    cv_frame_ = av_frame_alloc();
-    if (!cv_frame_) {
-      LOGE(SOURCE) << "cv_frame av_frame_alloc error";
-      return -1;
-    }
-  }
-
-  auto dst_width = codec_ctx_->width;
-  auto dst_height = codec_ctx_->height;
-  auto dst_pix_fmt = AV_PIX_FMT_BGR24;
-  auto dst_img_size = av_image_get_buffer_size(dst_pix_fmt, dst_width, dst_height, 1);
-
-  cv_buf_ = (uint8_t*)av_malloc(dst_img_size * sizeof(uint8_t));
-  av_image_fill_arrays(cv_frame_->data, cv_frame_->linesize, cv_buf_, 
-                      dst_pix_fmt, dst_width, dst_height, 1);
-  return 0;
-}
-
 int VideoHandlerImpl::decode_write() {
   int ret = 0;
-  AVFrame *p_frame = nullptr;
+  AVFrame *p_frame = nullptr;  // 局部变量，用于赋值 s_frame_
   AVFrame *sw_frame = nullptr;
 
   ret = avcodec_send_packet(codec_ctx_, &pkt_);
@@ -287,11 +279,22 @@ int VideoHandlerImpl::decode_write() {
   }
 
   while (running_.load()) {
-    if (!(p_frame = av_frame_alloc()) || !(sw_frame = av_frame_alloc())) {
+    if (!(p_frame = av_frame_alloc())) {
       LOGE(SOURCE) << "av_frame_alloc error";
       ret = -1;
       break;
     }
+
+#ifdef VSTREAM_USE_CUDA
+    if (output_type_ == OutputType::OUTPUT_CPU) {
+      if (!(sw_frame = av_frame_alloc())) {
+        LOGE(SOURCE) << "av_frame_alloc error";
+        av_frame_free(&p_frame);
+        ret = -1;
+        break;
+      }
+    }
+#endif
 
     ret = avcodec_receive_frame(codec_ctx_, p_frame);
     if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
@@ -305,19 +308,19 @@ int VideoHandlerImpl::decode_write() {
 
     std::shared_ptr<FrameInfo> data = nullptr;
 
+#ifdef VSTREAM_USE_CUDA
     if (output_type_ == OutputType::OUTPUT_CPU) {
       data = ProcessFrameCPU(p_frame, sw_frame, ret);
-    }
-#ifdef VSTREAM_USE_CUDA
-    else if (output_type_ == OutputType::OUTPUT_CUDA) {
+    } else if (output_type_ == OutputType::OUTPUT_CUDA) {
       data = ProcessFrameCUDA(p_frame, ret);
-    }
-#endif
-    else {
+    } else {
       LOGF(SOURCE) << "VideoHandler: unsupported output type: " << static_cast<int>(output_type_);
       ret = -1;
       break;
     }
+#else
+    data = ProcessFrame(p_frame, ret);
+#endif
 
     if (!module_ || !handler_) {
       LOGE(SOURCE) << "[" << stream_id_ << "]: module_ or handler_ is null";
@@ -342,6 +345,11 @@ int VideoHandlerImpl::decode_write() {
   return ret;
 }
 
+#ifdef VSTREAM_USE_CUDA
+
+/**
+ * 将 p_frame 转移到 CPU 内存 s_frame_ 中
+ */
 std::shared_ptr<FrameInfo> VideoHandlerImpl::ProcessFrameCPU(AVFrame *p_frame, AVFrame *sw_frame, int &ret) {
   if (p_frame->format == hw_pix_fmt) {
     if ((ret = av_hwframe_transfer_data(sw_frame, p_frame, 0)) < 0) {
@@ -406,7 +414,9 @@ std::shared_ptr<FrameInfo> VideoHandlerImpl::ProcessFrameCPU(AVFrame *p_frame, A
   return OnDecodeFrame(&frame);
 }
 
-#ifdef VSTREAM_USE_CUDA
+/**
+ * @brief 当 output_type_ 为 OUTPUT_CUDA 时，直接复用内存
+ */
 std::shared_ptr<FrameInfo> VideoHandlerImpl::ProcessFrameCUDA(AVFrame *p_frame, int &ret) {
   if (p_frame->format != AV_PIX_FMT_CUDA) {
     LOGE(SOURCE) << "VideoHandlerImpl: p_frame format not supported: " << p_frame->format;
@@ -431,12 +441,68 @@ std::shared_ptr<FrameInfo> VideoHandlerImpl::ProcessFrameCUDA(AVFrame *p_frame, 
 
   return OnDecodeFrame(&frame);
 }
+
+#else
+
+std::shared_ptr<FrameInfo> VideoHandlerImpl::ProcessFrame(AVFrame *p_frame, int &ret) {
+  s_frame_ = p_frame;
+
+  if (!s_frame_) {
+    LOGE(SOURCE) << "VideoHandlerImpl: s_frame_ is null";
+    return nullptr;
+  }
+
+  DataFormat nv_fmt = DataFormat::INVALID;
+  if (s_frame_->format == AV_PIX_FMT_NV12) {
+    nv_fmt = DataFormat::PIXEL_FORMAT_YUV420_NV12;
+  } else if (s_frame_->format == AV_PIX_FMT_NV21) {
+    nv_fmt = DataFormat::PIXEL_FORMAT_YUV420_NV21;
+  } else {
+    LOGE(SOURCE) << "VideoHandlerImpl: s_frame_ format not supported: " << s_frame_->format;
+    ret = -1;
+    return nullptr;
+  }
+
+  DecodeFrame frame(s_frame_->height, s_frame_->width, nv_fmt);
+  frame.device_type = DevType::CPU;
+  frame.planeNum = 2;
+  frame.pts = s_frame_->pts;
+
+  int width = s_frame_->width;
+  int height = s_frame_->height;
+  size_t y_size = width * height;
+  size_t uv_size = width * height / 2;
+
+  uint8_t* y_buffer = new (std::nothrow) uint8_t[y_size];
+  uint8_t* uv_buffer = new (std::nothrow) uint8_t[uv_size];
+  if (!y_buffer || !uv_buffer) {
+    LOGE(SOURCE) << "Failed to allocate memory for frame data";
+    delete[] y_buffer;
+    delete[] uv_buffer;
+    ret = -1;
+    return nullptr;
+  }
+
+  for (int i = 0; i < height; ++i) {
+    memcpy(y_buffer + i * width, s_frame_->data[0] + i * s_frame_->linesize[0], width);
+  }
+  for (int i = 0; i < height / 2; ++i) {
+    memcpy(uv_buffer + i * width, s_frame_->data[1] + i * s_frame_->linesize[1], width);
+  }
+
+  frame.plane[0] = y_buffer;
+  frame.plane[1] = uv_buffer;
+  frame.stride[0] = width;
+  frame.stride[1] = width;
+  frame.buf_ref = std::make_unique<MatBufRefNV12>(y_buffer, uv_buffer);
+
+  return OnDecodeFrame(&frame);
+}
 #endif
 
 void VideoHandlerImpl::clean_up() {
   av_frame_free(&s_frame_);
-  av_frame_free(&cv_frame_);
-  if (sws_ctx_) {
+  if (sws_ctx_) {  // 暂时未用到，格式转换交给 memop
     sws_freeContext(sws_ctx_);
     sws_ctx_ = nullptr;
   }
@@ -452,6 +518,7 @@ void VideoHandlerImpl::clean_up() {
     av_buffer_unref(&hw_device_ctx_);
     hw_device_ctx_ = nullptr;
   }
+  avformat_network_deinit();
 }
 
 bool VideoHandlerImpl::Open() {
@@ -471,6 +538,9 @@ bool VideoHandlerImpl::Open() {
     output_type_ = source_param.output_type_;
     LOGI(SOURCE) << "VideoHandlerImpl: device_id=" << device_id_ 
                  << ", output_type=" << static_cast<int>(output_type_);
+  } else {
+    LOGE(SOURCE) << "VideoHandlerImpl: module_ is null";
+    return false;
   }
 
   running_.store(true);
@@ -493,11 +563,13 @@ void VideoHandlerImpl::Close() {
 }
 
 void VideoHandlerImpl::Loop() {
+#ifdef VSTREAM_USE_CUDA
   if (!support_hwdevice()) {
     LOGE(SOURCE) << "VideoHandlerImpl: hardware device not supported";
     OnEndFrame();
     return;
   }
+#endif
 
   if (input_format_init() < 0) {
     LOGE(SOURCE) << "VideoHandlerImpl: input_format_init failed";
@@ -509,14 +581,6 @@ void VideoHandlerImpl::Loop() {
     LOGE(SOURCE) << "VideoHandlerImpl: codec_init failed";
     OnEndFrame();
     return;
-  }
-
-  if (output_type_ == OutputType::OUTPUT_CPU) {
-    if (convert_frame_init() < 0) {
-      LOGE(SOURCE) << "VideoHandlerImpl: convert_frame_init failed";
-      OnEndFrame();
-      return;
-    }
   }
 
   FrController controller(frame_rate_);

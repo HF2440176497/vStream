@@ -169,12 +169,6 @@ void DataFrame::CopyToSyncMem(DecodeFrame* dec_frame) {
     LOGF(FRAME) << "CopyToSyncMem: Format conversion failed with error code: " << ret;
     return;
   }
-
-#ifdef VSTREAM_UNIT_TEST
-  LOGD(FRAME) << "CopyToSyncMem image width: " << width_ << ", height: " << height_ << ", alloca size: " << bytes;
-  // LOGD(FRAME) << "------------- CopyToSyncMem sync mem status: " << this->data_[0]->StatusToString();
-#endif
-
   this->deAllocator_.reset();
 }
 

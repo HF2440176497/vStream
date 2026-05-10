@@ -249,6 +249,11 @@ bool send_frame(StreamContext& ctx, const cv::Mat& img) {
 
     ctx.sw_frame->pts = ctx.frame_idx;
 
+    /**
+     * sw_frame 在 CPU 上进行转换为 NV12 格式
+     * hw_frame 通过 av_hwframe_transfer_data 从 CPU 转换为 GPU，用于编码
+     */
+
     ret = av_frame_make_writable(ctx.hw_frame);
     if (ret < 0) {
         std::cerr << "[Stream] av_frame_make_writable (hw_frame) failed." << std::endl;

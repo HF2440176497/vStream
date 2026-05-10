@@ -101,6 +101,11 @@ bool AllocateGpuMemory(TestFrame& frame) {
   size_t y_size = frame.width * frame.height;
   size_t uv_size = frame.width * frame.height / 2;
 
+  if (d_y_plane) cudaFree(d_y_plane);
+  if (d_uv_plane) cudaFree(d_uv_plane);
+  if (d_rgb_plane) cudaFree(d_rgb_plane);
+  if (d_bgr_plane) cudaFree(d_bgr_plane);
+
   CHECK_CUDA_RUNTIME(cudaMalloc(&frame.d_y_plane, y_size));
   CHECK_CUDA_RUNTIME(cudaMalloc(&frame.d_uv_plane, uv_size));
   CHECK_CUDA_RUNTIME(cudaMalloc(&frame.d_rgb_plane, y_size * 3));
@@ -506,7 +511,10 @@ bool TestRGB24ToBGR24_CUDA(TestFrame& frame, std::string output_file) {
   return true;
 }
 
-bool TestWithLibyuvCPU(TestFrame& frame, std::string output_file) {
+/**
+ * 使用 libyuv 将 frame 的 y_plane 和 uv_plane 转换为 BGR24 / RGB24 并保存到 output_file
+ */
+bool TestWithLibyuvCPU(TestFrame& frame, std::string output_file_rgb, std::string output_file_bgr) {
   std::cout << "\n=== Testing with libyuv (CPU) for comparison ===" << std::endl;
 
   std::vector<uint8_t> cpu_rgb(frame.width * frame.height * 3);
@@ -533,12 +541,12 @@ bool TestWithLibyuvCPU(TestFrame& frame, std::string output_file) {
   cv::Mat rgb_mat(frame.height, frame.width, CV_8UC3, cpu_rgb.data());
   cv::Mat bgr_mat;
   cv::cvtColor(rgb_mat, bgr_mat, cv::COLOR_RGB2BGR);
-  cv::imwrite("nv12_to_rgb24_libyuv.jpg", bgr_mat);
-  std::cout << "NV12 -> RGB24 (libyuv) result saved to: nv12_to_rgb24_libyuv.jpg" << std::endl;
+  cv::imwrite(output_file_rgb, bgr_mat);
+  std::cout << "NV12 -> RGB24 (libyuv) result saved to: " << output_file_rgb << std::endl;
 
   cv::Mat bgr_mat2(frame.height, frame.width, CV_8UC3, cpu_bgr.data());
-  cv::imwrite(output_file, bgr_mat2);
-  std::cout << "NV12 -> BGR24 (libyuv) result saved to: " << output_file << std::endl;
+  cv::imwrite(output_file_bgr, bgr_mat2);
+  std::cout << "NV12 -> BGR24 (libyuv) result saved to: " << output_file_bgr << std::endl;
 
   if (!frame.rgb_plane.empty()) {
     size_t diff_rgb = 0;
@@ -555,6 +563,7 @@ bool TestWithLibyuvCPU(TestFrame& frame, std::string output_file) {
               << diff_ratio_rgb << "%)" << std::endl;
   }
 
+  // note: bgr_plane 是前面 CUDA 转换得到的数据，与 libyuv 转换得到的进行对比
   if (!frame.bgr_plane.empty()) {
     size_t diff_bgr = 0;
     for (size_t i = 0; i < frame.bgr_plane.size(); ++i) {
@@ -573,7 +582,8 @@ bool TestWithLibyuvCPU(TestFrame& frame, std::string output_file) {
   return true;
 }
 
-bool CreateUniformTestImage(int width, int height, uint8_t r_val, uint8_t g_val, uint8_t b_val, TestFrame& frame) {
+bool CreateUniformTestImage(int width, int height, uint8_t r_val, uint8_t g_val, uint8_t b_val, 
+                            TestFrame& frame, std::string output_file) {
   std::cout << "\n=== Creating uniform test image (R=" << (int)r_val 
             << ", G=" << (int)g_val << ", B=" << (int)b_val << ") ===" << std::endl;
 
@@ -593,8 +603,8 @@ bool CreateUniformTestImage(int width, int height, uint8_t r_val, uint8_t g_val,
     }
   }
 
-  cv::imwrite("uniform_test_original_bgr.jpg", src_mat);
-  std::cout << "Original BGR image saved to: uniform_test_original_bgr.jpg" << std::endl;
+  cv::imwrite(output_file, src_mat);
+  std::cout << "Original BGR image saved to: " << output_file << std::endl;
 
   frame.y_plane.resize(frame.width * frame.height);
   frame.uv_plane.resize(frame.width * frame.height / 2);
@@ -749,69 +759,9 @@ bool TestChannelConsistencyLibyuvCPU(TestFrame& frame, uint8_t expected_r, uint8
 }
 
 
-bool TestOpenCVConversionConsistency(TestFrame& frame, uint8_t expected_r, uint8_t expected_g, uint8_t expected_b) {
-  std::cout << "\n=== Testing OpenCV NV12 -> BGR24 conversion ===" << std::endl;
-
-  std::vector<uint8_t> opencv_bgr(frame.width * frame.height * 3);
-  
-  cv::Mat rgb_mat(frame.height, frame.width, CV_8UC3);
-  cv::Mat bgr_mat(frame.height, frame.width, CV_8UC3);
-
-  libyuv::NV12ToRGB24(frame.y_plane.data(), frame.width, frame.uv_plane.data(), frame.width,
-                      rgb_mat.data, frame.width * 3, frame.width, frame.height);
-                      
-  // cv::cvtColor(rgb_mat, bgr_mat, cv::COLOR_RGB2BGR);
-  // memcpy(opencv_bgr.data(), bgr_mat.data, opencv_bgr.size());
-  // cv::imwrite("nv12_to_bgr24_opencv.jpg", bgr_mat);
-
-  // note: 根据之前 libyuv_demo 的分析结果， 不再需要 cvtColor
-  // 根据实验结果，证实如此
-  memcpy(opencv_bgr.data(), rgb_mat.data, opencv_bgr.size());
-  cv::imwrite("nv12_to_bgr24_opencv.jpg", rgb_mat);
-  
-  std::cout << "OpenCV conversion result saved to: nv12_to_bgr24_opencv.jpg" << std::endl;
-
-  int width = frame.width;
-  int height = frame.height;
-  size_t total_pixels = width * height;
-  size_t b_errors = 0, g_errors = 0, r_errors = 0;
-
-  for (int y = 0; y < height; ++y) {
-    for (int x = 0; x < width; ++x) {
-      int idx = (y * width + x) * 3;
-      uint8_t b = opencv_bgr[idx + 0];
-      uint8_t g = opencv_bgr[idx + 1];
-      uint8_t r = opencv_bgr[idx + 2];
-
-      if (std::abs(static_cast<int>(b) - static_cast<int>(expected_b)) > 1) b_errors++;
-      if (std::abs(static_cast<int>(g) - static_cast<int>(expected_g)) > 1) g_errors++;
-      if (std::abs(static_cast<int>(r) - static_cast<int>(expected_r)) > 1) r_errors++;
-    }
-  }
-
-  std::cout << "OpenCV channel consistency check:" << std::endl;
-  std::cout << "  B channel: " << b_errors << " / " << total_pixels << " pixels different ("
-            << (100.0 * b_errors / total_pixels) << "%)" << std::endl;
-  std::cout << "  G channel: " << g_errors << " / " << total_pixels << " pixels different ("
-            << (100.0 * g_errors / total_pixels) << "%)" << std::endl;
-  std::cout << "  R channel: " << r_errors << " / " << total_pixels << " pixels different ("
-            << (100.0 * r_errors / total_pixels) << "%)" << std::endl;
-
-  std::cout << "\nOpenCV BGR memory layout:" << std::endl;
-  std::cout << "  Memory[0] = B = " << (int)opencv_bgr[0] << " (expected: " << (int)expected_b << ")" << std::endl;
-  std::cout << "  Memory[1] = G = " << (int)opencv_bgr[1] << " (expected: " << (int)expected_g << ")" << std::endl;
-  std::cout << "  Memory[2] = R = " << (int)opencv_bgr[2] << " (expected: " << (int)expected_r << ")" << std::endl;
-
-  return (b_errors == 0 && g_errors == 0 && r_errors == 0);
-}
-
-
 int main(int argc, char** argv) {
   std::string image_path = (argc > 1) ? argv[1] : DEFAULT_IMAGE_PATH;
-
-  std::cout << "========================================" << std::endl;
   std::cout << "  CUDA Kernel Image Format Conversion     " << std::endl;
-  std::cout << "========================================" << std::endl;
 
   int         deviceCount = 0;
   cudaError_t err = cudaGetDeviceCount(&deviceCount);
@@ -833,20 +783,19 @@ int main(int argc, char** argv) {
   AllocateGpuMemory(frame);
   CopyToGpu(frame);
 
-  TestNV12ToBGR24_CUDA(frame, "nv12_to_bgr24_cuda.jpg");
-  TestNV12ToRGB24_CUDA(frame, "nv12_to_rgb24_cuda.jpg");
-  TestRGB24ToBGR24_CUDA(frame, "rgb24_to_bgr24_cuda.jpg");
-  TestWithLibyuvCPU(frame, "nv12_to_bgr24_libyuv.jpg");
+  TestNV12ToBGR24_CUDA(frame, "save/nv12_to_bgr24_cuda.jpg");
+  TestNV12ToRGB24_CUDA(frame, "save/nv12_to_rgb24_cuda.jpg");
+  TestRGB24ToBGR24_CUDA(frame, "save/rgb24_to_bgr24_cuda.jpg");
+  TestWithLibyuvCPU(frame, "save/nv12_to_rgb24_libyuv.jpg", "save/rgb24_to_bgr24_libyuv.jpg");
 
   LoadImageAndConvertToNV21(image_path, frame);
+  AllocateGpuMemory(frame);
   CopyToGpu(frame);
-  TestNV21ToBGR24_CUDA(frame, "nv21_to_bgr24_cuda.jpg");
-  TestNV21ToRGB24_CUDA(frame, "nv21_to_rgb24_cuda.jpg");
+  TestNV21ToBGR24_CUDA(frame, "save/nv21_to_bgr24_cuda.jpg");
+  TestNV21ToRGB24_CUDA(frame, "save/nv21_to_rgb24_cuda.jpg");
   
   std::cout << "\n\n";
-  std::cout << "########################################" << std::endl;
   std::cout << "#  Channel Consistency Test (R=G=B)  #" << std::endl;
-  std::cout << "########################################" << std::endl;
 
   TestFrame uniform_frame;
   const int test_width = 640;
@@ -855,28 +804,23 @@ int main(int argc, char** argv) {
   const uint8_t test_g = 128;
   const uint8_t test_b = 242;
 
-  if (!CreateUniformTestImage(test_width, test_height, test_r, test_g, test_b, uniform_frame)) {
+  if (!CreateUniformTestImage(test_width, test_height, test_r, test_g, test_b, 
+                              uniform_frame, "save/uniform_test.jpg")) {
     std::cerr << "Failed to create uniform test image" << std::endl;
     return -1;
   } 
-
-  if (!AllocateGpuMemory(uniform_frame)) {
-    std::cerr << "Failed to allocate GPU memory for uniform frame" << std::endl;
-    return -1;
-  }
+  AllocateGpuMemory(uniform_frame);
   CopyToGpu(uniform_frame);
   
-  TestNV12ToBGR24_CUDA(uniform_frame, "nv12_to_bgr24_cuda_uniform.jpg");
+  TestNV12ToBGR24_CUDA(uniform_frame, "save/nv12_to_bgr24_cuda_uniform.jpg");
   TestChannelConsistency(uniform_frame, test_r, test_g, test_b);
 
-  TestNV12ToRGB24_CUDA(uniform_frame, "nv12_to_rgb24_cuda_uniform.jpg");
+  TestNV12ToRGB24_CUDA(uniform_frame, "save/nv12_to_rgb24_cuda_uniform.jpg");
   TestChannelConsistency(uniform_frame, test_r, test_g, test_b);
 
   TestChannelConsistencyLibyuvCPU(uniform_frame, test_r, test_g, test_b);
 
-  std::cout << "\n========================================" << std::endl;
-  std::cout << " Demo completed successfully!    " << std::endl;
-  std::cout << "========================================" << std::endl;
+  std::cout << " Demo completed " << std::endl;
 
   return 0;
 }

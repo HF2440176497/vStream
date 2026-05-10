@@ -135,7 +135,7 @@ class FrameInfo : private NonCopyable {
   uint32_t GetStreamIndex() const { return channel_idx; }
 
   std::string GetStreamId() const { return stream_id; }
-  int64_t GetTimestamp() const { return timestamp; }
+  uint64_t GetTimestamp() const { return timestamp; }
 
   std::string stream_id;  /*!< The data stream aliases where this frame is located to. */
   std::string frame_id_s;  // for send handler, 用来额外标记 frame

@@ -48,9 +48,39 @@ bool DataSink::CheckParamSet(const ModuleParamSet &paramSet) const {
       return false;
     }
   }
-  // QueueHandler: queue_size
   std::string err_msg;
-  if (!checker.IsNum({key_queue_size}, paramSet, err_msg, true)) {
+  if (paramSet.find(key_output_fps) != paramSet.end()) {
+    if (!checker.IsNum({key_output_fps}, paramSet, err_msg, false)) {
+      LOGE(SINK) << "output_fps check failed: " << err_msg;
+      return false;
+    }
+  }
+  if (paramSet.find(key_output_height) != paramSet.end()) {
+    if (!checker.IsNum({key_output_height}, paramSet, err_msg, false)) {
+      LOGE(SINK) << "output_height check failed: " << err_msg;
+      return false;
+    }
+  }
+  if (paramSet.find(key_output_width) != paramSet.end()) {
+    if (!checker.IsNum({key_output_width}, paramSet, err_msg, false)) {
+      LOGE(SINK) << "output_width check failed: " << err_msg;
+      return false;
+    }
+  }
+  if (paramSet.find(key_output_bitrate_kbps) != paramSet.end()) {
+    if (!checker.IsNum({key_output_bitrate_kbps}, paramSet, err_msg, false)) {
+      LOGE(SINK) << "output_bitrate_kbps check failed: " << err_msg;
+      return false;
+    }
+  }
+  if (paramSet.find(key_output_device_id) != paramSet.end()) {
+    if (!checker.IsNum({key_output_device_id}, paramSet, err_msg, true)) {
+      LOGE(SINK) << "output_device_id check failed: " << err_msg;
+      return false;
+    }
+  }
+  // QueueHandler: queue_size
+  if (!checker.IsNum({key_queue_size}, paramSet, err_msg, false)) {
     LOGE(SINK) << "queue_size check failed: " << err_msg;
     return false;
   }

@@ -1,4 +1,8 @@
 .vscode/
+.claude/
+.opencode/
+.trae/
+openspec/
 build/
 data/
 lib/

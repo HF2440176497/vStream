@@ -75,9 +75,12 @@ class VideoHandlerImpl : public SourceRender {
   void clean_up();
 
  private:
-  std::shared_ptr<FrameInfo> ProcessFrameCPU(AVFrame *p_frame, AVFrame *sw_frame, int &ret);
 #ifdef VSTREAM_USE_CUDA
+  // 硬解码时，根据 output_type_ 调用不同的函数
+  std::shared_ptr<FrameInfo> ProcessFrameCPU(AVFrame *p_frame, AVFrame *sw_frame, int &ret);
   std::shared_ptr<FrameInfo> ProcessFrameCUDA(AVFrame *p_frame, int &ret);
+#else
+  std::shared_ptr<FrameInfo> ProcessFrame(AVFrame *p_frame, int &ret);
 #endif
 
  private:
@@ -101,9 +104,7 @@ class VideoHandlerImpl : public SourceRender {
   AVDictionary *ifmt_opts_ = nullptr;
   int video_index_ = -1;
 
-  AVFrame *s_frame_ = nullptr;  // sws_scale 待转换帧
-  AVFrame *cv_frame_ = nullptr;  // sws_scale 转换后的帧
-  uint8_t *cv_buf_ = nullptr;
+  AVFrame *s_frame_ = nullptr;  // 解码输出帧，常见格式为 NV12
 
   enum AVHWDeviceType device_type_ = AV_HWDEVICE_TYPE_NONE;
   AVBufferRef *hw_device_ctx_ = nullptr;

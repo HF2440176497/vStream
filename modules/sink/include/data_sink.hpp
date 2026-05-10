@@ -17,6 +17,13 @@ inline const std::string key_output_url = "url";
 inline const std::string key_output_format = "format";
 inline const std::string key_queue_size = "queue_size";
 
+inline const std::string key_output_fps = "fps";
+inline const std::string key_output_height = "height";
+inline const std::string key_output_width = "width";
+inline const std::string key_output_bitrate = "bitrate";
+inline const std::string key_output_codec = "codec";
+inline const std::string key_output_device_id = "device_id";
+
 inline const std::set<std::string> key_supported_formats = {"mp4", "flv"};
 
 /*!

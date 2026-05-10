@@ -64,16 +64,14 @@ void CudaMemOp::CopyToHost(void* dst, const void* src, size_t size) {
 int CudaMemOp::ConvertImageFormat(CNSyncedMemory* dst_mem, DataFormat dst_fmt, 
                                   const DecodeFrame* src_frame) {
   if (!dst_mem) return -1;
-#ifdef VSTREAM_UNIT_TEST
-  auto cuda_mem = dynamic_cast<CNSyncedMemoryCuda*>(dst_mem);
-  if (!cuda_mem) {
-    LOGE(CORE) << "CudaMemOp::ConvertImageFormat: dst_mem is not CNSyncedMemoryCuda";
-    return -1;
-  }
-  void* dst = cuda_mem->Allocate();
-#else
+
+  // auto cuda_mem = dynamic_cast<CNSyncedMemoryCuda*>(dst_mem);
+  // if (!cuda_mem) {
+  //   LOGE(CORE) << "CudaMemOp::ConvertImageFormat: dst_mem is not CNSyncedMemoryCuda";
+  //   return -1;
+  // }
+
   void* dst = dst_mem->Allocate();
-#endif
   if (!dst) return -1;
 
   int width = src_frame->width;

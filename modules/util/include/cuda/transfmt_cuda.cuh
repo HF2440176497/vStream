@@ -26,6 +26,23 @@ int NppNV12ToBGR24(void* dst, int dst_stride,
                   int height, 
                   cudaStream_t stream = nullptr);
 
+int NppRGB24ToNV12(void* dst_y, void* dst_uv,
+                  int y_stride, 
+                  int uv_stride,
+                  const void* src,
+                  int src_stride,
+                  int width, 
+                  int height, 
+                  cudaStream_t stream = nullptr);
+
+int NppBGR24ToNV12(void* dst_y, void* dst_uv,
+                  int y_stride, 
+                  int uv_stride,
+                  const void* src,
+                  int src_stride,
+                  int width, 
+                  int height, 
+                  cudaStream_t stream = nullptr);
 
 int NppNV21ToRGB24(void* dst, 
                 int width, 

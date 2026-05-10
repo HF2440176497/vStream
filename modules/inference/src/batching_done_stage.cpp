@@ -59,7 +59,7 @@ std::vector<std::shared_ptr<InferTask>> H2DBatchingDoneStage::BatchingDone(const
     assert(finfos.size() == batchsize_);
 
     for (uint32_t bidx = 0; bidx < batchsize_; bidx++) {
-      LOGI(H2D) << "bidx: " << bidx << "; [" << finfos[bidx].first->stream_id << "], ts: " << finfos[bidx].first->timestamp;
+      LOGD(H2D) << "bidx: " << bidx << "; [" << finfos[bidx].first->stream_id << "], ts: " << finfos[bidx].first->timestamp;
     }
 #endif
 
