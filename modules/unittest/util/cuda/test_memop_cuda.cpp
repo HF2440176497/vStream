@@ -163,7 +163,10 @@ void clear_decode_frame(DecodeFrame* src_frame) {
   return;
 }
 
-
+/**
+ * 注意: Sync 内部不会对内存长度进行对齐, 对齐需要在外部手动保证
+ * 因此接下来的测试用例: 假定内存紧密排列, 只是适用于当前测试图像的尺寸
+ */
 TEST(CudaMemOp, ConvertImageFormat_BGR24_RGB24) {
   auto& factory = MemOpFactory::Instance();
   auto memop = factory.CreateMemOp(DevType::CUDA, 0);
@@ -171,7 +174,7 @@ TEST(CudaMemOp, ConvertImageFormat_BGR24_RGB24) {
   ASSERT_NE(cuda_memop, nullptr);
 
   // 1. 填充到 frame_plane 显存）uniform data
-  int width = 1280, height = 1280;
+  int width = 1920, height = 1280;
   DecodeFrame* src_frame = CreateTestDecodeFrameCuda(DataFormat::PIXEL_FORMAT_BGR24, width, height);
   
   uint8_t* h_bgr = (uint8_t*)malloc(width * height * 3);
@@ -217,7 +220,7 @@ TEST(CudaMemOp, ConvertImageFormat_RGB24_BGR24) {
   std::shared_ptr<CudaMemOp> cuda_memop = std::dynamic_pointer_cast<CudaMemOp>(memop);
   ASSERT_NE(cuda_memop, nullptr);
 
-  int width = 640, height = 480;
+  int width = 1920, height = 1280;
   DecodeFrame* src_frame = CreateTestDecodeFrameCuda(DataFormat::PIXEL_FORMAT_RGB24, width, height);
   uint8_t* h_rgb = (uint8_t*)malloc(width * height * 3);
   for (int i = 0; i < width * height; ++i) {
@@ -261,6 +264,7 @@ static std::string save_file = "save/output_memop_nv12.jpg";
 /**
  * 生成一张 NV12 图片,
  * 借助 memop 的 convert 功能，在 CUDA Synced Memory 中转换为 RGB24 格式
+ * 注意!! ConvertImageFormat 内会确保拷贝到 RGB/BGR 步长对齐, 因此此处的测试图片采用长宽为 64 的倍数
  */
 TEST(CudaMemOp, ConvertImageFormat_NV12_RGB24) {
   auto& factory = MemOpFactory::Instance();
@@ -268,7 +272,7 @@ TEST(CudaMemOp, ConvertImageFormat_NV12_RGB24) {
   std::shared_ptr<CudaMemOp> cuda_memop = std::dynamic_pointer_cast<CudaMemOp>(memop);
   ASSERT_NE(cuda_memop, nullptr);
 
-  int width = 1920, height = 1080;
+  int width = 1920, height = 1280;
   DecodeFrame* src_frame = CreateTestDecodeFrameCuda(DataFormat::PIXEL_FORMAT_YUV420_NV12, width, height);
 
   size_t dst_size = width * height * 3;

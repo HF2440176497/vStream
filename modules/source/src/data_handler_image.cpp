@@ -139,27 +139,21 @@ void ImageHandlerImpl::Loop() {
     frame.device_id = -1;
     frame.planeNum = 1;  // BGR格式使用1个平面
 
-    size_t data_size = image_.total() * image_.elemSize();
-    // size_t data_size = get_plane_bytes(frame.fmt, 0, frame.height, frame.stride);
+    const int aligned_stride = GetAlignedRGBStride(frame.width);
+    size_t data_size = frame.height * aligned_stride;
 
     uint8_t* buffer = new (std::nothrow) uint8_t[data_size];
     if (!buffer) {
       LOGE(SOURCE) << "ImageHandlerImpl: Failed to allocate memory for image data";
       return;
     }
-    if (image_.isContinuous()) {
-      memcpy(buffer, image_.data, image_.total() * image_.elemSize());
-    } else {
-      for (int i = 0; i < image_.rows; ++i) {
-        memcpy(buffer + i * image_.cols * image_.elemSize(), 
-              image_.ptr(i), 
-              image_.cols * image_.elemSize());
-      }
+    for (int i = 0; i < image_.rows; ++i) {
+      memcpy(buffer + i * aligned_stride,
+             image_.ptr(i),
+             frame.width * 3);
     }
 
-    // LOGD(SOURCE) << "ImageHandlerImpl: Loop; image width: " << image_.cols << ", height: " << image_.rows << ", alloca data_size: " << data_size;
-
-    frame.stride[0] = frame.width * image_.elemSize();  // BGR格式每个像素3字节
+    frame.stride[0] = aligned_stride;
     frame.plane[0] = buffer;
     frame.buf_ref = std::make_unique<MatBufRef>(buffer);  // 交给 MatBufRef 管理释放
 

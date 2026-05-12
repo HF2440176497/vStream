@@ -66,6 +66,7 @@ static IOResValue allocate_input_iovalue(ModelLoader* model, std::shared_ptr<Mem
     size_t data_size = shape.DataCount() * data_type_size(data_type);
     size_t batch_offset = (shape.DataCount() / shape.N()) * data_type_size(data_type);
 
+    // Allocate will align to 4096
     value.ptrs[idx] = memop->Allocate(data_size);
     value.datas[idx].ptr = value.ptrs[idx].get();
     value.datas[idx].shape = shape;

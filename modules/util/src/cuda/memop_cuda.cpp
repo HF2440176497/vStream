@@ -58,8 +58,9 @@ void CudaMemOp::CopyToHost(void* dst, const void* src, size_t size) {
 }
 
 /**
- * @brief 此函数假设 dst_mem 分配的内存应当是“紧密排列”的，即 stride 等于 width * 3
- * 因此我们需注意: src_frame 中的对内存排列不做任何假设
+ * @brief dst_mem 分配的内存使用 GetAlignedRGBStride 对齐后的 stride，
+ *        确保满足 NPP 函数的对齐要求（4 字节对齐）。
+ *        src_frame 中的 stride 不做任何假设，从 src_frame->stride 读取。
  */
 int CudaMemOp::ConvertImageFormat(CNSyncedMemory* dst_mem, DataFormat dst_fmt, 
                                   const DecodeFrame* src_frame) {
@@ -84,22 +85,30 @@ int CudaMemOp::ConvertImageFormat(CNSyncedMemory* dst_mem, DataFormat dst_fmt,
                << static_cast<int>(dst_fmt);
     return -1;
   }
-  const int dst_stride = width * 3;
+  // SourceRender::Process 中设置 DataFrame fmt 时，stride 步长设置需一致
+  const int dst_stride = GetAlignedRGBStride(width);
+
+  // 对于 src_stride
+  // （1）For handler_send handler_image, src_frame 是紧密排列的
+  // （2）For ffmpeg, src_frame 来自 line_size
   if (dst_fmt == src_fmt) {
     LOGD(CORE) << "CudaMemOp::ConvertImageFormat: Source format is same as destination format";
     int src_stride = src_frame->stride[0];  // src_fmt：RGB or BGR
     CHECK_CUDA_RUNTIME(cudaMemcpy2D(dst, dst_stride, 
                                 src_frame->plane[0], src_stride, 
-                                dst_stride,
+                                width * 3,
                                 height,
                                 cudaMemcpyDeviceToDevice));
     return 0;
   }
   int ret = 0;
+
+  // 对于 src_fmt = BGR/RGB，只可能是
   switch (src_fmt) {
     case DataFormat::PIXEL_FORMAT_BGR24: {
       if (dst_fmt == DataFormat::PIXEL_FORMAT_RGB24) {
-        ret = NppRGB24ToBGR24(dst, width, height, src_frame->plane[0]);
+        ret = NppRGB24ToBGR24(dst, dst_stride, width, height,
+                              src_frame->plane[0], src_frame->stride[0]);
       } else {
         LOGE(CORE) << "CudaMemOp::ConvertImageFormat: Unsupported destination format " 
                    << static_cast<int>(dst_fmt) << " for source BGR24";
@@ -109,7 +118,8 @@ int CudaMemOp::ConvertImageFormat(CNSyncedMemory* dst_mem, DataFormat dst_fmt,
     }
     case DataFormat::PIXEL_FORMAT_RGB24: {
       if (dst_fmt == DataFormat::PIXEL_FORMAT_BGR24) {
-        ret = NppBGR24ToRGB24(dst, width, height, src_frame->plane[0]);
+        ret = NppBGR24ToRGB24(dst, dst_stride, width, height,
+                              src_frame->plane[0], src_frame->stride[0]);
       } else {
         LOGE(CORE) << "CudaMemOp::ConvertImageFormat: Unsupported destination format " 
                    << static_cast<int>(dst_fmt) << " for source RGB24";
@@ -118,6 +128,11 @@ int CudaMemOp::ConvertImageFormat(CNSyncedMemory* dst_mem, DataFormat dst_fmt,
       break;
     }
     case DataFormat::PIXEL_FORMAT_YUV420_NV12: {
+      if (src_frame->stride[0] != src_frame->stride[1]) {
+        LOGW(CORE) << "ConvertImageFormat: NV12 stride[0](" << src_frame->stride[0]
+                   << ") != stride[1](" << src_frame->stride[1]
+                   << "), NPP requires equal strides, using stride[0]";
+      }
       if (dst_fmt == DataFormat::PIXEL_FORMAT_RGB24) {
         ret = NppNV12ToRGB24(dst, dst_stride,
           src_frame->plane[0], src_frame->plane[1],
@@ -143,7 +158,7 @@ int CudaMemOp::ConvertImageFormat(CNSyncedMemory* dst_mem, DataFormat dst_fmt,
       return -1;
   }
   if (ret != 0) {
-    LOGE(CORE) << "CudaMemOp::ConvertImageFormat: libyuv conversion failed with error code: " << ret;
+    LOGE(CORE) << "CudaMemOp::ConvertImageFormat: conversion failed with error code: " << ret;
     return ret;
   }
   return 0;

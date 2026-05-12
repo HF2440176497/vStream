@@ -105,6 +105,8 @@ std::unique_ptr<CNSyncedMemory> MemOp::CreateSyncedMemory(size_t size) {
 int MemOp::ConvertImageFormat(CNSyncedMemory* dst_mem, DataFormat dst_fmt,
                               const DecodeFrame* src_frame) {
   if (!dst_mem) return -1;
+
+  // 
   void* dst = dst_mem->Allocate();
   if (!dst) return -1;
   
@@ -117,18 +119,32 @@ int MemOp::ConvertImageFormat(CNSyncedMemory* dst_mem, DataFormat dst_fmt,
     return -1;
   }
   DataFormat src_fmt = src_frame->fmt;
+  const int dst_stride = GetAlignedRGBStride(width);
   if (src_fmt == dst_fmt) {
     LOGD(CORE) << "MemOp::ConvertImageFormat: Source format is same as destination format";
-    Copy(dst, src_frame->plane[0], width * height * 3);
+    
+    // note: cpu 软解码、send、image 会运行到此
+    int src_stride = src_frame->stride[0];
+    if (src_stride == dst_stride) {
+      Copy(dst, src_frame->plane[0], dst_stride * height);
+    } else {
+      // 只复制图像的有效数据
+      for (int i = 0; i < height; ++i) {
+        memcpy(static_cast<uint8_t*>(dst) + i * dst_stride,
+               static_cast<const uint8_t*>(src_frame->plane[0]) + i * src_stride,
+               width * 3);
+      }
+    }
     return 0;
   }
-  size_t dst_stride = width * 3;
   int ret = 0;
   switch (src_fmt) {
     case DataFormat::PIXEL_FORMAT_BGR24: {
       if (dst_fmt == DataFormat::PIXEL_FORMAT_RGB24) {
-        const cv::Mat bgr_mat(height, width, CV_8UC3, const_cast<void*>(src_frame->plane[0]));
-        cv::Mat rgb_mat(height, width, CV_8UC3, dst);
+        const cv::Mat bgr_mat(height, width, CV_8UC3,
+                              const_cast<void*>(src_frame->plane[0]),
+                              src_frame->stride[0]);
+        cv::Mat rgb_mat(height, width, CV_8UC3, dst, dst_stride);
         cv::cvtColor(bgr_mat, rgb_mat, cv::COLOR_BGR2RGB);
         ret = 0;
       } else {
@@ -140,8 +156,10 @@ int MemOp::ConvertImageFormat(CNSyncedMemory* dst_mem, DataFormat dst_fmt,
     }
     case DataFormat::PIXEL_FORMAT_RGB24: {
       if (dst_fmt == DataFormat::PIXEL_FORMAT_BGR24) {
-        const cv::Mat rgb_mat(height, width, CV_8UC3, const_cast<void*>(src_frame->plane[0]));
-        cv::Mat bgr_mat(height, width, CV_8UC3, dst);
+        const cv::Mat rgb_mat(height, width, CV_8UC3,
+                              const_cast<void*>(src_frame->plane[0]),
+                              src_frame->stride[0]);
+        cv::Mat bgr_mat(height, width, CV_8UC3, dst, dst_stride);
         cv::cvtColor(rgb_mat, bgr_mat, cv::COLOR_RGB2BGR);
         ret = 0;
       } else {
@@ -151,6 +169,8 @@ int MemOp::ConvertImageFormat(CNSyncedMemory* dst_mem, DataFormat dst_fmt,
       }
       break;
     }
+
+    // 有可能是软解码，我们采用
     case DataFormat::PIXEL_FORMAT_YUV420_NV12: {
       if (src_frame->planeNum != 2) {
         LOGE(CORE) << "MemOp::ConvertImageFormat: NV12 format requires 2 planes";
@@ -158,8 +178,8 @@ int MemOp::ConvertImageFormat(CNSyncedMemory* dst_mem, DataFormat dst_fmt,
       }
       const uint8_t* y_plane = static_cast<const uint8_t*>(src_frame->plane[0]);
       const uint8_t* uv_plane = static_cast<const uint8_t*>(src_frame->plane[1]);
-      int y_stride = width;
-      int uv_stride = width;
+      int y_stride = src_frame->stride[0];
+      int uv_stride = src_frame->stride[1];
       if (dst_fmt == DataFormat::PIXEL_FORMAT_RGB24) {
         ret = libyuv::NV12ToRAW(
           y_plane, y_stride,
@@ -186,8 +206,8 @@ int MemOp::ConvertImageFormat(CNSyncedMemory* dst_mem, DataFormat dst_fmt,
       }
       const uint8_t* y_plane = static_cast<const uint8_t*>(src_frame->plane[0]);
       const uint8_t* uv_plane = static_cast<const uint8_t*>(src_frame->plane[1]);
-      int y_stride = width;
-      int uv_stride = width;
+      int y_stride = src_frame->stride[0];
+      int uv_stride = src_frame->stride[1];
       
       if (dst_fmt == DataFormat::PIXEL_FORMAT_RGB24) {
         ret = libyuv::NV21ToRAW(

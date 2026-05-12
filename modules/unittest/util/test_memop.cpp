@@ -7,6 +7,9 @@
 
 namespace cnstream {
 
+static const int width = 1920;
+static const int height = 1280;
+
 
 TEST(MemOpFactory, RegisterMemOpCreator) {
   auto& factory = MemOpFactory::Instance();
@@ -43,7 +46,6 @@ TEST(MemOp, ConvertImageFormat_BGR24_RGB24) {
   auto memop = factory.CreateMemOp(DevType::CPU, -1);
   ASSERT_TRUE(memop != nullptr);
   
-  int width = 1280, height = 1280;
   DecodeFrame* src_frame = CreateTestDecodeFrame(DataFormat::PIXEL_FORMAT_BGR24, width, height);
   uint8_t* bgr_data = static_cast<uint8_t*>(src_frame->plane[0]);
   for (int i = 0; i < width * height; ++i) {

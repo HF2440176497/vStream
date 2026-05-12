@@ -44,30 +44,30 @@ int NppBGR24ToNV12(void* dst_y, void* dst_uv,
                   int height, 
                   cudaStream_t stream = nullptr);
 
-int NppNV21ToRGB24(void* dst, 
+int NppNV21ToRGB24(void* dst, int dst_stride,
                 int width, 
                 int height, 
-                const void* y_plane, 
-                const void* uv_plane,
+                const void* y_plane, int y_stride,
+                const void* uv_plane, int uv_stride,
                 cudaStream_t stream = nullptr);
 
-int NppNV21ToBGR24(void* dst, 
+int NppNV21ToBGR24(void* dst, int dst_stride,
                 int width, 
                 int height, 
-                const void* y_plane, 
-                const void* uv_plane, 
+                const void* y_plane, int y_stride,
+                const void* uv_plane, int uv_stride,
                 cudaStream_t stream = nullptr);
 
-int NppRGB24ToBGR24(void* dst, 
+int NppRGB24ToBGR24(void* dst, int dst_stride,
                 int width, 
                 int height, 
-                const void* src, 
+                const void* src, int src_stride,
                 cudaStream_t stream = nullptr);
 
-int NppBGR24ToRGB24(void* dst, 
+int NppBGR24ToRGB24(void* dst, int dst_stride,
                 int width,
                 int height, 
-                const void* src, 
+                const void* src, int src_stride,
                 cudaStream_t stream = nullptr);
 
 }  // namespace cnstream

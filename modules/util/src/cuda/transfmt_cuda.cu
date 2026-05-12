@@ -191,24 +191,25 @@ int NppBGR24ToNV12(void* dst_y, void* dst_uv,
 
 /**
  * BT.709 HDTV: 转换 NV21 到 RGB24
+ * @note: stride 以字节为单位
  */
-__global__ void nv21ToRGBKernel(const uint8_t* yPlane, const uint8_t* vuPlane,
-                                uint8_t* bgrOutput, int width, int height) {
+__global__ void nv21ToRGBKernel(const uint8_t* yPlane, int yStride,
+                                const uint8_t* vuPlane, int vuStride,
+                                uint8_t* rgbOutput, int dstStride,
+                                int width, int height) {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
     
     if (x >= width || y >= height) return;
     
-    int idx = y * width + x;
-    
-    uint8_t Y = yPlane[idx];
+    uint8_t Y = yPlane[y * yStride + x];
     
     int uvX = x / 2;
     int uvY = y / 2;
-    int uvIdx = uvY * (width / 2) + uvX;
+    int uvIdx = uvY * vuStride + uvX * 2;  // 字节偏移量
 
-    uint8_t V = vuPlane[uvIdx * 2];
-    uint8_t U = vuPlane[uvIdx * 2 + 1];
+    uint8_t V = vuPlane[uvIdx];
+    uint8_t U = vuPlane[uvIdx + 1];
 
     int C = Y - 16;
     int D = U - 128;
@@ -222,32 +223,32 @@ __global__ void nv21ToRGBKernel(const uint8_t* yPlane, const uint8_t* vuPlane,
     G = max(0, min(255, G));
     B = max(0, min(255, B));
     
-    int outIdx = idx * 3;
-    bgrOutput[outIdx] = R;
-    bgrOutput[outIdx + 1] = G;
-    bgrOutput[outIdx + 2] = B;
+    int outIdx = y * dstStride + x * 3;
+    rgbOutput[outIdx] = R;
+    rgbOutput[outIdx + 1] = G;
+    rgbOutput[outIdx + 2] = B;
 }
 
 /**
  * BT.709 HDTV: 转换 NV21 到 BGR24
  */
-__global__ void nv21ToBGRKernel(const uint8_t* yPlane, const uint8_t* vuPlane,
-                                uint8_t* bgrOutput, int width, int height) {
+__global__ void nv21ToBGRKernel(const uint8_t* yPlane, int yStride,
+                                const uint8_t* vuPlane, int vuStride,
+                                uint8_t* bgrOutput, int dstStride,
+                                int width, int height) {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
     
     if (x >= width || y >= height) return;
     
-    int idx = y * width + x;
-    
-    uint8_t Y = yPlane[idx];
+    uint8_t Y = yPlane[y * yStride + x];
     
     int uvX = x / 2;
     int uvY = y / 2;
-    int uvIdx = uvY * (width / 2) + uvX;
+    int uvIdx = uvY * vuStride + uvX * 2;  // 字节偏移量
 
-    uint8_t V = vuPlane[uvIdx * 2];
-    uint8_t U = vuPlane[uvIdx * 2 + 1];
+    uint8_t V = vuPlane[uvIdx];
+    uint8_t U = vuPlane[uvIdx + 1];
 
     int C = Y - 16;
     int D = U - 128;
@@ -261,21 +262,27 @@ __global__ void nv21ToBGRKernel(const uint8_t* yPlane, const uint8_t* vuPlane,
     G = max(0, min(255, G));
     B = max(0, min(255, B));
     
-    int outIdx = idx * 3;
+    int outIdx = y * dstStride + x * 3;
     bgrOutput[outIdx] = B;
     bgrOutput[outIdx + 1] = G;
     bgrOutput[outIdx + 2] = R;
 }
 
 
-int NppNV21ToRGB24(void* dst, int width, int height, 
-  const void* y_plane, const void* uv_plane, cudaStream_t stream) {
+int NppNV21ToRGB24(void* dst, int dst_stride,
+                int width, int height, 
+                const void* y_plane, int y_stride,
+                const void* uv_plane, int uv_stride,
+                cudaStream_t stream) {
 
   dim3 block(16, 16);
   dim3 grid((width + block.x - 1) / block.x, (height + block.y - 1) / block.y);
   
-  nv21ToRGBKernel<<<grid, block, 0, stream>>>(static_cast<const uint8_t*>(y_plane), static_cast<const uint8_t*>(uv_plane), 
-                    static_cast<uint8_t*>(dst), width, height);
+  nv21ToRGBKernel<<<grid, block, 0, stream>>>(
+    static_cast<const uint8_t*>(y_plane), y_stride,
+    static_cast<const uint8_t*>(uv_plane), uv_stride,
+    static_cast<uint8_t*>(dst), dst_stride,
+    width, height);
 
   CHECK_CUDA_RUNTIME(cudaGetLastError());
   CHECK_CUDA_RUNTIME(cudaDeviceSynchronize());
@@ -284,14 +291,20 @@ int NppNV21ToRGB24(void* dst, int width, int height,
 }
 
 
-int NppNV21ToBGR24(void* dst, int width, int height, 
-  const void* y_plane, const void* uv_plane, cudaStream_t stream) {
+int NppNV21ToBGR24(void* dst, int dst_stride,
+                int width, int height, 
+                const void* y_plane, int y_stride,
+                const void* uv_plane, int uv_stride,
+                cudaStream_t stream) {
 
   dim3 block(16, 16);
   dim3 grid((width + block.x - 1) / block.x, (height + block.y - 1) / block.y);
   
-  nv21ToBGRKernel<<<grid, block, 0, stream>>>(static_cast<const uint8_t*>(y_plane), static_cast<const uint8_t*>(uv_plane), 
-                    static_cast<uint8_t*>(dst), width, height);
+  nv21ToBGRKernel<<<grid, block, 0, stream>>>(
+    static_cast<const uint8_t*>(y_plane), y_stride,
+    static_cast<const uint8_t*>(uv_plane), uv_stride,
+    static_cast<uint8_t*>(dst), dst_stride,
+    width, height);
 
   CHECK_CUDA_RUNTIME(cudaGetLastError());
   CHECK_CUDA_RUNTIME(cudaDeviceSynchronize());
@@ -299,7 +312,10 @@ int NppNV21ToBGR24(void* dst, int width, int height,
   return 0;
 }
 
-static int NppSwapChannels_8u_C3R(void* dst, int width, int height, const void* src, cudaStream_t stream) {
+static int NppSwapChannels_8u_C3R(void* dst, int dst_stride,
+                                   int width, int height,
+                                   const void* src, int src_stride,
+                                   cudaStream_t stream) {
   NppStreamContext npp_stream_ctx;
   NppStatus status = nppGetStreamContext(&npp_stream_ctx);
   CHECK_NPP(status);
@@ -309,14 +325,12 @@ static int NppSwapChannels_8u_C3R(void* dst, int width, int height, const void* 
   oSizeROI.width   = width;
   oSizeROI.height  = height;
 
-  int nStep = width * 3;
-
   int aDstOrder[3] = { 2, 1, 0 };
   status = nppiSwapChannels_8u_C3R_Ctx(
     static_cast<const Npp8u*>(src),
-    nStep,
+    src_stride,
     static_cast<Npp8u*>(dst),
-    nStep,
+    dst_stride,
     oSizeROI,
     aDstOrder,
     npp_stream_ctx
@@ -329,12 +343,18 @@ static int NppSwapChannels_8u_C3R(void* dst, int width, int height, const void* 
   return 0;
 }
 
-int NppRGB24ToBGR24(void* dst, int width, int height, const void* src, cudaStream_t stream) {
-  return NppSwapChannels_8u_C3R(dst, width, height, src, stream);
+int NppRGB24ToBGR24(void* dst, int dst_stride,
+                int width, int height,
+                const void* src, int src_stride,
+                cudaStream_t stream) {
+  return NppSwapChannels_8u_C3R(dst, dst_stride, width, height, src, src_stride, stream);
 }
 
-int NppBGR24ToRGB24(void* dst, int width, int height, const void* src, cudaStream_t stream) {
-  return NppSwapChannels_8u_C3R(dst, width, height, src, stream);
+int NppBGR24ToRGB24(void* dst, int dst_stride,
+                int width, int height,
+                const void* src, int src_stride,
+                cudaStream_t stream) {
+  return NppSwapChannels_8u_C3R(dst, dst_stride, width, height, src, src_stride, stream);
 }
 
 }  // namespace cnstream

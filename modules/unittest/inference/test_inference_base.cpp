@@ -539,6 +539,8 @@ TEST(InferenceBaseTest, Demo) {
     // set DataFrame
     frame->width_ = width;
     frame->height_ = height;
+
+    // note: 
     frame->stride_[0] = width * 3;  // stride: bytes
     frame->ctx_.device_id = -1;
     frame->ctx_.device_type = DevType::CPU;

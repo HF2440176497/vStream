@@ -12,20 +12,17 @@ namespace cnstream {
 
 static
 cv::Mat BGRToBGR(const DataFrame& frame) {
-  const cv::Mat bgr(frame.GetHeight(), frame.GetWidth(), CV_8UC3, const_cast<void*>(frame.data_[0]->GetCpuData()));
+  const cv::Mat bgr(frame.GetHeight(), frame.GetWidth(), CV_8UC3,
+                    const_cast<void*>(frame.data_[0]->GetCpuData()),
+                    frame.GetStride(0));
   return bgr(cv::Rect(0, 0, frame.GetWidth(), frame.GetHeight())).clone();
 }
 
 static
 cv::Mat RGBToBGR(const DataFrame& frame) {
-// #ifdef VSTREAM_UNIT_TEST
-//   LOGD(FRAME) << "RGBToBGR: width = " << frame.GetWidth() << ", height = " << frame.GetHeight() << std::endl;
-//   LOGD(FRAME) << "RGBToBGR: stride = " << frame.GetStride(0) << std::endl;
-//   LOGD(FRAME) << "RGBToBGR: data = " << frame.data_[0]->StatusToString() << std::endl;
-//   LOGD(FRAME) << "RGBToBGR: data = " << frame.data_[0]->GetCpuData() << std::endl;
-// #endif
-
-  const cv::Mat rgb(frame.GetHeight(), frame.GetWidth(), CV_8UC3, const_cast<void*>(frame.data_[0]->GetCpuData()));
+  const cv::Mat rgb(frame.GetHeight(), frame.GetWidth(), CV_8UC3,
+                    const_cast<void*>(frame.data_[0]->GetCpuData()),
+                    frame.GetStride(0));
   cv::Mat bgr;
   cv::cvtColor(rgb, bgr, cv::COLOR_RGB2BGR);
   return bgr(cv::Rect(0, 0, frame.GetWidth(), frame.GetHeight())).clone();
@@ -96,6 +93,9 @@ cv::Mat DataFrame::GetImage() {
   return mat_;
 }
 
+/**
+ * 此函数不负责进行对齐，只是读取 stride 值
+ */
 size_t DataFrame::GetPlaneBytes(int plane_idx) const {
   if (plane_idx < 0 || plane_idx >= GetPlanes()) return 0;
   switch (fmt_) {
@@ -150,10 +150,12 @@ void DataFrame::CopyToSyncMem(DecodeFrame* dec_frame) {
     return;
   }
 
+  // ctx_ from dec_frame device_type and device_id
   std::shared_ptr<MemOp> memop = CreateMemOp();
   if (!memop) return;
 
-  // reuse DecodeFrame plane buffer
+  // reuse DecodeFrame plane
+  // 计算 plane_bytes 使用的 stride 是 SourceRender::Process 手动对齐的步长
   if (this->deAllocator_ != nullptr && dec_frame->fmt == this->fmt_) {
     for (int i = 0; i < GetPlanes(); i++) {
       const size_t plane_bytes = GetPlaneBytes(i);

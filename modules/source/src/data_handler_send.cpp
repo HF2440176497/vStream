@@ -128,29 +128,24 @@ void SendHandlerImpl::Loop() {
     frame.device_id = -1;
     frame.planeNum = 1;  // BGR格式使用1个平面
 
-    size_t data_size = send_frame.image.total() * send_frame.image.elemSize();
-    // size_t data_size = get_plane_bytes(frame.fmt, 0, frame.height, frame.stride);
+    const int aligned_stride = GetAlignedRGBStride(frame.width);
+    size_t data_size = frame.height * aligned_stride;
 
     uint8_t* buffer = new (std::nothrow) uint8_t[data_size];
     if (!buffer) {
       LOGE(SOURCE) << "SendHandlerImpl: Failed to allocate memory for image data";
       return;
     }
-    if (send_frame.image.isContinuous()) {
-      memcpy(buffer, send_frame.image.data, send_frame.image.total() * send_frame.image.elemSize());
-    } else {
-      for (int i = 0; i < send_frame.image.rows; ++i) {
-        memcpy(buffer + i * send_frame.image.cols * send_frame.image.elemSize(), 
-              send_frame.image.ptr(i), 
-              send_frame.image.cols * send_frame.image.elemSize());
-      }
+    for (int i = 0; i < send_frame.image.rows; ++i) {
+      memcpy(buffer + i * aligned_stride,
+             send_frame.image.ptr(i),
+             frame.width * 3);
     }
 #ifdef VSTREAM_UNIT_TEST
     LOGD(SOURCE) << "SendHandlerImpl: Loop; image width: " << send_frame.image.cols << ", height: " << send_frame.image.rows << ", alloca data_size: " << data_size;
 #endif
 
-    // 对于 handler_image 和 handler_send ，已经确保是紧密排列的，所以手动确定 stride
-    frame.stride[0] = frame.width * send_frame.image.elemSize();  // BGR格式每个像素3字节
+    frame.stride[0] = aligned_stride;
     frame.plane[0] = buffer;
     frame.buf_ref = std::make_unique<MatBufRef>(buffer);
 

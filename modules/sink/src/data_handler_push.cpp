@@ -6,10 +6,12 @@
 
 
 #include <atomic>
+#include <chrono>
 #include <memory>
 #include <string>
 #include <mutex>
 #include <optional>
+#include <thread>
 #include <unordered_map>
 
 extern "C" {
@@ -134,7 +136,7 @@ class PushHandlerImpl {
       LOGI(SINK) << "[" << stream_id_ << "]: received EOS";
       return 0;
     }
-    LOGI(SINK) << "[" << stream_id_ << "]: Process frame, pts=" << data->timestamp;
+    UpdateFpsStat();
 
     DataFramePtr frame = nullptr;
     if (data->collection.HasValue(cnstream::kDataFrameTag)) {
@@ -393,7 +395,7 @@ class PushHandlerImpl {
               0, src_height,
               ctx_.sws_frame->data, ctx_.sws_frame->linesize);
 
-    ctx_.sws_frame->pts = ctx_.frame_idx++;
+    ctx_.sws_frame->pts = ComputePts();
 
     AVFrame* enc_frame = ctx_.sws_frame;
     if (!enc_frame) return false;
@@ -429,9 +431,8 @@ class PushHandlerImpl {
     const int src_stride = frame->GetStride(0);
 
 #ifdef VSTREAM_UNIT_TEST
-    // DataFrame: RGB24 / BGR24, 紧密排列, 已经手动设置
-    if (src_stride != src_width * 3) {
-      LOGE(SINK) << "[" << stream_id_ << "]: src_stride != src_width * 3";
+    if (src_stride != GetAlignedRGBStride(src_width)) {
+      LOGE(SINK) << "[" << stream_id_ << "]: src_stride != GetAlignedRGBStride(src_width)";
       return false;
     }
 #endif
@@ -473,7 +474,7 @@ class PushHandlerImpl {
       return SendFrameCpuFallback(frame, src_pix_fmt);
     }
 
-    ctx_.hw_frame->pts = ctx_.frame_idx++;
+    ctx_.hw_frame->pts = ComputePts();
     return EncodeFrame(ctx_.hw_frame);
   }
 
@@ -498,14 +499,31 @@ class PushHandlerImpl {
               0, frame->GetHeight(),
               ctx_.sws_frame->data, ctx_.sws_frame->linesize);
 
-    ctx_.sws_frame->pts = ctx_.frame_idx++;
+    ctx_.sws_frame->pts = ComputePts();
     AVFrame* enc_frame = ctx_.sws_frame;
     if (!enc_frame) return false;
     return EncodeFrame(enc_frame);
   }
 
   bool EncodeFrame(AVFrame* frame) {
-    int ret = avcodec_send_frame(ctx_.codec_ctx, frame);
+    int ret;
+    while ((ret = avcodec_send_frame(ctx_.codec_ctx, frame)) == AVERROR(EAGAIN)) {
+      AVPacket* drain_pkt = av_packet_alloc();
+      ret = avcodec_receive_packet(ctx_.codec_ctx, drain_pkt);
+      if (ret == 0) {
+        av_packet_rescale_ts(drain_pkt, ctx_.codec_ctx->time_base, ctx_.stream->time_base);
+        drain_pkt->stream_index = ctx_.stream->index;
+        av_interleaved_write_frame(ctx_.fmt_ctx, drain_pkt);
+      }
+      av_packet_free(&drain_pkt);
+      if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+        break;
+      }
+      if (ret < 0) {
+        LOGE(SINK) << "[" << stream_id_ << "]: avcodec_receive_packet error during drain";
+        return false;
+      }
+    }
     if (ret < 0) {
       LOGE(SINK) << "[" << stream_id_ << "]: avcodec_send_frame error: " << ret;
       return false;
@@ -590,6 +608,57 @@ class PushHandlerImpl {
   int sws_src_height_ = 0;
   std::atomic<bool> hw_ctx_initialized_{false};
   int device_id_ = -1;  // 默认使用 CPU 编码
+
+  std::chrono::steady_clock::time_point push_start_time_;
+  std::chrono::steady_clock::time_point last_push_time_;
+  bool first_frame_ = true;
+
+  static constexpr int kFpsStatInterval = 100;
+  std::chrono::steady_clock::time_point fps_stat_start_time_;
+  uint64_t fps_stat_frame_count_ = 0;
+
+  /**
+   * @brief 计算 pts， 单位是 1, 间隔时间对应的帧数
+   */
+  int64_t ComputePts() {
+    auto now = std::chrono::steady_clock::now();
+    auto elapsed_us = std::chrono::duration_cast<std::chrono::microseconds>(
+        now - push_start_time_).count();
+    return elapsed_us * fps_ / 1000000;
+  }
+
+  void ControlFps() {
+    auto now = std::chrono::steady_clock::now();
+    if (first_frame_) {
+      push_start_time_ = now;
+      fps_stat_start_time_ = now;
+      last_push_time_ = now;
+      first_frame_ = false;
+    } else {
+      auto elapsed = now - last_push_time_;
+      auto frame_interval = std::chrono::microseconds(1000000 / fps_);
+      if (elapsed < frame_interval) {
+        std::this_thread::sleep_for(frame_interval - elapsed);
+        now = std::chrono::steady_clock::now();
+      }
+      last_push_time_ = now;
+    }
+
+    fps_stat_frame_count_++;
+    if (fps_stat_frame_count_ >= kFpsStatInterval) {
+      auto stat_elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+          now - fps_stat_start_time_).count();
+      if (stat_elapsed_ms > 0) {
+        double actual_fps = fps_stat_frame_count_ * 1000.0 / stat_elapsed_ms;
+        LOGI(SINK) << "[" << stream_id_ << "]: Actual FPS = " << actual_fps
+                   << " (frames=" << fps_stat_frame_count_
+                   << ", duration=" << stat_elapsed_ms << "ms)";
+      }
+      fps_stat_frame_count_ = 0;
+      fps_stat_start_time_ = now;
+    }
+  }
+
 };  // class PushHandlerImpl
 
 std::shared_ptr<SinkHandler> PushHandler::Create(DataSink *module, const std::string &stream_id) {

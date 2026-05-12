@@ -50,6 +50,7 @@ foreach(demo_source ${VSTREAM_TOOLS_DEMO_CUDA_SOURCES})
   add_executable(${demo_name} ${demo_source})
   target_include_directories(${demo_name}
    PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
     ${VSTREAM_TOOLS_3RDPARTY_INCLUDE}
   )
   target_link_libraries(${demo_name}

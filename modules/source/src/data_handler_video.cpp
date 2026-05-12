@@ -272,14 +272,51 @@ int VideoHandlerImpl::decode_write() {
   AVFrame *p_frame = nullptr;  // 局部变量，用于赋值 s_frame_
   AVFrame *sw_frame = nullptr;
 
-  ret = avcodec_send_packet(codec_ctx_, &pkt_);
+  while ((ret = avcodec_send_packet(codec_ctx_, &pkt_)) == AVERROR(EAGAIN)) {
+    AVFrame* drain_frame = av_frame_alloc();
+    if (!drain_frame) {
+      LOGE(SOURCE) << "av_frame_alloc alloc drain_frame failed";
+      return -1;
+    }
+    ret = avcodec_receive_frame(codec_ctx_, drain_frame);
+    if (ret == 0) {
+      std::shared_ptr<FrameInfo> data = nullptr;
+#ifdef VSTREAM_USE_CUDA
+      if (output_type_ == OutputType::OUTPUT_CPU) {
+        AVFrame* sw_drain = av_frame_alloc();
+        if (sw_drain) {
+          data = ProcessFrameCPU(drain_frame, sw_drain, ret);
+          av_frame_free(&sw_drain);
+        }
+      } else {
+        data = ProcessFrameCUDA(drain_frame, ret);
+      }
+#else
+      data = ProcessFrame(drain_frame, ret);
+#endif
+      if (ret == 0 && data && module_ && handler_) {
+        handler_->SendData(data);
+      }
+    }  // end if (ret == 0)
+    av_frame_free(&drain_frame);
+    if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+      ret = 0;  // 正常跳出循环
+      break;
+    }
+    if (ret < 0) {
+      LOGE(SOURCE) << "avcodec_receive_frame error during drain: " << ret;
+      return ret;
+    }
+  }  // end while (ret == AVERROR(EAGAIN))
+
+  // 正常调用 avcodec_send_packet 返回, 继续解码
   if (ret < 0) {
     LOGE(SOURCE) << "avcodec_send_packet error: " << ret;
     return ret;
   }
 
   while (running_.load()) {
-    if (!(p_frame = av_frame_alloc())) {
+    if (!(p_frame = av_frame_alloc())) {  // realloc p_frame
       LOGE(SOURCE) << "av_frame_alloc error";
       ret = -1;
       break;
@@ -288,11 +325,12 @@ int VideoHandlerImpl::decode_write() {
 #ifdef VSTREAM_USE_CUDA
     if (output_type_ == OutputType::OUTPUT_CPU) {
       if (!(sw_frame = av_frame_alloc())) {
-        LOGE(SOURCE) << "av_frame_alloc error";
+        LOGE(SOURCE) << "av_frame_alloc alloc sw_frame failed";
         av_frame_free(&p_frame);
         ret = -1;
         break;
       }
+      // not change output_type here
     }
 #endif
 
@@ -309,7 +347,9 @@ int VideoHandlerImpl::decode_write() {
     std::shared_ptr<FrameInfo> data = nullptr;
 
 #ifdef VSTREAM_USE_CUDA
-    if (output_type_ == OutputType::OUTPUT_CPU) {
+    // sw_frame：临时变量，用于保存将 GPU 传输到 CPU 内存的帧
+    // 但是目前不会走这个分支
+    if (output_type_ == OutputType::OUTPUT_CPU && sw_frame) {
       data = ProcessFrameCPU(p_frame, sw_frame, ret);
     } else if (output_type_ == OutputType::OUTPUT_CUDA) {
       data = ProcessFrameCUDA(p_frame, ret);
@@ -322,14 +362,13 @@ int VideoHandlerImpl::decode_write() {
     data = ProcessFrame(p_frame, ret);
 #endif
 
-    if (!module_ || !handler_) {
-      LOGE(SOURCE) << "[" << stream_id_ << "]: module_ or handler_ is null";
+    if (!data || ret != 0) {
+      LOGE(SOURCE) << "[" << stream_id_ << "]: ProcessFrame failed, ret = " << ret;
       ret = -1;
       break;
     }
-
-    if (!data) {
-      LOGE(SOURCE) << "[" << stream_id_ << "]: data is null";
+    if (!module_ || !handler_) {
+      LOGE(SOURCE) << "[" << stream_id_ << "]: module_ or handler_ is null";
       ret = -1;
       break;
     }
@@ -351,6 +390,10 @@ int VideoHandlerImpl::decode_write() {
  * 将 p_frame 转移到 CPU 内存 s_frame_ 中
  */
 std::shared_ptr<FrameInfo> VideoHandlerImpl::ProcessFrameCPU(AVFrame *p_frame, AVFrame *sw_frame, int &ret) {
+  if (!p_frame) {
+    LOGE(SOURCE) << "VideoHandlerImpl: p_frame is null";
+    return nullptr;
+  }
   if (p_frame->format == hw_pix_fmt) {
     if ((ret = av_hwframe_transfer_data(sw_frame, p_frame, 0)) < 0) {
       LOGE(SOURCE) << "Error transferring the data to system memory: " << ret;
@@ -385,8 +428,10 @@ std::shared_ptr<FrameInfo> VideoHandlerImpl::ProcessFrameCPU(AVFrame *p_frame, A
 
   int width = s_frame_->width;
   int height = s_frame_->height;
-  size_t y_size = width * height;
-  size_t uv_size = width * height / 2;
+  int y_stride = s_frame_->linesize[0];
+  int uv_stride = s_frame_->linesize[1];
+  size_t y_size = y_stride * height;
+  size_t uv_size = uv_stride * height / 2;
 
   uint8_t* y_buffer = new (std::nothrow) uint8_t[y_size];
   uint8_t* uv_buffer = new (std::nothrow) uint8_t[uv_size];
@@ -399,16 +444,16 @@ std::shared_ptr<FrameInfo> VideoHandlerImpl::ProcessFrameCPU(AVFrame *p_frame, A
   }
 
   for (int i = 0; i < height; ++i) {
-    memcpy(y_buffer + i * width, s_frame_->data[0] + i * s_frame_->linesize[0], width);
+    memcpy(y_buffer + i * y_stride, s_frame_->data[0] + i * y_stride, y_stride);
   }
   for (int i = 0; i < height / 2; ++i) {
-    memcpy(uv_buffer + i * width, s_frame_->data[1] + i * s_frame_->linesize[1], width);
+    memcpy(uv_buffer + i * uv_stride, s_frame_->data[1] + i * uv_stride, uv_stride);
   }
 
   frame.plane[0] = y_buffer;
   frame.plane[1] = uv_buffer;
-  frame.stride[0] = width;
-  frame.stride[1] = width;
+  frame.stride[0] = y_stride;
+  frame.stride[1] = uv_stride;
   frame.buf_ref = std::make_unique<MatBufRefNV12>(y_buffer, uv_buffer);
 
   return OnDecodeFrame(&frame);
@@ -418,6 +463,10 @@ std::shared_ptr<FrameInfo> VideoHandlerImpl::ProcessFrameCPU(AVFrame *p_frame, A
  * @brief 当 output_type_ 为 OUTPUT_CUDA 时，直接复用内存
  */
 std::shared_ptr<FrameInfo> VideoHandlerImpl::ProcessFrameCUDA(AVFrame *p_frame, int &ret) {
+  if (!p_frame) {
+    LOGE(SOURCE) << "VideoHandlerImpl: p_frame is null";
+    return nullptr;
+  }
   if (p_frame->format != AV_PIX_FMT_CUDA) {
     LOGE(SOURCE) << "VideoHandlerImpl: p_frame format not supported: " << p_frame->format;
     ret = -1;
@@ -470,8 +519,10 @@ std::shared_ptr<FrameInfo> VideoHandlerImpl::ProcessFrame(AVFrame *p_frame, int 
 
   int width = s_frame_->width;
   int height = s_frame_->height;
-  size_t y_size = width * height;
-  size_t uv_size = width * height / 2;
+  int y_stride = s_frame_->linesize[0];
+  int uv_stride = s_frame_->linesize[1];
+  size_t y_size = y_stride * height;
+  size_t uv_size = uv_stride * height / 2;
 
   uint8_t* y_buffer = new (std::nothrow) uint8_t[y_size];
   uint8_t* uv_buffer = new (std::nothrow) uint8_t[uv_size];
@@ -484,16 +535,16 @@ std::shared_ptr<FrameInfo> VideoHandlerImpl::ProcessFrame(AVFrame *p_frame, int 
   }
 
   for (int i = 0; i < height; ++i) {
-    memcpy(y_buffer + i * width, s_frame_->data[0] + i * s_frame_->linesize[0], width);
+    memcpy(y_buffer + i * y_stride, s_frame_->data[0] + i * y_stride, y_stride);
   }
   for (int i = 0; i < height / 2; ++i) {
-    memcpy(uv_buffer + i * width, s_frame_->data[1] + i * s_frame_->linesize[1], width);
+    memcpy(uv_buffer + i * uv_stride, s_frame_->data[1] + i * uv_stride, uv_stride);
   }
 
   frame.plane[0] = y_buffer;
   frame.plane[1] = uv_buffer;
-  frame.stride[0] = width;
-  frame.stride[1] = width;
+  frame.stride[0] = y_stride;
+  frame.stride[1] = uv_stride;
   frame.buf_ref = std::make_unique<MatBufRefNV12>(y_buffer, uv_buffer);
 
   return OnDecodeFrame(&frame);
@@ -542,6 +593,13 @@ bool VideoHandlerImpl::Open() {
     LOGE(SOURCE) << "VideoHandlerImpl: module_ is null";
     return false;
   }
+
+#ifdef VSTREAM_USE_CUDA
+  if (output_type_ == OutputType::OUTPUT_CPU) {
+    LOGW(SOURCE) << "VSTREAM_USE_CUDA ON: force output type to CUDA";
+    output_type_ = OutputType::OUTPUT_CUDA;
+  }
+#endif
 
   running_.store(true);
   thread_ = std::thread(&VideoHandlerImpl::Loop, this);
@@ -601,7 +659,7 @@ void VideoHandlerImpl::Loop() {
       LOGE(SOURCE) << "VideoHandlerImpl: decode_write error";
       break;
     }
-    av_packet_unref(&pkt_);
+    if (pkt_) av_packet_unref(&pkt_);
     if (frame_rate_ > 0) {
       controller.Control();
     }

@@ -70,7 +70,6 @@ class VideoHandlerImpl : public SourceRender {
   int hw_decoder_init();
   int codec_init();
   int input_format_init();
-  int convert_frame_init();
   int decode_write();
   void clean_up();
 

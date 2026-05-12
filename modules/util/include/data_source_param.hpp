@@ -207,6 +207,9 @@ struct DecodeFrame {
   }
 };
 
+inline int GetAlignedRGBStride(int width, int alignment = 4) {
+  return ((width * 3 + alignment - 1) / alignment) * alignment;
+}
 
 inline const std::unordered_map<std::string, OutputType> param_output_map_ = {
   {"cpu", OutputType::OUTPUT_CPU},

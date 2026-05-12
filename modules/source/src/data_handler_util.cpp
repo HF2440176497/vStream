@@ -24,11 +24,12 @@ int SourceRender::Process(std::shared_ptr<FrameInfo> frame_info, DecodeFrame *de
     dec_frame->buf_ref = nullptr;
   }
   frame->ctx_ = DevContext(dec_frame->device_type, dec_frame->device_id);
-  // TODO: 支持配置 RGB24 或 BGR24
+
+  // 设置为 RGB 格式，需要手动设置对齐步长
   frame->fmt_ = DataFormat::PIXEL_FORMAT_RGB24;  // dst fmt
   for (int i = 0; i < frame->GetPlanes(); ++i) {
     if (i == 0) {
-      frame->stride_[i] = frame->width_ * 3;
+      frame->stride_[i] = GetAlignedRGBStride(frame->width_);
     }
   }
   frame->CopyToSyncMem(dec_frame);
