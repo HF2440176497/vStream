@@ -14,7 +14,7 @@
 
 namespace cnstream {
 
-class PreprocTest: public Preproc {
+class PreREFLEX: public Preproc {
 
  public:
   int Execute(const std::vector<float*>& net_inputs, ModelLoader* model,
@@ -25,13 +25,13 @@ class PreprocTest: public Preproc {
   }
 
  private:
-  DECLARE_REFLEX_OBJECT_EX(PreprocTest, cnstream::Preproc);
-};  // class PreprocTest
+  DECLARE_REFLEX_OBJECT_EX(PreREFLEX, cnstream::Preproc);
+};  // class PreREFLEX
 
-IMPLEMENT_REFLEX_OBJECT_EX(PreprocTest, cnstream::Preproc);
+IMPLEMENT_REFLEX_OBJECT_EX(PreREFLEX, cnstream::Preproc);
 
 
-class PostprocTest: public Postproc {
+class PostREFLEX: public Postproc {
 
  public:
   int Execute(const std::vector<float*>& net_outputs, ModelLoader* model,
@@ -42,20 +42,18 @@ class PostprocTest: public Postproc {
   }
 
  private:
-  DECLARE_REFLEX_OBJECT_EX(PostprocTest, cnstream::Postproc);
-};  // class PostprocTest
+  DECLARE_REFLEX_OBJECT_EX(PostREFLEX, cnstream::Postproc);
+};  // class PostREFLEX
 
-IMPLEMENT_REFLEX_OBJECT_EX(PostprocTest, cnstream::Postproc);
+IMPLEMENT_REFLEX_OBJECT_EX(PostREFLEX, cnstream::Postproc);
 
 
 TEST(REFLEX, Test) {
   std::map<std::string, ClassInfo<ReflexObject>>& obj_map = check_reflex_map();
-
   for (auto it = obj_map.begin(); it != obj_map.end(); it++) {
     std::string name = it->first;
     LOGI(TEST_REFLEX)  << "TEST_REFLEX: obj_map name = " << name;
   }
-
 }
 
 /**
@@ -65,15 +63,15 @@ TEST(REFLEX, Test) {
 TEST(REFLEX, CreateObject) {
 
   // 验证两种层次的创建过程（基类，向下类型转换的）
-  ASSERT_NE(ReflexObject::CreateObject("PreprocTest"), nullptr);
-  ASSERT_NE(ReflexObject::CreateObject("PostprocTest"), nullptr);
+  ASSERT_NE(ReflexObject::CreateObject("PreREFLEX"), nullptr);
+  ASSERT_NE(ReflexObject::CreateObject("PostREFLEX"), nullptr);
 
-  ASSERT_NE(ReflexObjectEx<Preproc>::CreateObject("PreprocTest"), nullptr);
-  ASSERT_NE(ReflexObjectEx<Postproc>::CreateObject("PostprocTest"), nullptr);
+  ASSERT_NE(ReflexObjectEx<Preproc>::CreateObject("PreREFLEX"), nullptr);
+  ASSERT_NE(ReflexObjectEx<Postproc>::CreateObject("PostREFLEX"), nullptr);
   
   // 手动创建 class_info（T: ReflexObject） 验证注册
   ClassInfo<ReflexObject> info2(std::string(), ObjectConstructor<ReflexObject>([]() {
-    return reinterpret_cast<ReflexObject*>(new PostprocTest());
+    return reinterpret_cast<ReflexObject*>(new PostREFLEX());
   }));
 
   ObjectConstructor<ReflexObject> base_constructor;

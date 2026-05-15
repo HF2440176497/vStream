@@ -128,8 +128,8 @@ void SendHandlerImpl::Loop() {
     frame.device_id = -1;
     frame.planeNum = 1;  // BGR格式使用1个平面
 
-    const int aligned_stride = GetAlignedRGBStride(frame.width);
-    size_t data_size = frame.height * aligned_stride;
+    const int stride = GetStride_8U_C3(frame.width);
+    size_t data_size = frame.height * stride;
 
     uint8_t* buffer = new (std::nothrow) uint8_t[data_size];
     if (!buffer) {
@@ -137,15 +137,13 @@ void SendHandlerImpl::Loop() {
       return;
     }
     for (int i = 0; i < send_frame.image.rows; ++i) {
-      memcpy(buffer + i * aligned_stride,
+      memcpy(buffer + i * stride,
              send_frame.image.ptr(i),
              frame.width * 3);
     }
-#ifdef VSTREAM_UNIT_TEST
-    LOGD(SOURCE) << "SendHandlerImpl: Loop; image width: " << send_frame.image.cols << ", height: " << send_frame.image.rows << ", alloca data_size: " << data_size;
-#endif
+    LOGU(SOURCE) << "SendHandlerImpl: Loop; image width: " << send_frame.image.cols << ", height: " << send_frame.image.rows << ", alloca data_size: " << data_size;
 
-    frame.stride[0] = aligned_stride;
+    frame.stride[0] = stride;
     frame.plane[0] = buffer;
     frame.buf_ref = std::make_unique<MatBufRef>(buffer);
 
@@ -169,7 +167,7 @@ std::shared_ptr<FrameInfo> SendHandlerImpl::OnDecodeFrame(DecodeFrame* frame) {
     LOGE(SOURCE) << "[SendHandlerImpl] OnDecodeFrame function frame is nullptr.";
     return nullptr;
   }
-  std::shared_ptr<FrameInfo> data = this->CreateFrameInfo();
+  std::shared_ptr<FrameInfo> data = CreateFrameInfo();
   if (!data) {
     LOGE(SOURCE) << "[SendHandlerImpl] OnDecodeFrame function, failed to create FrameInfo.";
     return nullptr;
@@ -178,7 +176,7 @@ std::shared_ptr<FrameInfo> SendHandlerImpl::OnDecodeFrame(DecodeFrame* frame) {
   data->frame_id_s = frame->frame_id_s;
   if (!frame->valid) {
     data->flags = static_cast<size_t>(DataFrameFlag::FRAME_FLAG_INVALID);
-    this->SendFrameInfo(data);
+    SendFrameInfo(data);
     return nullptr;
   }
   int ret = SourceRender::Process(data, frame, frame_id_++);
@@ -195,7 +193,7 @@ void SendHandlerImpl::OnEndFrame() {
     LOGW(SOURCE) << "[SendHandlerImpl] OnEndFrame function, failed to create FrameInfo.";
     return;
   }
-  this->SendFrameInfo(data);
+  SendFrameInfo(data);
   LOGI(SOURCE) << "[SendHandlerImpl] OnEndFrame function, send end frame.";
 }
 

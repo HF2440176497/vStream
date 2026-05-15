@@ -50,14 +50,6 @@ class MemoryBufferCollection {
   std::mutex mutex_;
 };
 
-/**
- * @brief 向上取为 64 KB 的整数倍
- */
-inline size_t RoundUpSize(size_t bytes) {
-  const size_t alignment = 64 * 1024;
-  return (bytes + alignment - 1) / alignment * alignment;
-}
-
 struct DecodeFrame;
 
 /**

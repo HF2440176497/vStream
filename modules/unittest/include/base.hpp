@@ -75,26 +75,26 @@ struct FrameCountData {
 /**
  * @brief 创建测试 pipeline 用到的 Module
  * 测试并发性
- （1）对于配置为 next_nods: [ProcessOne, ProcessTwo] 的情况， ProcessOne 和 ProcessTwo 是并发执行的
- （2）验证 ProcessThree 接收的 data 一定是 ProcessOne 和 ProcessTwo 处理后的 data
+ （1）对于配置为 next_nods: [CountOne, CountTwo] 的情况， CountOne 和 CountTwo 是并发执行的
+ （2）验证 CountThree 接收的 data 一定是 CountOne 和 CountTwo 处理后的 data
  */
-class ProcessOne: public Module, public ModuleCreator<ProcessOne> {
+class CountOne: public Module, public ModuleCreator<CountOne> {
  public:
-  ProcessOne(const std::string &name) : Module(name) {}
-  ~ProcessOne() {}
+  CountOne(const std::string &name) : Module(name) {}
+  ~CountOne() {}
   bool Open(ModuleParamSet params) override {
     return true;
   }
   void Close() override {
-    LOGI(ProcessOne) << "Close";
+    LOGI(CountOne) << "Close";
   }
   void OnEos(const std::string& stream_id) override {
-    LOGI(ProcessOne) << "OnEos: " << stream_id;
+    LOGI(CountOne) << "OnEos: " << stream_id;
   }
   int Process(std::shared_ptr<FrameInfo> frame_info) override {
     DataFramePtr frame = frame_info->collection.Get<DataFramePtr>(kDataFrameTag);
     if (!frame) {
-      LOGE(ProcessOne) << "frame is empty";
+      LOGE(CountOne) << "frame is empty";
       return -1;
     }
 
@@ -111,7 +111,6 @@ class ProcessOne: public Module, public ModuleCreator<ProcessOne> {
     {
       std::lock_guard<std::mutex> lock(total_count_data->mtx);
       total_count_data->process_count++;
-      LOGD(ProcessOne) << "frame ts: " << frame_info->timestamp << " process_total_count: " << total_count_data->process_count;
     }
     // 2. 获取 当前 module 对应的 FrameCountData, 自定义赋值
     auto count_data = frame_info->collection.Get<std::shared_ptr<FrameCountData>>(process_one_name);
@@ -122,27 +121,27 @@ class ProcessOne: public Module, public ModuleCreator<ProcessOne> {
     return 0;
   }
 };
-REGISTER_MODULE(ProcessOne);
+REGISTER_MODULE(CountOne);
 
 
-class ProcessTwo: public Module, public ModuleCreator<ProcessTwo> {
+class CountTwo: public Module, public ModuleCreator<CountTwo> {
  public:
-  ProcessTwo(const std::string &name) : Module(name) {}
-  ~ProcessTwo() {}
+  CountTwo(const std::string &name) : Module(name) {}
+  ~CountTwo() {}
   bool Open(ModuleParamSet params) override {
     return true;
   }
   void Close() override {
-    LOGI(ProcessTwo) << "Close";
+    LOGI(CountTwo) << "Close";
   }
   void OnEos(const std::string& stream_id) override {
-    LOGI(ProcessTwo) << "OnEos: " << stream_id;
+    LOGI(CountTwo) << "OnEos: " << stream_id;
   }
 
   int Process(std::shared_ptr<FrameInfo> frame_info) override {
     DataFramePtr frame = frame_info->collection.Get<DataFramePtr>(kDataFrameTag);
     if (!frame) {
-      LOGE(ProcessOne) << "frame is empty";
+      LOGE(CountTwo) << "frame is empty";
       return -1;
     }
 
@@ -157,65 +156,58 @@ class ProcessTwo: public Module, public ModuleCreator<ProcessTwo> {
     {
       std::lock_guard<std::mutex> lock(total_count_data->mtx);
       total_count_data->process_count++;
-      LOGD(ProcessTwo) << "frame ts: " << frame_info->timestamp << " process_total_count: " << total_count_data->process_count;
+      // LOGD(CountTwo) << "frame ts: " << frame_info->timestamp << " process_total_count: " << total_count_data->process_count;
     }
     // 2. 获取 当前 module 对应的 FrameCountData, 自定义赋值
     auto count_data = frame_info->collection.Get<std::shared_ptr<FrameCountData>>(process_two_name);
     {
       std::lock_guard<std::mutex> lock(count_data->mtx);
       count_data->process_count++;
-      LOGD(ProcessTwo) << "frame ts: " << frame_info->timestamp << " process_two_count: " << count_data->process_count;
+      // LOGD(CountTwo) << "frame ts: " << frame_info->timestamp << " process_two_count: " << count_data->process_count;
     }
     return 0;
   }
 };
-REGISTER_MODULE(ProcessTwo);
+REGISTER_MODULE(CountTwo);
 
 
-class ProcessThree: public Module, public ModuleCreator<ProcessThree> {
+class CountThree: public Module, public ModuleCreator<CountThree> {
  public:
-  ProcessThree(const std::string &name) : Module(name) {}
-  ~ProcessThree() {}
+  CountThree(const std::string &name) : Module(name) {}
+  ~CountThree() {}
   bool Open(ModuleParamSet params) override {
     return true;
   }
   void Close() override {
-    LOGI(ProcessThree) << "Close";
+    LOGI(CountThree) << "Close";
   }
   void OnEos(const std::string& stream_id) override {
-    LOGI(ProcessThree) << "OnEos: " << stream_id;
+    LOGI(CountThree) << "OnEos: " << stream_id;
   }
   int Process(std::shared_ptr<FrameInfo> frame_info) override {
     DataFramePtr frame = frame_info->collection.Get<DataFramePtr>(kDataFrameTag);
     if (!frame) {
-      LOGE(ProcessThree) << "frame is empty";
+      LOGE(CountThree) << "frame is empty";
       return -1;
     }
-    // 经过前两个 module, 才会到达 ProcessThree 因此 total 一定存在
+    // 经过前两个 module, 才会到达 CountThree 
     if (!frame_info->collection.HasValue(process_total_name)) {
-      LOGE(ProcessThree) << "process_total not found";
+      LOGE(CountThree) << "process_total not found";
       return -1;
     }
-    // total_count_: 前两个模块 count 的加和
+    if (!frame_info->collection.HasValue(process_one_name)) {
+      LOGE(CountThree) << "process_one not found";
+      return -1;
+    }
     auto total_count_data = frame_info->collection.Get<std::shared_ptr<FrameCountData>>(process_total_name);
-    // LOGD(ProcessThree) << "frame ts: " << frame_info->timestamp << " total_count_data: " << total_count_data->process_count << "; while module_three count: " << current_count;
-
-    if (frame_info->collection.HasValue(process_one_name)) {
-      auto count_data = frame_info->collection.Get<std::shared_ptr<FrameCountData>>(process_one_name);
-      LOGD(ProcessThree) << "frame ts: " << frame_info->timestamp << " process_one_count: " << count_data->process_count;
-    } else {
-      LOGE(ProcessThree) << "process_one not found";
-      return -1;
-    }
-    // 对于 process_two, 其内部进行了两倍的处理
     if (frame_info->collection.HasValue(process_two_name)) {
       auto one_count_data = frame_info->collection.Get<std::shared_ptr<FrameCountData>>(process_one_name);
       auto two_count_data = frame_info->collection.Get<std::shared_ptr<FrameCountData>>(process_two_name);
       EXPECT_EQ(one_count_data->process_count, two_count_data->process_count);
       EXPECT_EQ(total_count_data->process_count, 1 + one_count_data->process_count);
-      LOGD(ProcessThree) << "frame ts: " << frame_info->timestamp << " process_two_count: " << two_count_data->process_count;
+      // LOGD(CountThree) << "frame ts: " << frame_info->timestamp << " process_two_count: " << two_count_data->process_count;
     } else {
-      LOGE(ProcessThree) << "process_two not found";
+      LOGE(CountThree) << "process_two not found";
       return -1;
     }
     return 0;
@@ -224,30 +216,30 @@ class ProcessThree: public Module, public ModuleCreator<ProcessThree> {
   std::unordered_map<std::string, std::mutex> mutex_map_;
   std::mutex mtx_;
 };
-REGISTER_MODULE(ProcessThree);
+REGISTER_MODULE(CountThree);
 
 
 /**
  * 提取 frame_info 中的 frame_id_s 得到数字，验证是否连续
  * 配合 test_send 单元测试
  */
-class ProcessCount: public Module, public ModuleCreator<ProcessCount> {
+class CountModule: public Module, public ModuleCreator<CountModule> {
  public:
-  ProcessCount(const std::string &name) : Module(name) {}
-  ~ProcessCount() {}
+  CountModule(const std::string &name) : Module(name) {}
+  ~CountModule() {}
   bool Open(ModuleParamSet params) override {
     return true;
   }
   void Close() override {
-    LOGI(ProcessCount) << "Close";
+    LOGI(CountModule) << "Close";
   }
   void OnEos(const std::string& stream_id) override {
-    LOGI(ProcessCount) << "OnEos: " << stream_id;
+    LOGI(CountModule) << "OnEos: " << stream_id;
   }
   int Process(std::shared_ptr<FrameInfo> frame_info) override {
     DataFramePtr frame = frame_info->collection.Get<DataFramePtr>(kDataFrameTag);
     if (!frame) {
-      LOGE(ProcessCount) << "frame is empty";
+      LOGE(CountModule) << "frame is empty";
       return -1;
     }
     int current_frame_id = stoi(frame_info->frame_id_s);
@@ -261,7 +253,7 @@ class ProcessCount: public Module, public ModuleCreator<ProcessCount> {
  private:
   int last_frame_id_ = -1;
 };
-REGISTER_MODULE(ProcessCount);
+REGISTER_MODULE(CountModule);
 
 
 }  // namespace cnstream

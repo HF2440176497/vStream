@@ -44,7 +44,7 @@ void Collection::Add(const std::string& tag, std::unique_ptr<std::any>&& value) 
 bool Collection::AddIfNotExists(const std::string& tag, std::unique_ptr<std::any>&& value) {
   std::lock_guard<std::mutex> lk(data_mtx_);
   if (data_.end() != data_.find(tag)) {
-    LOGD(COLLECTION) << "Data tagged by [" << tag << "] had been added. Current data will not be added.";
+    LOGD(COLLECTION) << "Data by [" << tag << "] had been added. Current data will not be added.";
     return false;
   }
   data_[tag] = std::forward<std::unique_ptr<std::any>>(value);

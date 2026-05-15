@@ -45,6 +45,9 @@ public:
   void OnEndFrame();
   std::shared_ptr<FrameInfo> OnDecodeFrame(DecodeFrame* frame);
 
+public:
+  bool IsRunning() const { return running_; }
+
 #ifdef VSTREAM_UNIT_TEST
  public:
 #else

@@ -55,13 +55,12 @@ std::vector<std::shared_ptr<InferTask>> H2DBatchingDoneStage::BatchingDone(const
     IOResValue net_value = this->net_input_res_->WaitResourceByTicket(&mir_ticket);
 
 #ifdef VSTREAM_UNIT_TEST
-    // std::this_thread::sleep_for(std::chrono::milliseconds(100));
     assert(finfos.size() == batchsize_);
+#endif
 
     for (uint32_t bidx = 0; bidx < batchsize_; bidx++) {
-      LOGD(H2D) << "bidx: " << bidx << "; [" << finfos[bidx].first->stream_id << "], ts: " << finfos[bidx].first->timestamp;
+      LOGU(H2D) << "bidx: " << bidx << "; [" << finfos[bidx].first->stream_id << "], ts: " << finfos[bidx].first->timestamp;
     }
-#endif
 
     for (int i = 0; i < model_->InputNum(); i++) {
       void* src_cpu = cpu_value.ptrs[i].get();
@@ -70,8 +69,8 @@ std::vector<std::shared_ptr<InferTask>> H2DBatchingDoneStage::BatchingDone(const
       size_t data_size = net_value.datas[i].shape.DataCount() * data_type_size(input_data_type);
       
       // cpu shape 与 net shape 应该一致
-      // LOGD(CopyFromHost H2D) << " index: " << i << "; cpu shape: " << cpu_value.datas[i].shape << "; net shape:" << net_value.datas[i].shape << std::endl;
-      // LOGD(CopyFromHost H2D) << " index: " << i << "; count:" << net_value.datas[i].shape.DataCount() << ", data_size: " << data_size << std::endl;
+      // LOGU(H2D) << " index: " << i << "; cpu shape: " << cpu_value.datas[i].shape << "; net shape:" << net_value.datas[i].shape << std::endl;
+      // LOGU(H2D) << " index: " << i << "; count:" << net_value.datas[i].shape.DataCount() << ", data_size: " << data_size << std::endl;
 
       memop_->CopyFromHost(dst_net, src_cpu, data_size);
     }
@@ -112,23 +111,22 @@ std::vector<std::shared_ptr<InferTask>> InferBatchingDoneStage::BatchingDone(con
 #ifdef VSTREAM_UNIT_TEST
     // std::this_thread::sleep_for(std::chrono::milliseconds(800));
     assert(finfos.size() == batchsize_);
-
-    for (uint32_t bidx = 0; bidx < batchsize_; bidx++) {
-      LOGD(INFER) << "bidx: " << bidx << "; [" << finfos[bidx].first->stream_id << "], ts: " << finfos[bidx].first->timestamp;
-    }
 #endif
 
-    if (profiler_) {  // module profiler
-      profiler_->RecordProcessStart(key_profile_inference, std::make_pair(finfos[0].first->stream_id, finfos[0].first->timestamp));
+    for (uint32_t bidx = 0; bidx < batchsize_; bidx++) {
+      LOGU(INFER) << "bidx: " << bidx << "; [" << finfos[bidx].first->stream_id << "], ts: " << finfos[bidx].first->timestamp;
     }
-    // debug for net_input
+
+    if (profiler_) {
+      profiler_->RecordProcessStart(kINFERENCE_PROFILER_NAME, std::make_pair(finfos[0].first->stream_id, finfos[0].first->timestamp));
+    }
     if (!dump_resized_image_dir_.empty()) {
       // dump_resized_image(net_input_value, dump_resized_image_dir_);
     }
     model_->RunSync(net_input_value.ptrs, net_output_value.ptrs);
 
     if (profiler_) {
-      profiler_->RecordProcessEnd(key_profile_inference, std::make_pair(finfos[0].first->stream_id, finfos[0].first->timestamp));
+      profiler_->RecordProcessEnd(kINFERENCE_PROFILER_NAME, std::make_pair(finfos[0].first->stream_id, finfos[0].first->timestamp));
     }
 
     this->net_input_res_->DeallingDone();
@@ -154,11 +152,11 @@ std::vector<std::shared_ptr<InferTask>> D2HBatchingDoneStage::BatchingDone(const
 #ifdef VSTREAM_UNIT_TEST
     // std::this_thread::sleep_for(std::chrono::milliseconds(100));
     assert(finfos.size() == batchsize_);
+#endif
 
     for (uint32_t bidx = 0; bidx < batchsize_; bidx++) {
-      LOGI(D2H) << "bidx: " << bidx << "; [" << finfos[bidx].first->stream_id << "], ts: " << finfos[bidx].first->timestamp;
+      LOGU(D2H) << "bidx: " << bidx << "; [" << finfos[bidx].first->stream_id << "], ts: " << finfos[bidx].first->timestamp;
     }
-#endif
 
     for (int i = 0; i < model_->OutputNum(); i++) {
       void* src_net = net_output_value.ptrs[i].get();

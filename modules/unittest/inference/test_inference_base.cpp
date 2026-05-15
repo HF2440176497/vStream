@@ -483,8 +483,8 @@ TEST(InferenceBaseTest, Param) {
 }
 
 // 单个模块测试使用，并非 pipeline 所配
-static const char *g_preproc_name = "PreprocTest";
-static const char *g_postproc_name = "PostprocTest";
+static const char *g_preproc_name = "PreREFLEX";
+static const char *g_postproc_name = "PostREFLEX";
 
 static constexpr int g_device_id = 0;
 static const std::string g_channel_id = "channel_1";

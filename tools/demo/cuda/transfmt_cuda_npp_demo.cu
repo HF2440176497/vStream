@@ -59,19 +59,19 @@ static bool TestNV12ToRGB24_NPP(TestFrame& frame, std::string output_file) {
   int nDstStep = frame.dst_pitch;
 
   // For npp func, 使用对齐的 
-  status = nppiNV12ToRGB_709HDTV_8u_P2C3R_Ctx(
-    aSrc, aSrcStep,
-    pDst, nDstStep,
-    frame.oSize,
-    npp_stream_ctx
-  );
-
-  // status = nppiNV12ToRGB_8u_P2C3R_Ctx(
+  // status = nppiNV12ToRGB_709HDTV_8u_P2C3R_Ctx(
   //   aSrc, aSrcStep,
   //   pDst, nDstStep,
   //   frame.oSize,
   //   npp_stream_ctx
   // );
+
+  status = nppiNV12ToRGB_8u_P2C3R_Ctx(
+    aSrc, aSrcStep,
+    pDst, nDstStep,
+    frame.oSize,
+    npp_stream_ctx
+  );
   CHECK_NPP(status);
 
   CHECK_CUDA_RUNTIME(cudaGetLastError());
@@ -117,19 +117,21 @@ static bool TestNV12ToBGR24_NPP(TestFrame& frame, std::string output_file) {
   Npp8u* pDst = static_cast<Npp8u*>(frame.d_bgr_plane);
   int nDstStep = frame.dst_pitch;
 
-  status = nppiNV12ToBGR_709HDTV_8u_P2C3R_Ctx(
-    aSrc, aSrcStep,
-    pDst, nDstStep,
-    frame.oSize,
-    npp_stream_ctx
-  );
+  std::cout << "aSrcStep: " << aSrcStep << ", nDstStep: " << nDstStep << std::endl;
 
-  // status = nppiNV12ToBGR_8u_P2C3R_Ctx(
-  //   aSrc, aSrcStep, 
+  // status = nppiNV12ToBGR_709HDTV_8u_P2C3R_Ctx(
+  //   aSrc, aSrcStep,
   //   pDst, nDstStep,
-  //   frame.oSize, 
+  //   frame.oSize,
   //   npp_stream_ctx
   // );
+
+  status = nppiNV12ToBGR_8u_P2C3R_Ctx(
+    aSrc, aSrcStep, 
+    pDst, nDstStep,
+    frame.oSize, 
+    npp_stream_ctx
+  );
   CHECK_NPP(status);
 
   CHECK_CUDA_RUNTIME(cudaGetLastError());
@@ -351,6 +353,7 @@ static bool TestOpenCVConversionConsistency(TestFrame& frame, uint8_t expected_r
   int width = frame.width;
   int height = frame.height;
 
+  size_t b_errors = 0, g_errors = 0, r_errors = 0;
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
       int idx = (y * width + x) * 3;
@@ -365,14 +368,10 @@ static bool TestOpenCVConversionConsistency(TestFrame& frame, uint8_t expected_r
   }
 
   // size_t total_pixels = width * height;
-  // size_t b_errors = 0, g_errors = 0, r_errors = 0;
   // std::cout << "OpenCV channel consistency check:" << std::endl;
-  // std::cout << "  B channel: " << b_errors << " / " << total_pixels << " pixels different ("
-  //           << (100.0 * b_errors / total_pixels) << "%)" << std::endl;
-  // std::cout << "  G channel: " << g_errors << " / " << total_pixels << " pixels different ("
-  //           << (100.0 * g_errors / total_pixels) << "%)" << std::endl;
-  // std::cout << "  R channel: " << r_errors << " / " << total_pixels << " pixels different ("
-  //           << (100.0 * r_errors / total_pixels) << "%)" << std::endl;
+  // std::cout << "  B channel: " << b_errors << " / " << total_pixels << std::endl;
+  // std::cout << "  G channel: " << g_errors << " / " << total_pixels << std::endl;
+  // std::cout << "  R channel: " << r_errors << " / " << total_pixels << std::endl;
 
   std::cout << "\nOpenCV BGR memory layout:" << std::endl;
   std::cout << "  Memory[0] = B = " << (int)opencv_bgr[0] << " (expected: " << (int)expected_b << ")" << std::endl;
@@ -380,6 +379,83 @@ static bool TestOpenCVConversionConsistency(TestFrame& frame, uint8_t expected_r
   std::cout << "  Memory[2] = R = " << (int)opencv_bgr[2] << " (expected: " << (int)expected_r << ")" << std::endl;
 
   return (b_errors == 0 && g_errors == 0 && r_errors == 0);
+}
+
+/**
+ * @brief 使用 NPP 将 cv::Mat (BGR) 转换到 NV12 (y_plane + uv_plane)
+ * 与 LoadToNV12 对应，本函数全程在 GPU 上完成 BGR→NV12 转换，
+ * 同时分配 GPU 显存并将结果回拷到 CPU 端，调用后无需再调用 AllocateGpuMemory / CopyToGpu。
+ */
+static bool LoadToNV12Npp(const std::string& image_path, TestFrame& frame) {
+  cv::Mat src_mat = cv::imread(image_path, cv::IMREAD_COLOR);
+  if (src_mat.empty()) {
+    std::cerr << "Failed to load image: " << image_path << std::endl;
+    return false;
+  }
+
+  frame.width = src_mat.cols;
+  frame.height = src_mat.rows;
+
+  if (frame.height % 2 != 0 || frame.width % 2 != 0) {
+    frame.height = (frame.height / 2) * 2;
+    frame.width = (frame.width / 2) * 2;
+    src_mat = src_mat(cv::Rect(0, 0, frame.width, frame.height));
+  }
+
+  frame.oSize.width = frame.width;
+  frame.oSize.height = frame.height;
+
+  std::cout << "Image Loaded (NPP BGR->NV12): " << frame.width << "x" << frame.height << std::endl;
+
+  int src_pitch = ((frame.width + PITCH_ALIGN - 1) / PITCH_ALIGN) * PITCH_ALIGN;
+  int dst_pitch = ((frame.width * 3 + PITCH_ALIGN - 1) / PITCH_ALIGN) * PITCH_ALIGN;
+
+  frame.src_pitch = src_pitch;
+  frame.dst_pitch = dst_pitch;
+
+  CHECK_CUDA_RUNTIME(cudaMalloc(&frame.d_y_plane,  src_pitch * frame.height));
+  CHECK_CUDA_RUNTIME(cudaMalloc(&frame.d_uv_plane, src_pitch * frame.height / 2));
+  CHECK_CUDA_RUNTIME(cudaMalloc(&frame.d_rgb_plane, dst_pitch * frame.height));
+  CHECK_CUDA_RUNTIME(cudaMalloc(&frame.d_bgr_plane, dst_pitch * frame.height));
+
+  CHECK_CUDA_RUNTIME(cudaMemcpy2D(frame.d_bgr_plane, dst_pitch,
+              src_mat.data, src_mat.step,
+              frame.width * 3, frame.height,
+              cudaMemcpyHostToDevice));
+
+  NppStreamContext npp_stream_ctx;
+  NppStatus status = nppGetStreamContext(&npp_stream_ctx);
+  CHECK_NPP(status);
+
+  const Npp8u* pSrc = static_cast<const Npp8u*>(frame.d_bgr_plane);
+  Npp8u* pDst[2] = { static_cast<Npp8u*>(frame.d_y_plane),
+                     static_cast<Npp8u*>(frame.d_uv_plane) };
+  int DstStep[2] = { frame.src_pitch, frame.src_pitch };
+
+  status = nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx(
+    pSrc, dst_pitch,
+    pDst, DstStep,
+    frame.oSize,
+    MATRIX_BGR_TO_YUV709,
+    npp_stream_ctx);
+  CHECK_NPP(status);
+
+  CHECK_CUDA_RUNTIME(cudaGetLastError());
+  CHECK_CUDA_RUNTIME(cudaDeviceSynchronize());
+
+  frame.y_plane.resize(frame.width * frame.height);
+  frame.uv_plane.resize(frame.width * frame.height / 2);
+  CHECK_CUDA_RUNTIME(
+      cudaMemcpy2D(frame.y_plane.data(), frame.width,
+                   frame.d_y_plane, frame.src_pitch,
+                   frame.width, frame.height,
+                   cudaMemcpyDeviceToHost));
+  CHECK_CUDA_RUNTIME(
+      cudaMemcpy2D(frame.uv_plane.data(), frame.width,
+                   frame.d_uv_plane, frame.src_pitch,
+                   frame.width, frame.height / 2,
+                   cudaMemcpyDeviceToHost));
+  return true;
 }
 
 int main(int argc, char** argv) {
@@ -403,21 +479,7 @@ int main(int argc, char** argv) {
   frame.fmt = DataFormat::PIXEL_FORMAT_YUV420_NV12;
 
   std::cout << "\nLoading image: " << image_path << std::endl;
-  if (!LoadImageAndConvertToNV12(image_path, frame)) {
-    std::cerr << "Failed to load image and convert to NV12" << std::endl;
-    return -1;
-  }
-  // 首先验证 LIBYUV 转换结果，是否存在色彩偏移的情况
-  TestWithLibyuvCPU(frame, "save/nv12_to_rgb24_libyuv_pre.jpg", "save/nv12_to_bgr24_libyuv_pre.jpg");
-
-  std::cout << "Allocating GPU memory..." << std::endl;
-  if (!AllocateGpuMemory(frame)) {
-    std::cerr << "Failed to allocate GPU memory" << std::endl;
-    return -1;
-  }
-
-  std::cout << "Copying data to GPU..." << std::endl;
-  CopyToGpu(frame);
+  LoadToNV12Npp(image_path, frame);
 
   TestNV12ToRGB24_NPP(frame, "save/nv12_to_rgb24_npp.jpg");
   TestNV12ToBGR24_NPP(frame, "save/nv12_to_bgr24_npp.jpg");
@@ -435,16 +497,9 @@ int main(int argc, char** argv) {
   const uint8_t test_g = 128;
   const uint8_t test_b = 242;
 
-  if (!CreateUniformTestImage(test_width, test_height, test_r, test_g, test_b,
-                              uniform_frame, "save/uniform_test.jpg")) {
-    std::cerr << "Failed to create uniform test image" << std::endl;
-    return -1;
-  }
-
-  if (!AllocateGpuMemory(uniform_frame)) {
-    std::cerr << "Failed to allocate GPU memory for uniform frame" << std::endl;
-    return -1;
-  }
+  CreateUniformTestImage(test_width, test_height, test_r, test_g, test_b,
+                        uniform_frame, "save/uniform_test.jpg");
+  AllocateGpuMemory(uniform_frame);
   CopyToGpu(uniform_frame);
 
   std::cout << "\n--- NPP Direct BGR ---" << std::endl;

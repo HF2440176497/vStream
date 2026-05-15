@@ -36,7 +36,6 @@ struct InferParams {
   uint32_t device_id = -1;
   bool postproc_on_device = false;  // 是否在 device 进行后处理，省略 D2H 数据拷贝; infer_param: postproc_on_device_
   bool object_infer = false;
-  // float threshold = 0.0f;  // not used
   uint32_t infer_interval = 1;
   uint32_t batching_timeout = 3000;  // ms
   uint32_t trans_data_size = 20;  // queue size
@@ -78,9 +77,9 @@ class InferParamManager {
   std::set<InferParamDesc, InferParamDescLessCompare> param_descs_;
 };  // class InferParamManager
 
-inline const std::string key_profile_preproc = "PRE_PROC";
-inline const std::string key_profile_inference = "INFER";
-inline const std::string key_profile_postproc = "POST_PROC";
+inline const std::string kPREPROC_PROFILER_NAME = "PRE_PROC";
+inline const std::string kINFERENCE_PROFILER_NAME = "INFER";
+inline const std::string kPOSTPROC_PROFILER_NAME = "POST_PROC";
 
 }  // namespace cnstream
 

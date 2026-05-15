@@ -29,7 +29,7 @@ def create_pipeline_json(output_path: str, mode: str = "image") -> None:
     构造一个简单的 pipeline JSON 配置文件。
 
     mode:
-      - "image" : DataSource -> ProcessOne (图像文件输入)
+      - "image" : DataSource -> CountOne (图像文件输入)
       - "send"  : DataSource -> DecodeQueue (外部 Send 输入)
     """
     if mode == "image":

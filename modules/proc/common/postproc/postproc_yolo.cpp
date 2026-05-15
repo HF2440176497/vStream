@@ -347,9 +347,7 @@ class Yolov5PostprocNoNMS: public Postproc {
     InferObjsPtr objs_holder = package->collection.Get<InferObjsPtr>(cnstream::kInferObjsTag);
     ObjsVec &objs = objs_holder->objs_;
 
-#ifdef VSTREAM_UNIT_TEST
-    LOGI(POSTPROC) << "YOLOv5 NoNMS output_shape: " << output_shape;
-#endif
+    LOGU(POSTPROC) << "YOLOv5 NoNMS output_shape: " << output_shape;
 
     int stride = 7;
 

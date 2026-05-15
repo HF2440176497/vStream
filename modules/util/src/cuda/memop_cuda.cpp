@@ -58,7 +58,7 @@ void CudaMemOp::CopyToHost(void* dst, const void* src, size_t size) {
 }
 
 /**
- * @brief dst_mem 分配的内存使用 GetAlignedRGBStride 对齐后的 stride，
+ * @brief dst_mem 分配的内存使用 GetStride_8U_C3 对齐后的 stride，
  *        确保满足 NPP 函数的对齐要求（4 字节对齐）。
  *        src_frame 中的 stride 不做任何假设，从 src_frame->stride 读取。
  */
@@ -86,7 +86,7 @@ int CudaMemOp::ConvertImageFormat(CNSyncedMemory* dst_mem, DataFormat dst_fmt,
     return -1;
   }
   // SourceRender::Process 中设置 DataFrame fmt 时，stride 步长设置需一致
-  const int dst_stride = GetAlignedRGBStride(width);
+  const int dst_stride = GetStride_8U_C3(width);
 
   // 对于 src_stride
   // （1）For handler_send handler_image, src_frame 是紧密排列的

@@ -139,8 +139,8 @@ void ImageHandlerImpl::Loop() {
     frame.device_id = -1;
     frame.planeNum = 1;  // BGR格式使用1个平面
 
-    const int aligned_stride = GetAlignedRGBStride(frame.width);
-    size_t data_size = frame.height * aligned_stride;
+    const int stride = GetStride_8U_C3(frame.width);
+    size_t data_size = frame.height * stride;
 
     uint8_t* buffer = new (std::nothrow) uint8_t[data_size];
     if (!buffer) {
@@ -148,12 +148,12 @@ void ImageHandlerImpl::Loop() {
       return;
     }
     for (int i = 0; i < image_.rows; ++i) {
-      memcpy(buffer + i * aligned_stride,
+      memcpy(buffer + i * stride,
              image_.ptr(i),
              frame.width * 3);
     }
 
-    frame.stride[0] = aligned_stride;
+    frame.stride[0] = stride;
     frame.plane[0] = buffer;
     frame.buf_ref = std::make_unique<MatBufRef>(buffer);  // 交给 MatBufRef 管理释放
 
@@ -174,14 +174,14 @@ void ImageHandlerImpl::Loop() {
 
 /**
  * 定义如何处理来自数据源图像
- * 调用处：Loop 线程
+ * 调用之后不应当再使用 dec_frame 其内存可能已被释放
  */
 std::shared_ptr<FrameInfo> ImageHandlerImpl::OnDecodeFrame(DecodeFrame* frame) {
   if (!frame) {
     LOGE(SOURCE) << "[ImageHandlerImpl] OnDecodeFrame function frame is nullptr.";
     return nullptr;
   }
-  std::shared_ptr<FrameInfo> data = this->CreateFrameInfo();
+  std::shared_ptr<FrameInfo> data = CreateFrameInfo();
   if (!data) {
     LOGE(SOURCE) << "[ImageHandlerImpl] OnDecodeFrame function, failed to create FrameInfo.";
     return nullptr;
@@ -189,7 +189,7 @@ std::shared_ptr<FrameInfo> ImageHandlerImpl::OnDecodeFrame(DecodeFrame* frame) {
   data->timestamp = frame->pts;
   if (!frame->valid) {
     data->flags = static_cast<size_t>(DataFrameFlag::FRAME_FLAG_INVALID);
-    this->SendFrameInfo(data);
+    SendFrameInfo(data);
     return nullptr;
   }
   int ret = SourceRender::Process(data, frame, frame_id_++);
@@ -201,16 +201,15 @@ std::shared_ptr<FrameInfo> ImageHandlerImpl::OnDecodeFrame(DecodeFrame* frame) {
 }
 
 /**
- * Handler 线程循环结束时, 发送结束帧
+ * 线程循环结束时, 发送结束帧
  */
 void ImageHandlerImpl::OnEndFrame() {
-  // 调用 SourceRender::OnEndFrame 发送 EOS 帧
-  std::shared_ptr<FrameInfo> data = this->CreateFrameInfo(true);
+  std::shared_ptr<FrameInfo> data = CreateFrameInfo(true);
   if (!data) {
     LOGW(SOURCE) << "[ImageHandlerImpl] OnEndFrame function, failed to create FrameInfo.";
     return;
   }
-  this->SendFrameInfo(data);
+  SendFrameInfo(data);
   LOGI(SOURCE) << "[ImageHandlerImpl] OnEndFrame function, send end frame.";
 }
 

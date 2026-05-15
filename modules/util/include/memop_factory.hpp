@@ -55,7 +55,7 @@ class MemOpFactory {
   void PrintRegisteredCreators() {
     LOGI(MEMOP_FACTORY) << "PrintRegisteredCreators size: " << creators_.size();
     for (const auto& pair : creators_) {
-      LOGI(MEMOP_FACTORY) << "DevType: " << DevType2Str(pair.first) << " -> Creator Func Address: " << &pair.second;
+      LOGI(MEMOP_FACTORY) << DevType2Str(pair.first) << " -> Creator Func Address: " << &pair.second;
     }
   }
 

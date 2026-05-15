@@ -111,7 +111,7 @@ inline bool AllocateGpuMemory(TestFrame& frame) {
 /**
  * @brief Y 平面和 UV 平面紧密排列
  */
-inline bool LoadImageAndConvertToNV12(const std::string& image_path, TestFrame& frame) {
+inline bool LoadToNV12(const std::string& image_path, TestFrame& frame) {
   cv::Mat src_mat = cv::imread(image_path, cv::IMREAD_COLOR);
   if (src_mat.empty()) {
     std::cerr << "Failed to load image: " << image_path << std::endl;
@@ -230,6 +230,9 @@ inline bool CreateUniformTestImage(int width, int height, uint8_t r_val, uint8_t
   frame.height = height;
   frame.fmt = DataFormat::PIXEL_FORMAT_YUV420_NV12;
 
+  frame.oSize.width = frame.width;
+  frame.oSize.height = frame.height;
+
   if (frame.height % 2 != 0 || frame.width % 2 != 0) {
     frame.height = (frame.height / 2) * 2;
     frame.width = (frame.width / 2) * 2;
@@ -290,12 +293,9 @@ inline bool TestChannelConsistency(TestFrame& frame, uint8_t expected_r, uint8_t
   }
 
   std::cout << "Channel consistency check:" << std::endl;
-  std::cout << "  B channel: " << b_errors << " / " << total_pixels << " pixels different ("
-            << (100.0 * b_errors / total_pixels) << "%)" << std::endl;
-  std::cout << "  G channel: " << g_errors << " / " << total_pixels << " pixels different ("
-            << (100.0 * g_errors / total_pixels) << "%)" << std::endl;
-  std::cout << "  R channel: " << r_errors << " / " << total_pixels << " pixels different ("
-            << (100.0 * r_errors / total_pixels) << "%)" << std::endl;
+  std::cout << "  B channel: " << b_errors << " / " << total_pixels << std::endl;
+  std::cout << "  G channel: " << g_errors << " / " << total_pixels << std::endl;
+  std::cout << "  R channel: " << r_errors << " / " << total_pixels << std::endl;
 
   std::cout << "\nBGR memory layout analysis:" << std::endl;
   std::cout << "  Memory[0] = B = " << (int)frame.bgr_plane[0] << " (expected: " << (int)expected_b << ")" << std::endl;

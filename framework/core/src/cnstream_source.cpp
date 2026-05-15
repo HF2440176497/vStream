@@ -257,9 +257,7 @@ bool SourceModule::SendData(const std::shared_ptr<FrameInfo> data) {
   if (!data->IsEos() && IsStreamRemoved(data->stream_id)) {
     return false;
   }
-#ifdef VSTREAM_UNIT_TEST
-  LOGD(SourceModule) << "SendData, stream_id: " << data->stream_id << ", ts: " << data->timestamp << std::endl;
-#endif
+  LOGU(SOURCE) << "SendData, stream_id: " << data->stream_id << ", ts: " << data->timestamp << std::endl;
   return TransmitData(data);
 }
 

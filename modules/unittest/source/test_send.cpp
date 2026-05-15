@@ -60,10 +60,10 @@ TEST_F(SourceSendTest, TestSend) {
   send_handler_ = std::dynamic_pointer_cast<SendHandler>(source_handler_ptr);
   EXPECT_NE(send_handler_, nullptr);
 
-  EXPECT_EQ(source->AddSource(send_handler_), 0);
   EXPECT_TRUE(pipeline_->Start());
-
-  Module* sink_module = pipeline_->GetModule("sink");  // name in pipeline json
+  EXPECT_EQ(source->AddSource(send_handler_), 0);
+  
+  Module* sink_module = pipeline_->GetModule("sink");
   EXPECT_NE(sink_module, nullptr);
 
   DataSink *sink = dynamic_cast<DataSink*>(sink_module);

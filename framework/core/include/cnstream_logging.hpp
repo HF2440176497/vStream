@@ -25,11 +25,70 @@
 #define LOGD(tag) VLOG(1) << "[" << (#tag) << " DEBUG] "
 #define LOGT(tag) VLOG(2) << "[" << (#tag) << " TRACE] "
 
+#define LOGU(tag) LOGD(tag)
+
 #define LOGF_IF(tag, condition) LOG_IF(FATAL, condition) << "[" << (#tag) << " FATAL] "
 #define LOGE_IF(tag, condition) LOG_IF(ERROR, condition) << "[" << (#tag) << " ERROR] "
 #define LOGW_IF(tag, condition) LOG_IF(WARNING, condition) << "[" << (#tag) << " WARN] "
 #define LOGI_IF(tag, condition) LOG_IF(INFO, condition) << "[" << (#tag) << " INFO] "
 #define LOGD_IF(tag, condition) VLOG_IF(1, condition) << "[" << (#tag) << " DEBUG] "
 #define LOGT_IF(tag, condition) VLOG_IF(2, condition) << "[" << (#tag) << " TRACE] "
+
+
+#ifndef VSTREAM_LOG_TO_STDERR
+#  define VSTREAM_LOG_TO_STDERR  1   // 1:输出  0:不输出
+#endif
+#ifndef VSTREAM_LOG_TO_FILE
+#  define VSTREAM_LOG_TO_FILE    1   // 1:输出到文件    0:不输出
+#endif
+#ifndef VSTREAM_LOG_FILE_DIR
+#  define VSTREAM_LOG_FILE_DIR   "./log"  // 文件存放目录
+#endif
+#ifndef VSTREAM_LOG_ROLLING_SIZE_MB
+#  define VSTREAM_LOG_ROLLING_SIZE_MB  100  // 按大小滚动，单位MB，0表示不滚动
+#endif
+
+#include <fstream>
+#include <mutex>
+#include <string>
+
+namespace cnstream {
+namespace logging {
+
+class CustomLogSink : public google::LogSink {
+ public:
+  CustomLogSink();
+  ~CustomLogSink() override = default;
+
+  void send(google::LogSeverity severity,
+            const char* full_filename,
+            const char* base_filename,
+            int line,
+            const struct ::tm* tm_time,
+            const char* message,
+            size_t message_len) override;
+
+  CustomLogSink(const CustomLogSink&) = delete;
+  CustomLogSink& operator=(const CustomLogSink&) = delete;
+
+ private:
+  void RollFileIfNeeded();
+  void EmitToStderr(const std::string& line);
+  void EmitToFile(const std::string& line);
+
+  std::mutex      write_mutex_;
+  std::ofstream   file_stream_;
+  std::string     file_path_;
+  size_t          current_size_ = 0;
+  size_t          max_size_ = 0;
+};
+
+struct GlogLevelInitializer {
+  GlogLevelInitializer();
+};
+extern GlogLevelInitializer g_glog_level_init;
+
+}  // namespace logging
+}  // namespace cnstream
 
 #endif  // CNSTREAM_LOGGING_HPP_

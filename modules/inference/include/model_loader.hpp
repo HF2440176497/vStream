@@ -141,7 +141,7 @@ class ModelLoaderFactory {
   void PrintRegisteredCreators() {
     LOGI(MODEL_LOADER_FACTORY) << "PrintRegisteredCreators size: " << creators_.size();
     for (const auto& pair : creators_) {
-      LOGI(MODEL_LOADER_FACTORY) << "DevType: " << DevType2Str(pair.first) << " -> Creator Func Address: " << &pair.second;
+      LOGI(MODEL_LOADER_FACTORY) << DevType2Str(pair.first) << " -> Creator Func Address: " << &pair.second;
     }
   }
 

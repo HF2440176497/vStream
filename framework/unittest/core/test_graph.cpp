@@ -142,7 +142,7 @@ TEST_F(ConfigFileLoad, BaseInitGraph) {
 
   // Graph 只包含 Modudle SubGraphNode
   std::vector<std::string> expected_heads {"decoder"};
-  std::vector<std::string> expected_nodes {"decoder", "Inference", "ProcessOne"};
+  std::vector<std::string> expected_nodes {"decoder", "Inference", "CountOne"};
 
   // Init 过程会依赖 module_configs 因此我们首先检查
   // 应当和 pipeline.json 的配置对应

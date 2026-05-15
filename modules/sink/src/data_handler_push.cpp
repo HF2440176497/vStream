@@ -13,6 +13,8 @@
 #include <optional>
 #include <thread>
 #include <unordered_map>
+#include <vector>
+#include <opencv2/opencv.hpp>
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -136,7 +138,7 @@ class PushHandlerImpl {
       LOGI(SINK) << "[" << stream_id_ << "]: received EOS";
       return 0;
     }
-    UpdateFpsStat();
+    ControlFps();
 
     DataFramePtr frame = nullptr;
     if (data->collection.HasValue(cnstream::kDataFrameTag)) {
@@ -340,13 +342,9 @@ class PushHandlerImpl {
    * @param src_pix_fmt 输入帧的像素格式
    */
   bool SendDataFrame(const DataFramePtr& frame, AVPixelFormat src_pix_fmt) {
-    const int src_width  = frame->GetWidth();
-    const int src_height = frame->GetHeight();
-    const int dst_width = ctx_.codec_ctx->width;
-    const int dst_height = ctx_.codec_ctx->height;
-
+    auto dev_type = frame->GetCtx().device_type;
 #ifdef VSTREAM_USE_CUDA
-    if (frame->GetCtx().device_type == DevType::CUDA) {
+    if (dev_type == DevType::CUDA) {
       int actual_device = frame->GetCtx().device_id;
       if (!hw_ctx_initialized_.load()) {
         // 在首次运行时，检查 device_id，否则进行重新初始化
@@ -360,14 +358,16 @@ class PushHandlerImpl {
         hw_ctx_initialized_.store(true);
       }
       return SendFrameCuda(frame, src_pix_fmt);
-    }
-
-#else
-    if (frame->GetCtx().device_type == DevType::CPU) {
+    } else if (dev_type == DevType::CPU) {
+      return SendFrameToCuda(frame, src_pix_fmt);
+    } else {
       return SendFrame(frame, src_pix_fmt);
     }
 #endif
-    LOGW(SINK) << "[" << stream_id_ << "]: unknown device type " << DevType2Str(frame->GetCtx().device_type);
+    if (dev_type == DevType::CPU) {
+      return SendFrame(frame, src_pix_fmt);
+    }
+    LOGE(SINK) << "[" << stream_id_ << "]: unknown device type " << DevType2Str(dev_type);
     return true;
   }
 
@@ -431,12 +431,12 @@ class PushHandlerImpl {
     const int src_stride = frame->GetStride(0);
 
 #ifdef VSTREAM_UNIT_TEST
-    if (src_stride != GetAlignedRGBStride(src_width)) {
-      LOGE(SINK) << "[" << stream_id_ << "]: src_stride != GetAlignedRGBStride(src_width)";
+    if (src_stride != GetStride_8U_C3(src_width)) {
+      LOGE(SINK) << "[" << stream_id_ << "]: src_stride != GetStride_8U_C3(src_width)";
       return false;
     }
 #endif
-
+    // RGB24 / BGR24 转换为 NV12
     const void* cuda_data = frame->data_[0]->GetDevData();
     int ret = av_frame_make_writable(ctx_.hw_frame);
     if (ret < 0) {
@@ -473,6 +473,86 @@ class PushHandlerImpl {
                  << npp_ret << ", falling back to CPU path";
       return SendFrameCpuFallback(frame, src_pix_fmt);
     }
+
+    ctx_.hw_frame->pts = ComputePts();
+    return EncodeFrame(ctx_.hw_frame);
+  }
+
+  /**
+   * @brief CUDA 编码流程，需将数据转移到 CUDA 
+   */
+  bool SendFrameToCuda(const DataFramePtr& frame, AVPixelFormat src_pix_fmt) {
+    // no need to reinit stream
+    if (!hw_ctx_initialized_.load()) {
+      hw_ctx_initialized_.store(true);
+    }
+    const int src_width  = frame->GetWidth();
+    const int src_height = frame->GetHeight();
+    const int src_stride = frame->GetStride(0);
+
+#ifdef VSTREAM_UNIT_TEST
+    if (src_stride != GetStride_8U_C3(src_width)) {
+      LOGE(SINK) << "[" << stream_id_ << "]: src_stride != GetStride_8U_C3(src_width)";
+      return false;
+    }
+#endif
+
+    const uint8_t* cpu_data = static_cast<const uint8_t*>(frame->data_[0]->GetCpuData());
+    size_t src_size = static_cast<size_t>(src_height) * src_stride;
+
+    uint8_t* cuda_data = nullptr;
+    CHECK_CUDA_RUNTIME(cudaMalloc(&cuda_data, src_size));
+    CHECK_CUDA_RUNTIME(cudaMemcpy2D(cuda_data, src_stride,
+                                    cpu_data, src_stride,
+                                    src_width * 3, src_height,
+                                    cudaMemcpyHostToDevice));
+
+    int ret = av_frame_make_writable(ctx_.hw_frame);
+    if (ret < 0) {
+      LOGE(SINK) << "[" << stream_id_ << "]: av_frame_make_writable (hw_frame) failed";
+      cudaFree(cuda_data);
+      return false;
+    }
+
+    int npp_ret = -1;
+    uint8_t* dst_y  = ctx_.hw_frame->data[0];
+    uint8_t* dst_uv = ctx_.hw_frame->data[1];
+    int y_stride    = ctx_.hw_frame->linesize[0];
+    int uv_stride   = ctx_.hw_frame->linesize[1];
+
+    if (src_pix_fmt == AV_PIX_FMT_RGB24) {
+      npp_ret = NppRGB24ToNV12(dst_y, dst_uv, y_stride, uv_stride,
+                                cuda_data, src_stride, src_width, src_height);
+    } else if (src_pix_fmt == AV_PIX_FMT_BGR24) {
+      npp_ret = NppBGR24ToNV12(dst_y, dst_uv, y_stride, uv_stride,
+                                cuda_data, src_stride, src_width, src_height);
+    } else {
+      LOGW(SINK) << "[" << stream_id_ << "]: unsupported CPU src format for CUDA path, fallback";
+      cudaFree(cuda_data);
+      return SendFrameCpuFallback(frame, src_pix_fmt);
+    }
+    cudaFree(cuda_data);
+
+    if (npp_ret != 0) {
+      LOGW(SINK) << "[" << stream_id_ << "]: NPP conversion failed: "
+                  << npp_ret << ", falling back to CPU path";
+      return SendFrameCpuFallback(frame, src_pix_fmt);
+    }
+
+#ifdef VSTREAM_UNIT_TEST
+    {
+      static int dump_count = 0;
+      if (dump_count < 3) {
+        dump_count++;
+        uint8_t* mutable_cpu_data = static_cast<uint8_t*>(frame->data_[0]->GetMutableCpuData());
+        cv::Mat img(src_height, src_width, CV_8UC3, mutable_cpu_data, src_stride);
+
+        cv::Mat bgr_mat;
+        cv::cvtColor(img, bgr_mat, cv::COLOR_RGB2BGR);
+        cv::imwrite("/tmp/" + stream_id_ + "-" + std::to_string(dump_count) + ".png", bgr_mat);
+      }
+    }
+#endif
 
     ctx_.hw_frame->pts = ComputePts();
     return EncodeFrame(ctx_.hw_frame);
@@ -517,6 +597,7 @@ class PushHandlerImpl {
       }
       av_packet_free(&drain_pkt);
       if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+        ret = 0;
         break;
       }
       if (ret < 0) {

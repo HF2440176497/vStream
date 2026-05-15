@@ -35,9 +35,11 @@ static std::map<std::string, ClassInfo<ReflexObject>>& GlobalObjMap() {
   return sg_obj_map;
 }
 
+#ifdef VSTREAM_UNIT_TEST
 std::map<std::string, ClassInfo<ReflexObject>>& check_reflex_map() {
   return GlobalObjMap();
 }
+#endif
 
 ReflexObject* ReflexObject::CreateObject(const std::string& name) {
   const auto& obj_map = GlobalObjMap();

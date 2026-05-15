@@ -139,7 +139,7 @@ class EventBus : private NonCopyable {
   bool PostEvent(Event event);
 
 #ifndef VSTREAM_UNIT_TEST
- private:  // NOLINT
+ private:
 #else
   Event PollEventToTest();
 #endif

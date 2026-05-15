@@ -68,8 +68,11 @@ void InferTransDataHelper::Loop() {
     cond_not_full_.notify_one();
 
     if (cnstream::IsStreamRemoved(data.first->stream_id)) {
-      if (!data.first->IsEos()) {  // eos 需要向后传
-        // discard packet if stream has been removed
+      if (!data.first->IsEos()) {
+        if (infer_->GetProfiler()) {
+          infer_->GetProfiler()->RecordProcessDropped(kINFERENCE_PROFILER_NAME,
+              std::make_pair(data.first->stream_id, data.first->timestamp));
+        }
         continue;
       }
     }
@@ -80,6 +83,10 @@ void InferTransDataHelper::Loop() {
     card.WaitForCall();  // TODO: 有可能会阻塞
 
     if (infer_) {
+      if (!finfo->IsEos() && infer_->GetProfiler()) {
+        infer_->GetProfiler()->RecordProcessEnd(kINFERENCE_PROFILER_NAME,
+            std::make_pair(finfo->stream_id, finfo->timestamp));
+      }
       infer_->TransmitData(finfo);
     }
   }

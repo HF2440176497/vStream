@@ -12,6 +12,10 @@ ProcessProfiler::ProcessProfiler(const ProfilerConfig& config, const std::string
 
 void ProcessProfiler::RecordStart(const RecordKey& key) {
   std::lock_guard<std::mutex> lock(mutex_);
+  if (!start_time_initialized_) {
+    start_time_ = std::chrono::steady_clock::now();
+    start_time_initialized_ = true;
+  }
   start_times_[key] = std::chrono::steady_clock::now();
 }
 
@@ -19,7 +23,7 @@ void ProcessProfiler::RecordEnd(const RecordKey& key) {
   std::lock_guard<std::mutex> lock(mutex_);
   auto it = start_times_.find(key);
   if (it == start_times_.end()) {
-    LOGW(CORE) << "No start record found for key " << key.first;
+    // LOGW(CORE) << process_name_ << ": No start record found: " << key.first;
     return;
   }
   Time start_time = it->second;
@@ -69,10 +73,14 @@ ProcessProfile ProcessProfiler::GetProfile() {
   profile.min_latency = (min_latency_ == std::numeric_limits<double>::max()) ? 0.0 : min_latency_;
   
   Time now = std::chrono::steady_clock::now();
-  Duration elapsed = std::chrono::duration_cast<Duration>(now - start_time_);
-  double elapsed_ms = elapsed.count();
-  if (elapsed_ms > 0) {
-    profile.fps = completed_ / (elapsed_ms / 1000.0);
+  if (start_time_initialized_) {
+    Duration elapsed = std::chrono::duration_cast<Duration>(now - start_time_);
+    double elapsed_ms = elapsed.count();
+    if (elapsed_ms > 0) {
+      profile.fps = completed_ / (elapsed_ms / 1000.0);
+    } else {
+      profile.fps = 0.0;
+    }
   } else {
     profile.fps = 0.0;
   }

@@ -114,16 +114,14 @@ int MemOp::ConvertImageFormat(CNSyncedMemory* dst_mem, DataFormat dst_fmt,
   int height = src_frame->height;
   if (dst_fmt != DataFormat::PIXEL_FORMAT_BGR24 &&
       dst_fmt != DataFormat::PIXEL_FORMAT_RGB24) {
-    LOGE(CORE) << "MemOp::ConvertImageFormat: Unsupported destination format " 
+    LOGE(CORE) << "ConvertFormat: Unsupported destination format " 
                << static_cast<int>(dst_fmt);
     return -1;
   }
   DataFormat src_fmt = src_frame->fmt;
-  const int dst_stride = GetAlignedRGBStride(width);
+  const int dst_stride = GetStride_8U_C3(width);
   if (src_fmt == dst_fmt) {
-    LOGD(CORE) << "MemOp::ConvertImageFormat: Source format is same as destination format";
-    
-    // note: cpu 软解码、send、image 会运行到此
+    LOGD(CORE) << "ConvertFormat: Source format is same as destination format";
     int src_stride = src_frame->stride[0];
     if (src_stride == dst_stride) {
       Copy(dst, src_frame->plane[0], dst_stride * height);
@@ -148,7 +146,7 @@ int MemOp::ConvertImageFormat(CNSyncedMemory* dst_mem, DataFormat dst_fmt,
         cv::cvtColor(bgr_mat, rgb_mat, cv::COLOR_BGR2RGB);
         ret = 0;
       } else {
-        LOGE(CORE) << "MemOp::ConvertImageFormat: Unsupported destination format " 
+        LOGE(CORE) << "ConvertFormat: Unsupported destination format " 
                    << static_cast<int>(dst_fmt) << " for source BGR24";
         return -1;
       }
@@ -163,17 +161,15 @@ int MemOp::ConvertImageFormat(CNSyncedMemory* dst_mem, DataFormat dst_fmt,
         cv::cvtColor(rgb_mat, bgr_mat, cv::COLOR_RGB2BGR);
         ret = 0;
       } else {
-        LOGE(CORE) << "MemOp::ConvertImageFormat: Unsupported destination format " 
+        LOGE(CORE) << "ConvertFormat: Unsupported destination format " 
                    << static_cast<int>(dst_fmt) << " for source RGB24";
         return -1;
       }
       break;
     }
-
-    // 有可能是软解码，我们采用
     case DataFormat::PIXEL_FORMAT_YUV420_NV12: {
       if (src_frame->planeNum != 2) {
-        LOGE(CORE) << "MemOp::ConvertImageFormat: NV12 format requires 2 planes";
+        LOGE(CORE) << "ConvertFormat: NV12 format requires 2 planes";
         return -1;
       }
       const uint8_t* y_plane = static_cast<const uint8_t*>(src_frame->plane[0]);
@@ -193,7 +189,7 @@ int MemOp::ConvertImageFormat(CNSyncedMemory* dst_mem, DataFormat dst_fmt,
           static_cast<uint8_t*>(dst), dst_stride,
           width, height);
       } else {
-        LOGE(CORE) << "MemOp::ConvertImageFormat: Unsupported destination format " 
+        LOGE(CORE) << "ConvertFormat: Unsupported destination format " 
                    << static_cast<int>(dst_fmt) << " for source NV12";
         return -1;
       }
@@ -201,7 +197,7 @@ int MemOp::ConvertImageFormat(CNSyncedMemory* dst_mem, DataFormat dst_fmt,
     }
     case DataFormat::PIXEL_FORMAT_YUV420_NV21: {
       if (src_frame->planeNum != 2) {
-        LOGE(CORE) << "MemOp::ConvertImageFormat: NV21 format requires 2 planes";
+        LOGE(CORE) << "ConvertFormat: NV21 format requires 2 planes";
         return -1;
       }
       const uint8_t* y_plane = static_cast<const uint8_t*>(src_frame->plane[0]);
@@ -222,19 +218,19 @@ int MemOp::ConvertImageFormat(CNSyncedMemory* dst_mem, DataFormat dst_fmt,
           static_cast<uint8_t*>(dst), dst_stride,
           width, height);
       } else {
-        LOGE(CORE) << "MemOp::ConvertImageFormat: Unsupported destination format " 
+        LOGE(CORE) << "ConvertFormat: Unsupported destination format " 
                    << static_cast<int>(dst_fmt) << " for source NV21";
         return -1;
       }
       break;
     }
     default:
-      LOGE(CORE) << "MemOp::ConvertImageFormat: Unsupported source format " 
+      LOGE(CORE) << "ConvertFormat: Unsupported source format " 
                  << static_cast<int>(src_fmt);
       return -1;
   }
   if (ret != 0) {
-    LOGE(CORE) << "MemOp::ConvertImageFormat: libyuv conversion failed with error code: " << ret;
+    LOGE(CORE) << "ConvertFormat: libyuv conversion failed with error code: " << ret;
     return ret;
   }
   return 0;

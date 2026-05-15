@@ -207,7 +207,7 @@ struct DecodeFrame {
   }
 };
 
-inline int GetAlignedRGBStride(int width, int alignment = 4) {
+inline int GetStride_8U_C3(int width, int alignment = 4) {
   return ((width * 3 + alignment - 1) / alignment) * alignment;
 }
 
@@ -223,10 +223,10 @@ inline const std::unordered_map<std::string, DecoderType> param_decoder_map_ = {
   {"npu", DecoderType::DECODER_NPU}
 };
 
-inline const std::string key_output_type = "output_type";
 inline const std::string key_device_id = "device_id";
 inline const std::string key_interval = "interval";
 inline const std::string key_decoder_type = "decoder_type";
+inline const std::string key_output_type = "output_type";
 inline const std::string key_only_key_frame = "only_key_frame";
 
 inline const std::string key_file_path = "file_path";

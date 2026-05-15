@@ -276,12 +276,12 @@ bool Inference::Open(ModuleParamSet raw_params) {
   } else {
     if (GetProfiler()) {
       if (!params.preproc_name.empty()) {
-        GetProfiler()->RegisterProcess(key_profile_preproc);
+        GetProfiler()->RegisterProcess(kPREPROC_PROFILER_NAME);
       }
       if (!params.postproc_name.empty()) {
-        GetProfiler()->RegisterProcess(key_profile_postproc);
+        GetProfiler()->RegisterProcess(kPOSTPROC_PROFILER_NAME);
       }
-      GetProfiler()->RegisterProcess(key_profile_inference);
+      GetProfiler()->RegisterProcess(kINFERENCE_PROFILER_NAME);
     }
   }
 
@@ -320,8 +320,15 @@ int Inference::Process(std::shared_ptr<FrameInfo> data) {
 
   if (!eos) {
     if (data->IsRemoved()) {
-      // discard packets from removed-stream
+      if (GetProfiler()) {
+        GetProfiler()->RecordProcessDropped(kINFERENCE_PROFILER_NAME,
+            std::make_pair(data->stream_id, data->timestamp));
+      }
       return 0;
+    }
+    if (GetProfiler()) {
+      GetProfiler()->RecordProcessStart(kINFERENCE_PROFILER_NAME,
+          std::make_pair(data->stream_id, data->timestamp));
     }
   }
 

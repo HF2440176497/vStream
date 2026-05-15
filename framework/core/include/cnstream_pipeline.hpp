@@ -310,13 +310,11 @@ class Pipeline : private NonCopyable {
 #else
  private:
 #endif
-  /** called by BuildPipeline **/
   bool CreateModules(std::vector<std::shared_ptr<Module>>* modules);
   void GenerateModulesMask();
   void GenerateModulesProfilers(const std::vector<std::shared_ptr<Module>>& modules);
   bool CreateConnectors();
 
-  /* ------Internal methods------ */
   bool PassedByAllModules(uint64_t mask) const;
   void OnProcessStart(NodeContext* context, const std::shared_ptr<FrameInfo>& data);
   void OnProcessEnd(NodeContext* context, const std::shared_ptr<FrameInfo>& data);

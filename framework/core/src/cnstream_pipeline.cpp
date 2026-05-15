@@ -447,9 +447,7 @@ void Pipeline::OnPassThrough(NodeContext* context, const std::shared_ptr<FrameIn
   if (data->IsEos()) {
     // OnEos(context, data);
   }
-#ifdef VSTREAM_UNIT_TEST
-  LOGD(CORE) << "[" << context->module->GetName() << "]" << " [" << data->stream_id << "] pass through all modules; data->IsEos = " << std::boolalpha << data->IsEos();
-#endif
+  LOGU(CORE) << "[" << context->module->GetName() << "]" << " [" << data->stream_id << "] pass through all modules; data->IsEos = " << std::boolalpha << data->IsEos();
 }
 
 /**

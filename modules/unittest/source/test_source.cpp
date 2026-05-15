@@ -9,6 +9,8 @@
 #include "data_handler_image.hpp"
 #include "data_handler_video.hpp"
 
+#include "data_sink.hpp"
+
 #include <chrono>
 #include <typeinfo>
 
@@ -23,79 +25,18 @@ namespace cnstream {
 static std::string test_pipeline_json = "pipeline_source_base.json";
 static std::string test_pipeline_video_json = "pipeline_source_video.json";
 
-// 定义在 base.hpp 中
-std::string process_module_name = "ProcessOne";
+std::string process_module_name = "count_one";
 
 static bool has_save_frame_mat = false;
 static std::string save_file = "save/test_source_save.jpg";
 
-class TestSourceProcessModule: public Module, public ModuleCreator<TestSourceProcessModule> {
-  public:
-    TestSourceProcessModule(const std::string &name) : Module(name) {}
-    ~TestSourceProcessModule() {}
-    bool Open(ModuleParamSet params) override {
-      return true;
-    }
-    uint64_t frame_count_ = 0;
-
-    void Close() override {
-      LOGI(TestSourceProcessModule) << "Close";
-    }
-
-    void OnEos(const std::string& stream_id) override {
-      LOGI(TestSourceProcessModule) << "OnEos: " << stream_id;
-    }
-
-    int Process(std::shared_ptr<FrameInfo> frame_info) override {
-      frame_count_++;
-      DataFramePtr frame = frame_info->collection.Get<DataFramePtr>(kDataFrameTag);
-      if (!frame) {
-        LOGE(TestSourceProcessModule) << "frame is empty";
-        return -1;
-      }
-      // 打印 DataFrame 的相关信息
-      // LOGD(TestSourceProcessModule) << "--- frame [" << frame_count_ << "] datafmt: " << DataFormat2Str(frame->GetFmt());
-      // LOGD(TestSourceProcessModule) << "--- frame [" << frame_count_ << "] devtype: " << DevType2Str(frame->GetCtx().device_type);
-      // LOGD(TestSourceProcessModule) << "--- frame [" << frame_count_ << "] devid: " << frame->GetCtx().device_id;
-      // LOGD(TestSourceProcessModule) << "--- frame [" << frame_count_ << "] image height: " << frame->GetHeight();
-      // LOGD(TestSourceProcessModule) << "--- frame [" << frame_count_ << "] image width: " << frame->GetWidth() << "; stride: " << frame->GetStride(0);
-
-      // 打印 SyncMem 状态
-      for (int i = 0; i < frame->GetPlanes(); ++i) {
-        std::string mem_status_info = frame->data_[i]->StatusToString();
-        LOGD(TestSourceProcessModule) << "--- frame [" << frame_count_ << "] plane " << i << " mem status: " << mem_status_info;
-      }
-
-      // 尝试通过 SyncMem 落地图片
-      if (frame->HasImage()) {
-        LOGW(TestSourceProcessModule) << "before get image, frame_mat_ should be empty";
-      }
-      cv::Mat frame_mat = frame->GetImage();
-      if (frame_mat.empty()) {
-        LOGE(TestSourceProcessModule) << "frame_mat_ is empty";
-        return -1;
-      }
-
-      if (frame_count_ % 100 == 0) {
-        CudaMemInspect inspect(0);
-        LOGD(TestSourceProcessModule) << inspect.GetBriefInfo();
-      }
-      if (!has_save_frame_mat) {
-        cv::imwrite(save_file, frame_mat);
-        has_save_frame_mat = true;
-      }
-      return 0;
-    }
-};
-
-REGISTER_MODULE(TestSourceProcessModule);
 
 class EosObserver : public StreamMsgObserver {
  public:
   void Update(const StreamMsg &msg) override {}
 };
 
-class SourceModuleTest : public testing::Test {
+class SourceBase : public testing::Test {
  protected:
   virtual void SetUp() {
     pipeline_ = std::make_shared<Pipeline>("pipeline");
@@ -104,7 +45,7 @@ class SourceModuleTest : public testing::Test {
   }
 
   virtual void TearDown() {  // 当前用例结束
-    LOGI(SourceModuleTest) << "TearDown";
+    LOGI(SourceBase) << "TearDown";
     if (pipeline_) {
       pipeline_->Stop();
     }
@@ -121,7 +62,7 @@ class SourceModuleTest : public testing::Test {
 /**
  * @brief 测试 VideoSourceHandler 进行硬解码
  */
-class VideoSourceTest : public testing::Test {
+class SourceVideo : public testing::Test {
  protected:
   virtual void SetUp() {
     pipeline_ = std::make_shared<Pipeline>("pipeline");
@@ -130,7 +71,7 @@ class VideoSourceTest : public testing::Test {
   }
 
   virtual void TearDown() {
-    LOGI(VideoSourceTest) << "TearDown";
+    LOGI(SourceVideo) << "TearDown";
     if (pipeline_) {
       pipeline_->Stop();
     }
@@ -140,6 +81,7 @@ class VideoSourceTest : public testing::Test {
  protected:
   const std::string stream_id_ = "channel-1";
   std::shared_ptr<VideoHandler> video_handler_ = nullptr;
+  std::shared_ptr<PushHandler> push_handler_ = nullptr;
   std::shared_ptr<DataSource>   module_ = nullptr;
   std::shared_ptr<Pipeline>     pipeline_ = nullptr;
 };
@@ -150,7 +92,7 @@ TEST(Source, BasicOutput) {
   LOGE(MODULESUNITEST) << "LOGE test message";
 }
 
-TEST_F(SourceModuleTest, PipelineInit) {
+TEST_F(SourceBase, PipelineInit) {
 
   std::string json_content = readFile(test_pipeline_video_json.c_str());
   EXPECT_FALSE(json_content.empty()) << "Read json file failed";
@@ -181,7 +123,7 @@ TEST_F(SourceModuleTest, PipelineInit) {
   // 发现：DataSource 的 route_mask 也包含了自身 Module 的标记
 
   std::vector<std::string> registed_modules = ModuleFactory::Instance()->GetRegisted();
-  std::cout << "-------- SourceModuleTest module name: " << std::endl;
+  std::cout << "-------- SourceBase module name: " << std::endl;
   for (auto& module_name : registed_modules) {
     std::cout << "module name: " << module_name << std::endl;
   }
@@ -191,7 +133,7 @@ TEST_F(SourceModuleTest, PipelineInit) {
 /**
  * 读取图片
  */
-TEST_F(SourceModuleTest, RUN) {
+TEST_F(SourceBase, RUN) {
   // 提取 pipeline 中的 DataSource 模块
   EXPECT_NE(pipeline_, nullptr);
   Module* module_in_pipeline = pipeline_->GetModule("decoder");
@@ -203,16 +145,16 @@ TEST_F(SourceModuleTest, RUN) {
   std::shared_ptr<SourceHandler> source_handler_ptr = ImageHandler::Create(source, stream_id_);
   image_handler_ = std::dynamic_pointer_cast<ImageHandler>(source_handler_ptr);
   EXPECT_NE(image_handler_, nullptr);
-  EXPECT_EQ(source->AddSource(image_handler_), 0);
 
   EXPECT_TRUE(pipeline_->Start());
+  EXPECT_EQ(source->AddSource(image_handler_), 0);
 
   EXPECT_TRUE(image_handler_->impl_->running_);
   std::cout << "image_handler_->impl_->image_path = " << image_handler_->impl_->image_path_ << std::endl;
   std::cout << "image_handler_->impl_->frame_rate_ = " << image_handler_->impl_->frame_rate_ << std::endl;
 
   std::this_thread::sleep_for(std::chrono::milliseconds(2000));
-  LOGI(SourceModuleTest) << "Handler stream idx: " << image_handler_->GetStreamIndex();
+  LOGI(SourceBase) << "Handler stream idx: " << image_handler_->GetStreamIndex();
   EXPECT_NE(image_handler_->GetStreamIndex(), INVALID_STREAM_IDX);  // == data->stream_idx_
   EXPECT_TRUE(pipeline_->IsRunning());
   
@@ -222,9 +164,9 @@ TEST_F(SourceModuleTest, RUN) {
   PrintStreamEos();
   std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
-  LOGI(SourceModuleTest) << "Wait for EOS message to be processed";
-  LOGI(SourceModuleTest) << "CheckStreamEosReached(stream_id_) = " << std::boolalpha << CheckStreamEosReached(stream_id_, true);
-  LOGI(SourceModuleTest) << "Wait for EOS message complete";
+  LOGI(SourceBase) << "Wait for EOS message to be processed";
+  LOGI(SourceBase) << "CheckStreamEosReached(stream_id_) = " << std::boolalpha << CheckStreamEosReached(stream_id_, true);
+  LOGI(SourceBase) << "Wait for EOS message complete";
   
   pipeline_->Stop();
 }
@@ -232,7 +174,7 @@ TEST_F(SourceModuleTest, RUN) {
 /**
  * 测试多个流，每个流处理各自的图像
  */
-TEST_F(SourceModuleTest, MutilStream) {
+TEST_F(SourceBase, MutilStream) {
   Module* module_in_pipeline = pipeline_->GetModule("decoder");
   DataSource *source = dynamic_cast<DataSource*>(module_in_pipeline);
 
@@ -246,11 +188,11 @@ TEST_F(SourceModuleTest, MutilStream) {
     handlers[stream_id] = handler;
   }
 
+  EXPECT_TRUE(pipeline_->Start());
   for (auto stream_id : stream_ids) {
     EXPECT_EQ(source->AddSource(handlers[stream_id]), 0);
     EXPECT_TRUE(handlers[stream_id]->impl_->running_);
   }
-  EXPECT_TRUE(pipeline_->Start());
   
   Module* module_process = pipeline_->GetModule(process_module_name);
 
@@ -280,8 +222,8 @@ TEST_F(SourceModuleTest, MutilStream) {
 /**
  * 单独使用一个 pipeline 测试 video_handler
  */
-TEST_F(VideoSourceTest, RUN) {
-// TEST_F(VideoSourceTest, Loop) {
+TEST_F(SourceVideo, RUN) {
+// TEST_F(SourceVideo, Loop) {
   EXPECT_NE(pipeline_, nullptr);
   Module* module_in_pipeline = pipeline_->GetModule("decoder");
   EXPECT_NE(module_in_pipeline, nullptr);
@@ -293,26 +235,38 @@ TEST_F(VideoSourceTest, RUN) {
   video_handler_ = std::dynamic_pointer_cast<VideoHandler>(source_handler_ptr);
   EXPECT_NE(video_handler_, nullptr);
 
-  EXPECT_EQ(source->AddSource(video_handler_), 0);
-  EXPECT_TRUE(pipeline_->Start());
+  Module* sink_module = pipeline_->GetModule("sink");
+  EXPECT_NE(sink_module, nullptr);
 
-  EXPECT_TRUE(video_handler_->impl_->running_);
+  DataSink *sink = dynamic_cast<DataSink*>(sink_module);
+  EXPECT_NE(sink, nullptr);
+
+  std::shared_ptr<SinkHandler> sink_handler = PushHandler::Create(sink, stream_id_);
+  push_handler_ = std::dynamic_pointer_cast<PushHandler>(sink_handler);
+  EXPECT_NE(push_handler_, nullptr);
+
+  EXPECT_TRUE(pipeline_->Start());
+  EXPECT_EQ(source->AddSource(video_handler_), 0);
+  EXPECT_EQ(sink->AddSink(push_handler_), 0);
+
   std::cout << "video_handler_->impl_->stream_url_ = " << video_handler_->impl_->stream_url_ << std::endl;
   std::cout << "video_handler_->impl_->frame_rate_ = " << video_handler_->impl_->frame_rate_ << std::endl;
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(3000));  // running for a while
+  if (video_handler_->impl_->running_) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(3000));
+  }
 
-  // 需要判断是否有 nullptr (可能是未开启 profile)
-  // source module 不会有 kINPUT_PROFILER_NAME kPROCESS_PROFILER_NAME
   auto module_profiler = pipeline_->GetModuleProfiler(process_module_name);
   if (module_profiler) {
     auto module_profile = module_profiler->GetProfile();
     std::cout << "Process Module profile: " << ModuleProfileToString(module_profile) << std::endl;
   }
 
-  std::this_thread::sleep_for(std::chrono::seconds(100));  // running for a while
+  if (video_handler_->impl_->running_) {
+    std::this_thread::sleep_for(std::chrono::seconds(100));
+  }
 
-  LOGI(VideoSourceTest) << "Handler stream idx: " << video_handler_->GetStreamIndex();
+  LOGI(SourceVideo) << "Handler stream idx: " << video_handler_->GetStreamIndex();
   EXPECT_NE(video_handler_->GetStreamIndex(), INVALID_STREAM_IDX);  // == data->stream_idx_
   EXPECT_TRUE(pipeline_->IsRunning());
   
@@ -322,9 +276,9 @@ TEST_F(VideoSourceTest, RUN) {
   PrintStreamEos();
   std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
-  LOGI(VideoSourceTest) << "Wait for EOS message to be processed";
-  LOGI(VideoSourceTest) << "CheckStreamEosReached(stream_id_) = " << std::boolalpha << CheckStreamEosReached(stream_id_, true);
-  LOGI(VideoSourceTest) << "Wait for EOS message complete";
+  LOGI(SourceVideo) << "Wait for EOS message to be processed";
+  LOGI(SourceVideo) << "CheckStreamEosReached(stream_id_) = " << std::boolalpha << CheckStreamEosReached(stream_id_, true);
+  LOGI(SourceVideo) << "Wait for EOS message complete";
   
   pipeline_->Stop();
 }

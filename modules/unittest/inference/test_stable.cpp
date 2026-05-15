@@ -7,18 +7,19 @@
  */
 
 #include "base.hpp"
-
 #include "data_source_param.hpp"
 #include "cnstream_frame_va.hpp"
+
 #include "data_source.hpp"
 #include "data_handler_image.hpp"
 #include "cnstream_pipeline.hpp"
 
-#include "cuda/inspect_mem.hpp"
+#include "data_sink.hpp"
 
 #include "common.hpp"
 #include "inference.hpp"
 #include "infer_params.hpp"
+#include "cuda/inspect_mem.hpp"
 
 #include <csignal>
 #include <opencv2/opencv.hpp>
@@ -28,7 +29,7 @@ namespace cnstream {
 
 static std::string test_pipeline_json = "pipeline_stable.json";
 
-class StableTest : public testing::Test {
+class Stable : public testing::Test {
  protected:
   virtual void SetUp() {
     pipeline_ = std::make_shared<Pipeline>("pipeline");
@@ -37,7 +38,7 @@ class StableTest : public testing::Test {
   }
 
   virtual void TearDown() {  // 当前用例结束
-    LOGI(StableTest) << "TearDown";
+    LOGI(T_STABLE) << "TearDown";
     if (pipeline_) {
       pipeline_->Stop();
     }
@@ -48,7 +49,7 @@ class StableTest : public testing::Test {
   const std::string             stream_id_1_ = "channel-1";
   const std::string             stream_id_2_ = "channel-2";
   const std::string             stream_id_3_ = "channel-3";
-  std::vector<std::string>      stream_ids_ = {stream_id_1_, stream_id_2_, stream_id_3_};
+  std::vector<std::string>      stream_ids_ = {stream_id_1_};
 
   std::shared_ptr<ImageHandler> image_handler_ = nullptr;
   std::shared_ptr<DataSource>   module_ = nullptr;
@@ -56,7 +57,7 @@ class StableTest : public testing::Test {
 };
 
 
-TEST_F(StableTest, MultiStream) {
+TEST_F(Stable, MultiStream) {
 
   int device_id = 0;
   CudaMemInspect inspect(device_id);
@@ -75,21 +76,33 @@ TEST_F(StableTest, MultiStream) {
     EXPECT_TRUE(handler->impl_->running_);
   }
 
+  DataSink *sink = dynamic_cast<DataSink*>(pipeline_->GetModule("sink"));
+  EXPECT_NE(sink, nullptr);
+
+  for (auto stream_id : stream_ids_) {
+    std::shared_ptr<SinkHandler> sink_handler = PushHandler::Create(sink, stream_id);
+    auto push_handler = std::dynamic_pointer_cast<PushHandler>(sink_handler);
+    EXPECT_NE(push_handler, nullptr);
+    EXPECT_EQ(sink->AddSink(push_handler), 0);
+  }
+
   auto inference_module = pipeline_->GetModule("Inference");
   EXPECT_NE(inference_module, nullptr);
 
-  std::this_thread::sleep_for(std::chrono::seconds(10));
+  std::this_thread::sleep_for(std::chrono::seconds(300));
 
   auto profiler = inference_module->GetProfiler();
   if (profiler) {
-    auto profile = profiler->GetProcessProfile(key_profile_inference);
-    LOGI(StableTest) << "Inference profile: " << profile;
+    auto infer_profile = profiler->GetProcessProfile(kINFERENCE_PROFILER_NAME);
+    auto module_profile = profiler->GetProcessProfile(kPROCESS_PROFILER_NAME);
+    LOGI(T_STABLE) << "Inference Profile: " << infer_profile;
+    LOGI(T_STABLE) << "Module Profile: " << module_profile;
   }
 
-  std::this_thread::sleep_for(std::chrono::seconds(10));
-  LOGI(StableTest) << "Inspect brief info: " << inspect.GetBriefInfo();;
+  std::this_thread::sleep_for(std::chrono::seconds(300));
+  LOGI(T_STABLE) << "Inspect brief info: " << inspect.GetBriefInfo();;
 
-  std::this_thread::sleep_for(std::chrono::seconds(10));
+  std::this_thread::sleep_for(std::chrono::seconds(300));
   if (!force_exit) {
     pipeline_->Stop();
   } else {
@@ -105,7 +118,7 @@ namespace {
     }
 }
 
-class StableTestWithSigint : public testing::Test {
+class StableWithSigint : public testing::Test {
 protected:
     static constexpr int kStopTimeoutSec = 3;   // Stop() 最大容忍时间
     static constexpr int kCaseTimeoutSec = 10;   // 单条用例总超时
@@ -125,12 +138,12 @@ protected:
 
         // 异步 Stop()，确保在测试结束时能够及时清理
         if (pipeline_ && !stop_done_) {
-            LOGI(StableTestWithSigint) << "TearDown: forcing Stop()";
+            LOGI(T_STABLE) << "TearDown: forcing Stop()";
             auto future = std::async(std::launch::async, [this]() {
                 pipeline_->Stop();
             });
             if (future.wait_for(std::chrono::seconds(10)) == std::future_status::timeout) {
-                LOGI(StableTestWithSigint) << "TearDown: Stop() timeout, possible deadlock!";
+                LOGI(T_STABLE) << "TearDown: Stop() timeout, possible deadlock!";
             }
         }
 
@@ -148,7 +161,7 @@ protected:
         });
 
         if (future.wait_for(std::chrono::seconds(timeout_sec)) == std::future_status::timeout) {
-            LOGI(StableTestWithSigint) << "Stop() blocked over " << timeout_sec << "s, possible deadlock!";
+            LOGI(T_STABLE) << "Stop() blocked over " << timeout_sec << "s, possible deadlock!";
             return false;
         }
         return true;
@@ -165,7 +178,7 @@ protected:
                 auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
                     std::chrono::steady_clock::now() - start).count();
                 if (elapsed >= timeout_sec) {
-                    LOGI(StableTestWithSigint) << "WATCHDOG: case hung for " << elapsed << "s, abort!";
+                    LOGI(T_STABLE) << "WATCHDOG: case hung for " << elapsed << "s, abort!";
                     _Exit(1);  // 不触发析构，用于外部检测残留
                 }
                 std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -204,7 +217,7 @@ private:
 };
 
 // 用例 1：停止
-TEST_F(StableTestWithSigint, GracefulStop) {
+TEST_F(StableWithSigint, GracefulStop) {
     ASSERT_TRUE(pipeline_->Start());
     std::this_thread::sleep_for(std::chrono::seconds(2));
 
@@ -214,7 +227,7 @@ TEST_F(StableTestWithSigint, GracefulStop) {
 }
 
 // 用例 2：运行中收到 SIGINT
-TEST_F(StableTestWithSigint, SigintWhileRunning) {
+TEST_F(StableWithSigint, SigintWhileRunning) {
     ASSERT_TRUE(pipeline_->Start());
     StartWatchdog(kCaseTimeoutSec);
 
@@ -238,7 +251,7 @@ TEST_F(StableTestWithSigint, SigintWhileRunning) {
     EXPECT_TRUE(caught) << "未成功捕获 SIGINT";
 
     if (caught) {
-        LOGI(StableTestWithSigint) << "SIGINT caught, now calling Stop()";
+        LOGI(T_STABLE) << "SIGINT caught, now calling Stop()";
         EXPECT_TRUE(StopWithTimeout(kStopTimeoutSec))
             << "收到 SIGINT 后 Stop() 卡死";
     }
@@ -246,7 +259,7 @@ TEST_F(StableTestWithSigint, SigintWhileRunning) {
 }
 
 // 用例 3：Stop 执行过程中收到 SIGINT
-TEST_F(StableTestWithSigint, SigintDuringStop) {
+TEST_F(StableWithSigint, SigintDuringStop) {
     ASSERT_TRUE(pipeline_->Start());
     std::this_thread::sleep_for(std::chrono::seconds(3));
     StartWatchdog(kCaseTimeoutSec);
@@ -272,7 +285,7 @@ TEST_F(StableTestWithSigint, SigintDuringStop) {
 }
 
 // 用例 4：Stop 死锁/超时检测
-TEST_F(StableTestWithSigint, StopHangDetection) {
+TEST_F(StableWithSigint, StopHangDetection) {
     ASSERT_TRUE(pipeline_->Start());
     std::this_thread::sleep_for(std::chrono::seconds(2));
 

@@ -29,7 +29,7 @@ int SourceRender::Process(std::shared_ptr<FrameInfo> frame_info, DecodeFrame *de
   frame->fmt_ = DataFormat::PIXEL_FORMAT_RGB24;  // dst fmt
   for (int i = 0; i < frame->GetPlanes(); ++i) {
     if (i == 0) {
-      frame->stride_[i] = GetAlignedRGBStride(frame->width_);
+      frame->stride_[i] = GetStride_8U_C3(frame->width_);
     }
   }
   frame->CopyToSyncMem(dec_frame);

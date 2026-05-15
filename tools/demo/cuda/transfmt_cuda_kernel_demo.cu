@@ -373,7 +373,7 @@ int main(int argc, char** argv) {
   TestFrame frame;
   frame.fmt = DataFormat::PIXEL_FORMAT_YUV420_NV12;
 
-  LoadImageAndConvertToNV12(image_path, frame);
+  LoadToNV12(image_path, frame);
   AllocateGpuMemory(frame);
   CopyToGpu(frame);
 

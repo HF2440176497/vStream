@@ -89,7 +89,7 @@ class DataFrame : public NonCopyable {
   friend class SourceRender;
 
 #ifdef VSTREAM_UNIT_TEST
-  std::map<std::string, uint64_t> frame_count_map_;  // just for test
+  std::map<std::string, uint64_t> frame_count_map_;  // for test
 #endif
 
 };  // class DataFrame

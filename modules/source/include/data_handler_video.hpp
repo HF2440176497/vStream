@@ -85,6 +85,9 @@ class VideoHandlerImpl : public SourceRender {
  private:
   static enum AVPixelFormat get_hw_format(AVCodecContext *ctx, const enum AVPixelFormat *pix_fmts);
 
+public:
+  bool IsRunning() const { return running_; }
+
 #ifdef VSTREAM_UNIT_TEST
  public:
 #else
@@ -114,7 +117,12 @@ class VideoHandlerImpl : public SourceRender {
   AVPacket pkt_;
   struct SwsContext *sws_ctx_ = nullptr;
 
+#ifdef VSTREAM_USE_CUDA
   std::string type_name_ = "cuda";
+
+#else
+  std::string type_name_;
+#endif
 
   int device_id_ = -1;
   OutputType output_type_ = OutputType::OUTPUT_CPU;

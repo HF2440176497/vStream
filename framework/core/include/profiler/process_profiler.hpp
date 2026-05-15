@@ -118,7 +118,8 @@ class ProcessProfiler: private NonCopyable {
   double                    total_latency_ = 0.0;                              /*!< Total latency (ms). */
   double                    max_latency_ = 0.0;                                /*!< Maximum latency (ms). */
   double                    min_latency_ = std::numeric_limits<double>::max(); /*!< Minimum latency (ms). */
-  Time                      start_time_ = std::chrono::steady_clock::now();    /*!< Start time. */
+  Time                      start_time_;                                       /*!< Start time. */
+  bool                      start_time_initialized_ = false;                   /*!< Whether start time has been initialized. */
   std::map<RecordKey, Time> start_times_; /*!< Records the start time of each key. */
 };
 
