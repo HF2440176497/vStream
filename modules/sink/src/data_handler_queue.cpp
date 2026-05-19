@@ -56,12 +56,16 @@ class QueueHandlerImpl {
     }
   }
 
+  bool IsRunning() const {
+    return running_.load();
+  }
+
   /**
    * @brief Extracts output data from FrameInfo and pushes it into the internal queue.
    * 外界需要主动调用 GetData 获取 QueueHandler 组装的数据
    */
   int Process(const std::shared_ptr<FrameInfo> frame_info) {
-    if (!running_.load()) {
+    if (!IsRunning()) {
       LOGW(SINK) << "[" << stream_id_ << "]: QueueHandler not running, skip frame";
       return -1;
     }

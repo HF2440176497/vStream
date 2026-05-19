@@ -19,7 +19,7 @@ class PreREFLEX: public Preproc {
  public:
   int Execute(const std::vector<float*>& net_inputs, ModelLoader* model,
               const std::shared_ptr<cnstream::FrameInfo>& package) {
-    LOGI(PREPROC_TEST) << "Execute for data: " << package->GetStreamId() << ", timestamp: " << package->GetTimestamp();
+    LOGI(T_PREPROC) << "Execute for data: " << package->GetStreamId() << ", timestamp: " << package->GetTimestamp();
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
     return 0;
   }
@@ -36,7 +36,7 @@ class PostREFLEX: public Postproc {
  public:
   int Execute(const std::vector<float*>& net_outputs, ModelLoader* model,
               const std::shared_ptr<cnstream::FrameInfo>& package) {
-    LOGI(POSTPROC_TEST) << "Execute for data: " << package->GetStreamId() << ", timestamp: " << package->GetTimestamp();
+    LOGI(T_POSTPROC) << "Execute for data: " << package->GetStreamId() << ", timestamp: " << package->GetTimestamp();
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
     return 0;
   }
@@ -52,7 +52,7 @@ TEST(REFLEX, Test) {
   std::map<std::string, ClassInfo<ReflexObject>>& obj_map = check_reflex_map();
   for (auto it = obj_map.begin(); it != obj_map.end(); it++) {
     std::string name = it->first;
-    LOGI(TEST_REFLEX)  << "TEST_REFLEX: obj_map name = " << name;
+    LOGI(T_REFLEX)  << "TEST_REFLEX: obj_map name = " << name;
   }
 }
 

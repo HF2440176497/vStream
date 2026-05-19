@@ -45,7 +45,7 @@ class ModelLoaderTest : public testing::Test {
   virtual void SetUp() {
     input_image_ = cv::imread(image_file_, cv::IMREAD_COLOR);
     if (input_image_.empty()) {
-      LOGF(ModelLoaderTest) << "Failed to load image file: " << image_file_;
+      LOGF(T_INFERENCE) << "Failed to load image file: " << image_file_;
       return;
     }
 
@@ -69,7 +69,6 @@ class ModelLoaderTest : public testing::Test {
   }
 
   virtual void TearDown() {
-    LOGI(ModelLoaderTest) << "ModelLoaderTest TearDown";
     model_loader_ = nullptr;
     model_loader_owner_.reset();
     memop_.reset();
@@ -315,7 +314,7 @@ TEST_F(ModelLoaderTest, Run) {
   void* one_output_data = o_value.datas[output_index].ptr;
   TensorShape one_output_shape = model_loader_->OutputShape(output_index);
 
-  LOGI(InferenceTest) << "one_output_shape = " << one_output_shape;
+  LOGI(T_INFERENCE) << "one_output_shape = " << one_output_shape;
 
   int num_bboxes = one_output_shape.shape(2);  // 8000
   int output_cdim = one_output_shape.shape(1);  // 84

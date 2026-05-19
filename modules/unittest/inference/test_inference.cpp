@@ -35,8 +35,7 @@ class InferenceTest : public testing::Test {
     EXPECT_TRUE(pipeline_->BuildPipelineByJSONFile(test_pipeline_json));
   }
 
-  virtual void TearDown() {  // 当前用例结束
-    LOGI(InferenceTest) << "TearDown";
+  virtual void TearDown() {
     if (pipeline_) {
       pipeline_->Stop();
     }
@@ -59,7 +58,7 @@ TEST_F(InferenceTest, RunYOLO) {
   std::map<std::string, ClassInfo<ReflexObject>>& obj_map = check_reflex_map();
   for (auto it = obj_map.begin(); it != obj_map.end(); it++) {
     std::string name = it->first;
-    LOGI(RUN_YOLO) << "REFLEX: obj_map name = " << name << std::endl;
+    LOGI(T_INFERENCE) << "REFLEX: obj_map name = " << name << std::endl;
   }
   
   Module* module_in_pipeline = pipeline_->GetModule("decoder");
@@ -74,21 +73,20 @@ TEST_F(InferenceTest, RunYOLO) {
 
   ASSERT_TRUE(pipeline_->Start());
   ASSERT_FALSE(IsStreamRemoved(stream_id_));
-
   ASSERT_EQ(source->AddSource(image_handler_), 0);
-  ASSERT_TRUE(image_handler_->impl_->running_);
+  ASSERT_TRUE(image_handler_->impl_->IsRunning());
 
   std::this_thread::sleep_for(std::chrono::milliseconds(2000));
-  LOGI(InferenceTest) << "Handler stream idx: " << image_handler_->GetStreamIndex();
+  LOGI(T_INFERENCE) << "Handler stream idx: " << image_handler_->GetStreamIndex();
   EXPECT_NE(image_handler_->GetStreamIndex(), INVALID_STREAM_IDX);  // 等同 data->GetStreamIndex
   EXPECT_TRUE(pipeline_->IsRunning());
   
   PrintStreamEos();
   std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
-  LOGI(InferenceTest) << "Wait for EOS message to be processed";
-  LOGI(InferenceTest) << "CheckStreamEosReached(stream_id_) = " << std::boolalpha << CheckStreamEosReached(stream_id_, true);
-  LOGI(InferenceTest) << "Wait for EOS message complete";
+  LOGI(T_INFERENCE) << "Wait for EOS message to be processed";
+  LOGI(T_INFERENCE) << "CheckStreamEosReached(stream_id_) = " << std::boolalpha << CheckStreamEosReached(stream_id_, true);
+  LOGI(T_INFERENCE) << "Wait for EOS message complete";
   
   // 直接调用 pipeline->stop 可以实现 source handler 的 stop
   pipeline_->Stop();

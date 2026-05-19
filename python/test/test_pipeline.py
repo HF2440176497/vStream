@@ -44,7 +44,6 @@ def create_pipeline_json(output_path: str, mode: str = "image") -> None:
                 "next_modules": ["sink"],
                 "custom_params": {
                     "output_type": "cpu",
-                    "decoder_type": "cpu",
                     "file_path": "image.png",
                     "frame_rate": "30"
                 }
@@ -70,8 +69,7 @@ def create_pipeline_json(output_path: str, mode: str = "image") -> None:
                 "class_name": "cnstream::DataSource",
                 "next_modules": ["sink"],
                 "custom_params": {
-                    "output_type": "cpu",
-                    "decoder_type": "cpu"
+                    "output_type": "cpu"
                 }
             },
             "sink": {

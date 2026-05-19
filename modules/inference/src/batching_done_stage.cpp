@@ -109,7 +109,6 @@ std::vector<std::shared_ptr<InferTask>> InferBatchingDoneStage::BatchingDone(con
     IOResValue net_output_value = this->net_output_res_->WaitResourceByTicket(&nor_ticket);
 
 #ifdef VSTREAM_UNIT_TEST
-    // std::this_thread::sleep_for(std::chrono::milliseconds(800));
     assert(finfos.size() == batchsize_);
 #endif
 
@@ -118,7 +117,9 @@ std::vector<std::shared_ptr<InferTask>> InferBatchingDoneStage::BatchingDone(con
     }
 
     if (profiler_) {
-      profiler_->RecordProcessStart(kINFERENCE_PROFILER_NAME, std::make_pair(finfos[0].first->stream_id, finfos[0].first->timestamp));
+      for (const auto& finfo : finfos) {
+        profiler_->RecordProcessStart(kINFERENCE_PROFILER_NAME, std::make_pair(finfo.first->stream_id, finfo.first->timestamp));
+      }
     }
     if (!dump_resized_image_dir_.empty()) {
       // dump_resized_image(net_input_value, dump_resized_image_dir_);
@@ -126,7 +127,9 @@ std::vector<std::shared_ptr<InferTask>> InferBatchingDoneStage::BatchingDone(con
     model_->RunSync(net_input_value.ptrs, net_output_value.ptrs);
 
     if (profiler_) {
-      profiler_->RecordProcessEnd(kINFERENCE_PROFILER_NAME, std::make_pair(finfos[0].first->stream_id, finfos[0].first->timestamp));
+      for (const auto& finfo : finfos) {
+        profiler_->RecordProcessEnd(kINFERENCE_PROFILER_NAME, std::make_pair(finfo.first->stream_id, finfo.first->timestamp));
+      }
     }
 
     this->net_input_res_->DeallingDone();

@@ -35,13 +35,11 @@ DataSource::DataSource(const std::string &name) : SourceModule(name) {
       "DataSource is a module for handling input data (videos or images)."
       " Feed data to codec and send decoded data to the next module if there is one.");
   param_register_.Register(key_output_type,
-                           "Where the outputs will be stored. It could be cpu or mlu,"
-                           "It is used when decoder_type is cpu.");
+                           "Where the outputs will be stored.");
   param_register_.Register(key_device_id, "Which device will be used. If there is only one device, it might be 0.");
   param_register_.Register(key_interval,
                            "How many frames will be discarded between two frames"
                            " which will be sent to next modules.");
-  param_register_.Register(key_decoder_type, "Which the input data will be decoded by. It could be cpu or mlu.");
   param_register_.Register(key_only_key_frame, "Only decode key frames and other frames are discarded. Default is false");
 }
 
@@ -69,11 +67,7 @@ bool DataSource::Open(ModuleParamSet paramSet) {
   }
   if (paramSet.find(key_output_type) != paramSet.end()) {
     std::string out_type = paramSet.at(key_output_type);
-    param_.output_type_ = param_output_map_.at(out_type);
-  }
-  if (paramSet.find(key_decoder_type) != paramSet.end()) {
-    std::string dec_type = paramSet.at(key_decoder_type);
-    param_.decoder_type_ = param_decoder_map_.at(dec_type);
+    param_.output_type_ = param_output_map.at(out_type);
   }
   if (paramSet.find(key_interval) != paramSet.end()) {
     std::stringstream ss;
@@ -118,14 +112,14 @@ bool DataSource::CheckParamSet(const ModuleParamSet &paramSet) const {
     return false;
   }
   int device_id = GetDeviceId(paramSet);
-  // 1. output_type
+  // output_type
   if (paramSet.find(key_output_type) != paramSet.end()) {
     std::string out_type = paramSet.at(key_output_type);
-    if (param_output_map_.find(out_type) == param_output_map_.end()) {
+    if (param_output_map.find(out_type) == param_output_map.end()) {
       LOGE(SOURCE) << "[DataSource] [output_type] " << out_type << " not supported";
       return false;
     }
-    auto output_type = param_output_map_.at(out_type);
+    auto output_type = param_output_map.at(out_type);
     if (output_type != OutputType::OUTPUT_CPU) {
       if (device_id < 0) {
         LOGE(SOURCE) << "[DataSource] [output_type] " << out_type << " : device_id must be set";
@@ -136,21 +130,6 @@ bool DataSource::CheckParamSet(const ModuleParamSet &paramSet) const {
   if (!checker.IsNum({key_interval}, paramSet, err_msg, false)) {
     LOGE(SOURCE) << "[DataSource] " << err_msg;
     return false;
-  }
-  // 2. decoder_type
-  if (paramSet.find(key_decoder_type) != paramSet.end()) {
-    std::string dec_type = paramSet.at(key_decoder_type);
-    if (param_decoder_map_.find(dec_type) == param_decoder_map_.end()) {
-      LOGE(SOURCE) << "[DataSource] [decoder_type] " << dec_type << " not supported";
-      return false;
-    }
-    auto decoder_type = param_decoder_map_.at(dec_type);
-    if (decoder_type != DecoderType::DECODER_CPU) {
-      if (device_id < 0) {
-        LOGE(SOURCE) << "[DataSource] [decoder_type] " << dec_type << " : device_id must be set";
-        return false;
-      }
-    }
   }
   return ret;
 }

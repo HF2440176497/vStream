@@ -50,7 +50,6 @@ void DataHandlerWrapper(const py::module &m) {
       .def_readwrite("device_id", &DataSourceParam::device_id_)
       .def_readwrite("interval", &DataSourceParam::interval_)
       .def_readwrite("output_type", &DataSourceParam::output_type_)
-      .def_readwrite("decoder_type", &DataSourceParam::decoder_type_)
       .def_readwrite("only_key_frame", &DataSourceParam::only_key_frame_)
       .def_readwrite("param_set", &DataSourceParam::param_set_);
 

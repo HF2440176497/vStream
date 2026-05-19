@@ -44,8 +44,7 @@ class SourceBase : public testing::Test {
     EXPECT_TRUE(pipeline_->BuildPipelineByJSONFile(test_pipeline_json));
   }
 
-  virtual void TearDown() {  // 当前用例结束
-    LOGI(SourceBase) << "TearDown";
+  virtual void TearDown() {
     if (pipeline_) {
       pipeline_->Stop();
     }
@@ -71,7 +70,6 @@ class SourceVideo : public testing::Test {
   }
 
   virtual void TearDown() {
-    LOGI(SourceVideo) << "TearDown";
     if (pipeline_) {
       pipeline_->Stop();
     }
@@ -85,12 +83,6 @@ class SourceVideo : public testing::Test {
   std::shared_ptr<DataSource>   module_ = nullptr;
   std::shared_ptr<Pipeline>     pipeline_ = nullptr;
 };
-
-TEST(Source, BasicOutput) {
-  LOGI(MODULESUNITEST) << "LOGI test message";
-  LOGW(MODULESUNITEST) << "LOGW test message";
-  LOGE(MODULESUNITEST) << "LOGE test message";
-}
 
 TEST_F(SourceBase, PipelineInit) {
 
@@ -149,12 +141,12 @@ TEST_F(SourceBase, RUN) {
   EXPECT_TRUE(pipeline_->Start());
   EXPECT_EQ(source->AddSource(image_handler_), 0);
 
-  EXPECT_TRUE(image_handler_->impl_->running_);
+  EXPECT_TRUE(image_handler_->impl_->IsRunning());
   std::cout << "image_handler_->impl_->image_path = " << image_handler_->impl_->image_path_ << std::endl;
   std::cout << "image_handler_->impl_->frame_rate_ = " << image_handler_->impl_->frame_rate_ << std::endl;
 
   std::this_thread::sleep_for(std::chrono::milliseconds(2000));
-  LOGI(SourceBase) << "Handler stream idx: " << image_handler_->GetStreamIndex();
+  LOGI(T_SOURCE) << "Handler stream idx: " << image_handler_->GetStreamIndex();
   EXPECT_NE(image_handler_->GetStreamIndex(), INVALID_STREAM_IDX);  // == data->stream_idx_
   EXPECT_TRUE(pipeline_->IsRunning());
   
@@ -163,10 +155,10 @@ TEST_F(SourceBase, RUN) {
   
   PrintStreamEos();
   std::this_thread::sleep_for(std::chrono::milliseconds(500));
-
-  LOGI(SourceBase) << "Wait for EOS message to be processed";
-  LOGI(SourceBase) << "CheckStreamEosReached(stream_id_) = " << std::boolalpha << CheckStreamEosReached(stream_id_, true);
-  LOGI(SourceBase) << "Wait for EOS message complete";
+  
+  LOGI(T_SOURCE) << "Wait for EOS message to be processed";
+  LOGI(T_SOURCE) << "CheckStreamEosReached(stream_id_) = " << std::boolalpha << CheckStreamEosReached(stream_id_, true);
+  LOGI(T_SOURCE) << "Wait for EOS message complete";
   
   pipeline_->Stop();
 }
@@ -191,7 +183,7 @@ TEST_F(SourceBase, MutilStream) {
   EXPECT_TRUE(pipeline_->Start());
   for (auto stream_id : stream_ids) {
     EXPECT_EQ(source->AddSource(handlers[stream_id]), 0);
-    EXPECT_TRUE(handlers[stream_id]->impl_->running_);
+    EXPECT_TRUE(handlers[stream_id]->impl_->IsRunning());
   }
   
   Module* module_process = pipeline_->GetModule(process_module_name);
@@ -223,7 +215,6 @@ TEST_F(SourceBase, MutilStream) {
  * 单独使用一个 pipeline 测试 video_handler
  */
 TEST_F(SourceVideo, RUN) {
-// TEST_F(SourceVideo, Loop) {
   EXPECT_NE(pipeline_, nullptr);
   Module* module_in_pipeline = pipeline_->GetModule("decoder");
   EXPECT_NE(module_in_pipeline, nullptr);
@@ -252,7 +243,7 @@ TEST_F(SourceVideo, RUN) {
   std::cout << "video_handler_->impl_->stream_url_ = " << video_handler_->impl_->stream_url_ << std::endl;
   std::cout << "video_handler_->impl_->frame_rate_ = " << video_handler_->impl_->frame_rate_ << std::endl;
 
-  if (video_handler_->impl_->running_) {
+  if (video_handler_->impl_->IsRunning()) {
     std::this_thread::sleep_for(std::chrono::milliseconds(3000));
   }
 
@@ -262,11 +253,10 @@ TEST_F(SourceVideo, RUN) {
     std::cout << "Process Module profile: " << ModuleProfileToString(module_profile) << std::endl;
   }
 
-  if (video_handler_->impl_->running_) {
+  if (video_handler_->impl_->IsRunning()) {
     std::this_thread::sleep_for(std::chrono::seconds(100));
   }
-
-  LOGI(SourceVideo) << "Handler stream idx: " << video_handler_->GetStreamIndex();
+  LOGI(T_SOURCE) << "Handler stream idx: " << video_handler_->GetStreamIndex();
   EXPECT_NE(video_handler_->GetStreamIndex(), INVALID_STREAM_IDX);  // == data->stream_idx_
   EXPECT_TRUE(pipeline_->IsRunning());
   
@@ -276,9 +266,9 @@ TEST_F(SourceVideo, RUN) {
   PrintStreamEos();
   std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
-  LOGI(SourceVideo) << "Wait for EOS message to be processed";
-  LOGI(SourceVideo) << "CheckStreamEosReached(stream_id_) = " << std::boolalpha << CheckStreamEosReached(stream_id_, true);
-  LOGI(SourceVideo) << "Wait for EOS message complete";
+  LOGI(T_SOURCE) << "Wait for EOS message to be processed";
+  LOGI(T_SOURCE) << "CheckStreamEosReached(stream_id_) = " << std::boolalpha << CheckStreamEosReached(stream_id_, true);
+  LOGI(T_SOURCE) << "Wait for EOS message complete";
   
   pipeline_->Stop();
 }

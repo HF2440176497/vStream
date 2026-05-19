@@ -211,13 +211,13 @@ inline int GetStride_8U_C3(int width, int alignment = 4) {
   return ((width * 3 + alignment - 1) / alignment) * alignment;
 }
 
-inline const std::unordered_map<std::string, OutputType> param_output_map_ = {
+inline const std::unordered_map<std::string, OutputType> param_output_map = {
   {"cpu", OutputType::OUTPUT_CPU},
   {"cuda", OutputType::OUTPUT_CUDA},
   {"npu", OutputType::OUTPUT_NPU}
 };
 
-inline const std::unordered_map<std::string, DecoderType> param_decoder_map_ = {
+inline const std::unordered_map<std::string, DecoderType> param_decoder_map = {
   {"cpu", DecoderType::DECODER_CPU},
   {"cuda", DecoderType::DECODER_CUDA},
   {"npu", DecoderType::DECODER_NPU}
@@ -225,7 +225,7 @@ inline const std::unordered_map<std::string, DecoderType> param_decoder_map_ = {
 
 inline const std::string key_device_id = "device_id";
 inline const std::string key_interval = "interval";
-inline const std::string key_decoder_type = "decoder_type";
+// inline const std::string key_decoder_type = "decoder_type";
 inline const std::string key_output_type = "output_type";
 inline const std::string key_only_key_frame = "only_key_frame";
 
@@ -240,7 +240,6 @@ struct DataSourceParam {
   int  device_id_ = -1;                                 /*! DataFrame 的 device_id 直接来自 decode_frame  */
   size_t  interval_ = 1;                                /*!< The interval of outputting one frame. It outputs one frame every n (interval_) frames. */
   OutputType output_type_ = OutputType::OUTPUT_CPU;     /*!< The output type */
-  DecoderType decoder_type_ = DecoderType::DECODER_CPU; /*!< The decoder type. */
   bool only_key_frame_ = false;                         /*!< Whether only to decode key frames. */
   ModuleParamSet param_set_ {};
 };

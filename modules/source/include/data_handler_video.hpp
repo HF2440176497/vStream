@@ -31,6 +31,9 @@ extern "C" {
 namespace cnstream {
 
 class VideoHandlerImpl : public SourceRender {
+  friend class VideoHandler;
+  
+ public:
   struct MatBufRef : public IDecBufRef {
     explicit MatBufRef(void* data) : data_(data) {}
     ~MatBufRef() override {
@@ -49,11 +52,9 @@ class VideoHandlerImpl : public SourceRender {
     void* uv_data_;
   };
 
-  friend class VideoHandler;
-
- public:
   explicit VideoHandlerImpl(DataSource *module, SourceHandler *handler)
       : SourceRender(handler), module_(module), stream_id_(handler->GetStreamId()) {}
+  virtual ~VideoHandlerImpl() = default;
 
   bool Open();
   void Close();
@@ -64,34 +65,22 @@ class VideoHandlerImpl : public SourceRender {
   void OnEndFrame();
   std::shared_ptr<FrameInfo> OnDecodeFrame(DecodeFrame* frame);
 
- private:
-  bool support_hwdevice();
-  int init_hwdevice_conf();
-  int hw_decoder_init();
-  int codec_init();
+ protected:
+  virtual int codec_init();
+  virtual int decode_write() = 0;
+  virtual bool SupportHWDevice() { return true; }
+  virtual void ConfigureOutputType() {}
+
   int input_format_init();
-  int decode_write();
   void clean_up();
 
- private:
-#ifdef VSTREAM_USE_CUDA
-  // 硬解码时，根据 output_type_ 调用不同的函数
-  std::shared_ptr<FrameInfo> ProcessFrameCPU(AVFrame *p_frame, AVFrame *sw_frame, int &ret);
-  std::shared_ptr<FrameInfo> ProcessFrameCUDA(AVFrame *p_frame, int &ret);
-#else
-  std::shared_ptr<FrameInfo> ProcessFrame(AVFrame *p_frame, int &ret);
-#endif
-
- private:
-  static enum AVPixelFormat get_hw_format(AVCodecContext *ctx, const enum AVPixelFormat *pix_fmts);
-
-public:
+ public:
   bool IsRunning() const { return running_; }
 
 #ifdef VSTREAM_UNIT_TEST
  public:
 #else
- private:
+ protected:
 #endif
   std::atomic<bool> running_{false};
   std::thread thread_;
@@ -106,7 +95,7 @@ public:
   AVDictionary *ifmt_opts_ = nullptr;
   int video_index_ = -1;
 
-  AVFrame *s_frame_ = nullptr;  // 解码输出帧，常见格式为 NV12
+  AVFrame *s_frame_ = nullptr;
 
   enum AVHWDeviceType device_type_ = AV_HWDEVICE_TYPE_NONE;
   AVBufferRef *hw_device_ctx_ = nullptr;
@@ -117,16 +106,43 @@ public:
   AVPacket pkt_;
   struct SwsContext *sws_ctx_ = nullptr;
 
-#ifdef VSTREAM_USE_CUDA
-  std::string type_name_ = "cuda";
-
-#else
-  std::string type_name_;
-#endif
-
   int device_id_ = -1;
   OutputType output_type_ = OutputType::OUTPUT_CPU;
 };
+
+class VideoHandlerImplCPU : public VideoHandlerImpl {
+ public:
+  using VideoHandlerImpl::VideoHandlerImpl;
+
+ protected:
+  int decode_write() override;
+
+ private:
+  std::shared_ptr<FrameInfo> ProcessFrame(AVFrame *p_frame, int &ret);
+};
+
+#ifdef VSTREAM_USE_CUDA
+class VideoHandlerImplCUDA : public VideoHandlerImpl {
+ public:
+  using VideoHandlerImpl::VideoHandlerImpl;
+
+ protected:
+  int codec_init() override;
+  int decode_write() override;
+  bool SupportHWDevice() override;
+  void ConfigureOutputType() override;
+
+ private:
+  bool support_hwdevice();
+  int init_hwdevice_conf();
+  int hw_decoder_init();
+  static enum AVPixelFormat get_hw_format(AVCodecContext *ctx, const enum AVPixelFormat *pix_fmts);
+  std::shared_ptr<FrameInfo> ProcessFrameCPU(AVFrame *p_frame, AVFrame *sw_frame, int &ret);
+  std::shared_ptr<FrameInfo> ProcessFrameCUDA(AVFrame *p_frame, int &ret);
+
+  std::string type_name_ = "cuda";
+};
+#endif
 
 }  // namespace cnstream
 

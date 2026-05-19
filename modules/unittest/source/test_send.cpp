@@ -102,7 +102,7 @@ TEST_F(SourceSendTest, TestSend) {
       }
       count++;
       if (count % 20 == 0) {
-        LOGI(SINK) << "Receive: " << count << " frames; id_s: " << data.frame_id_s;
+        LOGI(T_SEND) << "Receive: " << count << " frames; id_s: " << data.frame_id_s;
       }
     }
   });

@@ -86,8 +86,7 @@ def test_python_module():
             "class_name": "cnstream::DataSource",
             "next_modules": ["py_module"],
             "custom_params": {
-                "output_type": "cpu",
-                "decoder_type": "cpu"
+                "output_type": "cpu"
             }
         },
         "py_module": {

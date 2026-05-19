@@ -41,9 +41,9 @@ option(VSTREAM_BUILD_LIBYUV "build libyuv" ON)
 option(VSTREAM_BUILD_PYBIND11 "build pybind11" ON)
 
 # Python 路径配置
-set(VSTREAM_PYTHON_ROOT_DIR ""
+set(VSTREAM_PYTHON_ROOT_DIR "/usr/local/python3.12"
     CACHE PATH "Custom Python root directory (e.g. /usr/local/python3.12). If not set, use system default.")
-set(VSTREAM_PYTHON_EXECUTABLE ""
+set(VSTREAM_PYTHON_EXECUTABLE "/usr/local/bin/python3.12"
     CACHE FILEPATH "Custom Python executable (e.g. /usr/local/python3.12/bin/python3.12). If not set, use system default.")
 
 # 静态库 and 动态库输出目录
@@ -69,10 +69,12 @@ if (VSTREAM_BUILD_PYBIND11)
   # 如果用户指定了自定义 Python 路径，则强制使用
   if(VSTREAM_PYTHON_ROOT_DIR)
     set(Python_ROOT_DIR "${VSTREAM_PYTHON_ROOT_DIR}" CACHE PATH "Python root directory" FORCE)
+    set(Python3_ROOT_DIR "${VSTREAM_PYTHON_ROOT_DIR}" CACHE PATH "Python3 root directory" FORCE)
     message(STATUS "Using custom Python_ROOT_DIR: ${VSTREAM_PYTHON_ROOT_DIR}")
   endif()
   if(VSTREAM_PYTHON_EXECUTABLE)
     set(Python_EXECUTABLE "${VSTREAM_PYTHON_EXECUTABLE}" CACHE FILEPATH "Python executable" FORCE)
+    set(Python3_EXECUTABLE "${VSTREAM_PYTHON_EXECUTABLE}" CACHE FILEPATH "Python3 executable" FORCE)
     set(PYTHON_EXECUTABLE "${VSTREAM_PYTHON_EXECUTABLE}" CACHE FILEPATH "Python executable" FORCE)
     message(STATUS "Using custom Python_EXECUTABLE: ${VSTREAM_PYTHON_EXECUTABLE}")
   endif()

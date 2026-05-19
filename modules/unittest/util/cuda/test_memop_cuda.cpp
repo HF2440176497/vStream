@@ -66,7 +66,7 @@ TEST(CudaMemOp, CreateSyncedMemoryAndAllocate) {
   for (size_t i = 0; i < bytes; ++i) {
     ASSERT_EQ(cpu_data[i], pattern);
   }
-  LOGI(MEMOP_TEST) << "cuda_synced_mem status: " << cuda_synced_mem->StatusToString();
+  LOGI(T_CUDA_MEMOP) << "cuda_synced_mem status: " << cuda_synced_mem->StatusToString();
   free(tmp);
 }
 
@@ -158,7 +158,7 @@ void clear_decode_frame(DecodeFrame* src_frame) {
     CHECK_CUDA_RUNTIME(cudaFree(src_frame->plane[0]));
     CHECK_CUDA_RUNTIME(cudaFree(src_frame->plane[1]));
   } else {
-    LOGF(FRAME) << "clear_decode_frame ERROR, fmt not supported.";
+    LOGF(T_CUDA_FRAME) << "clear_decode_frame ERROR, fmt not supported.";
   }
   return;
 }
