@@ -809,6 +809,7 @@ void PushHandler::RegisterHandlerParams() {
 }
 
 /**
+ * 验证相关参数的存在
  * @param params 来自 DataSink 的参数
  */
 bool PushHandler::CheckHandlerParams(const ModuleParamSet& params) {

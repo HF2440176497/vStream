@@ -61,7 +61,7 @@ bool DataSource::Open(ModuleParamSet paramSet) {
     LOGE(SOURCE) << "CheckParamSet failed";
     return false;
   }
-  param_.param_set_ = paramSet;
+  param_.param_set_ = paramSet;  // note: use param_set_ instead
   param_set_ = paramSet;  // of SourceModule, for handlers
   if (paramSet.find(key_config_file) != paramSet.end()) {
     std::string config_file = paramSet.at(key_config_file);
@@ -179,6 +179,31 @@ bool DataSource::LoadStreamConf(const std::string& config_file) {
     if (!checker.IsNum({key_interval}, paramSet, err_msg, false)) {
       LOGE(SOURCE) << stream_id << " [interval] check failed: " << err_msg;
       return false;
+    }
+
+    bool has_file = (paramSet.find(key_file_path) != paramSet.end());
+    bool has_url = (paramSet.find(key_input_url) != paramSet.end());
+
+    if (has_file) {
+      if (paramSet.at(key_file_path).empty()) {
+        LOGE(SOURCE) << stream_id << " [file_path] must not be empty";
+        return false;
+      }
+      if (paramSet.find(key_frame_rate) == paramSet.end()) {
+        LOGE(SOURCE) << stream_id << " [frame_rate] is required for image stream";
+        return false;
+      }
+      if (!checker.IsNum({key_frame_rate}, paramSet, err_msg, false)) {
+        LOGE(SOURCE) << stream_id << " [frame_rate] " << err_msg;
+        return false;
+      }
+    }
+
+    if (has_url) {
+      if (paramSet.at(key_input_url).empty()) {
+        LOGE(SOURCE) << stream_id << " [url] must not be empty";
+        return false;
+      }
     }
   }
   return true;

@@ -27,6 +27,15 @@
 
 namespace cnstream {
 
+static const std::string             stream_id_1_ = "channel-1";
+static const std::string             stream_id_2_ = "channel-2";
+static const std::string             stream_id_3_ = "channel-3";
+static const std::string             stream_id_4_ = "channel-4";
+static std::vector<std::string>      stream_ids_image_push_ = {stream_id_1_};
+static std::vector<std::string>      stream_ids_pull_push_ = {stream_id_2_};
+static std::vector<std::string>      stream_ids_image_queue_ = {stream_id_3_};
+static std::vector<std::string>      stream_ids_send_queue_ = {stream_id_4_};
+
 static std::string test_pipeline_json = "pipeline_stable_video.json";
 
 class StableVideo : public testing::Test {
@@ -45,29 +54,20 @@ class StableVideo : public testing::Test {
   }
 
  protected:
-  const std::string             stream_id_1_ = "channel-1";
-  const std::string             stream_id_2_ = "channel-2";
-  const std::string             stream_id_3_ = "channel-3";
-  std::vector<std::string>      stream_ids_1_ = {stream_id_1_};
-
   std::shared_ptr<VideoHandler> video_handler_ = nullptr;
   std::shared_ptr<DataSource>   module_ = nullptr;
   std::shared_ptr<Pipeline>     pipeline_ = nullptr;
 };
 
 
-TEST_F(StableVideo, MultiStream) {
-
-  int device_id = 0;
-  CudaMemInspect inspect(device_id);
+TEST_F(StableVideo, Run) {
   bool force_exit = false;
-
   EXPECT_TRUE(pipeline_->Start());
 
   DataSource *source = dynamic_cast<DataSource*>(pipeline_->GetModule("decoder"));
   EXPECT_NE(source, nullptr);
 
-  for (auto stream_id : stream_ids_1_) {
+  for (auto stream_id : stream_ids_pull_push_) {
     std::shared_ptr<SourceHandler> source_handler_ptr = VideoHandler::Create(source, stream_id);
     auto handler = std::dynamic_pointer_cast<VideoHandler>(source_handler_ptr);
     EXPECT_NE(handler, nullptr);
@@ -78,7 +78,7 @@ TEST_F(StableVideo, MultiStream) {
   DataSink *sink = dynamic_cast<DataSink*>(pipeline_->GetModule("sink"));
   EXPECT_NE(sink, nullptr);
 
-  for (auto stream_id : stream_ids_1_) {
+  for (auto stream_id : stream_ids_pull_push_) {
     std::shared_ptr<SinkHandler> sink_handler = PushHandler::Create(sink, stream_id);
     auto push_handler = std::dynamic_pointer_cast<PushHandler>(sink_handler);
     EXPECT_NE(push_handler, nullptr);
@@ -98,10 +98,7 @@ TEST_F(StableVideo, MultiStream) {
     LOGI(T_STABLE) << "Module Profile: " << module_profile;
   }
 
-  std::this_thread::sleep_for(std::chrono::seconds(100));
-  LOGI(T_STABLE) << "Inspect brief info: " << inspect.GetBriefInfo();;
-
-  std::this_thread::sleep_for(std::chrono::seconds(100));
+  std::this_thread::sleep_for(std::chrono::seconds(200));
   if (!force_exit) {
     pipeline_->Stop();
   } else {

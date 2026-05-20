@@ -57,35 +57,35 @@ std::shared_ptr<InferObjs> GetInferObjects(std::shared_ptr<FrameInfo> frame) {
  */
 void DataFrameWrapper(const py::module &m) {
   py::class_<DataFrame, std::shared_ptr<DataFrame>>(m, "DataFrame")
-      .def(py::init([]() {
-        return std::make_shared<DataFrame>();
-      }))
-      .def("get_planes", &DataFrame::GetPlanes)
-      .def("get_plane_bytes", &DataFrame::GetPlaneBytes)
-      .def("get_bytes", &DataFrame::GetBytes)
-      .def("get_image", [](std::shared_ptr<DataFrame> data_frame) {
-        cv::Mat image = data_frame->GetImage();  // BGR format
-        return MatToArray(image);
-      })
-      .def("has_image", &DataFrame::HasImage)
-      .def("data", [](const DataFrame& data_frame, int plane_idx) {
-          return data_frame.data_[plane_idx].get();
-      }, py::return_value_policy::reference_internal)
-      .def("get_frame_id", &DataFrame::GetFrameId)  // uint64_t
-      .def("get_fmt", &DataFrame::GetFmt)
-      .def("get_width", &DataFrame::GetWidth)
-      .def("get_height", &DataFrame::GetHeight);
+    .def(py::init([]() {
+      return std::make_shared<DataFrame>();
+    }))
+    .def("get_planes", &DataFrame::GetPlanes)
+    .def("get_plane_bytes", &DataFrame::GetPlaneBytes)
+    .def("get_bytes", &DataFrame::GetBytes)
+    .def("get_image", [](std::shared_ptr<DataFrame> data_frame) {
+      cv::Mat image = data_frame->GetImage();  // BGR format
+      return MatToArray(image);
+    })
+    .def("has_image", &DataFrame::HasImage)
+    .def("data", [](const DataFrame& data_frame, int plane_idx) {
+        return data_frame.data_[plane_idx].get();
+    }, py::return_value_policy::reference_internal)
+    .def("get_frame_id", &DataFrame::GetFrameId)  // uint64_t
+    .def("get_fmt", &DataFrame::GetFmt)
+    .def("get_width", &DataFrame::GetWidth)
+    .def("get_height", &DataFrame::GetHeight);
 
   py::enum_<DataFormat>(m, "DataFormat")
-      .value("INVALID", DataFormat::INVALID)
-      .value("PIXEL_FORMAT_YUV420_NV21", DataFormat::PIXEL_FORMAT_YUV420_NV21)
-      .value("PIXEL_FORMAT_YUV420_NV12", DataFormat::PIXEL_FORMAT_YUV420_NV12)
-      .value("PIXEL_FORMAT_BGR24", DataFormat::PIXEL_FORMAT_BGR24)
-      .value("PIXEL_FORMAT_RGB24", DataFormat::PIXEL_FORMAT_RGB24)
-      .value("PIXEL_FORMAT_ARGB32", DataFormat::PIXEL_FORMAT_ARGB32)
-      .value("PIXEL_FORMAT_ABGR32", DataFormat::PIXEL_FORMAT_ABGR32)
-      .value("PIXEL_FORMAT_RGBA32", DataFormat::PIXEL_FORMAT_RGBA32)
-      .value("PIXEL_FORMAT_BGRA32", DataFormat::PIXEL_FORMAT_BGRA32);
+    .value("INVALID", DataFormat::INVALID)
+    .value("PIXEL_FORMAT_YUV420_NV21", DataFormat::PIXEL_FORMAT_YUV420_NV21)
+    .value("PIXEL_FORMAT_YUV420_NV12", DataFormat::PIXEL_FORMAT_YUV420_NV12)
+    .value("PIXEL_FORMAT_BGR24", DataFormat::PIXEL_FORMAT_BGR24)
+    .value("PIXEL_FORMAT_RGB24", DataFormat::PIXEL_FORMAT_RGB24)
+    .value("PIXEL_FORMAT_ARGB32", DataFormat::PIXEL_FORMAT_ARGB32)
+    .value("PIXEL_FORMAT_ABGR32", DataFormat::PIXEL_FORMAT_ABGR32)
+    .value("PIXEL_FORMAT_RGBA32", DataFormat::PIXEL_FORMAT_RGBA32)
+    .value("PIXEL_FORMAT_BGRA32", DataFormat::PIXEL_FORMAT_BGRA32);
 
   py::enum_<DevType>(m, "DevType")
     .value("INVALID", DevType::INVALID)
@@ -93,9 +93,9 @@ void DataFrameWrapper(const py::module &m) {
     .value("CUDA", DevType::CUDA);
 
   py::class_<DevContext>(m, "DevContext")
-      .def(py::init())
-      .def_readwrite("device_type", &DevContext::device_type)
-      .def_readwrite("device_id", &DevContext::device_id);
+    .def(py::init())
+    .def_readwrite("device_type", &DevContext::device_type)
+    .def_readwrite("device_id", &DevContext::device_id);
 }
 
 void InferObjsWrapper(const py::module &m) {

@@ -19,6 +19,15 @@
 
 namespace cnstream {
 
+static const std::string             stream_id_1_ = "channel-1";
+static const std::string             stream_id_2_ = "channel-2";
+static const std::string             stream_id_3_ = "channel-3";
+static const std::string             stream_id_4_ = "channel-4";
+static std::vector<std::string>      stream_ids_image_push_ = {stream_id_1_};
+static std::vector<std::string>      stream_ids_pull_push_ = {stream_id_2_};
+static std::vector<std::string>      stream_ids_image_queue_ = {stream_id_3_};
+static std::vector<std::string>      stream_ids_send_queue_ = {stream_id_4_};
+
 static std::string test_pipeline_send_json = "pipeline_source_send.json";
 static std::string test_image_path = "image.png";
 
@@ -33,8 +42,8 @@ class SourceSendTest : public testing::Test {
   }
 
  protected:
-  const std::string             stream_id_ = "channel-1";
   std::shared_ptr<SendHandler>  send_handler_ = nullptr;
+  std::shared_ptr<QueueHandler> queue_handler_ = nullptr;
   std::shared_ptr<DataSource>   module_ = nullptr;
   std::shared_ptr<Pipeline>     pipeline_ = nullptr;
 
@@ -49,6 +58,7 @@ class SourceSendTest : public testing::Test {
  * @brief 启动线程读取图片，不断发送给 SendHandler
  */
 TEST_F(SourceSendTest, TestSend) {
+  EXPECT_TRUE(pipeline_->Start());
 
   Module* source_module = pipeline_->GetModule("decoder");
   EXPECT_NE(source_module, nullptr);
@@ -56,12 +66,13 @@ TEST_F(SourceSendTest, TestSend) {
   DataSource *source = dynamic_cast<DataSource*>(source_module);
   EXPECT_NE(source, nullptr);
 
-  std::shared_ptr<SourceHandler> source_handler_ptr = SendHandler::Create(source, stream_id_);
-  send_handler_ = std::dynamic_pointer_cast<SendHandler>(source_handler_ptr);
-  EXPECT_NE(send_handler_, nullptr);
-
-  EXPECT_TRUE(pipeline_->Start());
-  EXPECT_EQ(source->AddSource(send_handler_), 0);
+  for (auto stream_id : stream_ids_send_queue_) {
+    std::shared_ptr<SourceHandler> source_handler_ptr = SendHandler::Create(source, stream_id);
+    EXPECT_NE(source_handler_ptr, nullptr);
+    send_handler_ = std::dynamic_pointer_cast<SendHandler>(source_handler_ptr);
+    EXPECT_NE(send_handler_, nullptr);
+    EXPECT_EQ(source->AddSource(send_handler_), 0);
+  }
   
   Module* sink_module = pipeline_->GetModule("sink");
   EXPECT_NE(sink_module, nullptr);
@@ -69,13 +80,14 @@ TEST_F(SourceSendTest, TestSend) {
   DataSink *sink = dynamic_cast<DataSink*>(sink_module);
   EXPECT_NE(sink, nullptr);
 
-  std::shared_ptr<SinkHandler> sink_handler = QueueHandler::Create(sink, stream_id_);
-  EXPECT_NE(sink_handler, nullptr);
-
-  auto queue_handler = std::dynamic_pointer_cast<QueueHandler>(sink_handler);
-  EXPECT_NE(queue_handler, nullptr);
-  EXPECT_EQ(sink->AddSink(queue_handler), 0);
-
+  for (auto stream_id : stream_ids_send_queue_) {
+    std::shared_ptr<SinkHandler> sink_handler_ptr = QueueHandler::Create(sink, stream_id);
+    EXPECT_NE(sink_handler_ptr, nullptr);
+    queue_handler_ = std::dynamic_pointer_cast<QueueHandler>(sink_handler_ptr);
+    EXPECT_NE(queue_handler_, nullptr);
+    EXPECT_EQ(sink->AddSink(queue_handler_), 0);
+  }
+  
   image_ = cv::imread(test_image_path, cv::IMREAD_COLOR);
   ASSERT_FALSE(image_.empty()) << "Failed to load " << test_image_path;
 
@@ -95,7 +107,7 @@ TEST_F(SourceSendTest, TestSend) {
   std::thread receive_thread([&]() {
     int count = 0;
     while (running.load()) {
-      s_output_data data = queue_handler->GetData();
+      s_output_data data = queue_handler_->GetData();
       if (data.result != 0) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
         continue;
@@ -107,8 +119,7 @@ TEST_F(SourceSendTest, TestSend) {
     }
   });
 
-  std::this_thread::sleep_for(std::chrono::seconds(5));
-  
+  std::this_thread::sleep_for(std::chrono::seconds(10));
   pipeline_->Stop();
 
   running.store(false);

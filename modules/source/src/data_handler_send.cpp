@@ -87,17 +87,18 @@ bool SendHandler::Open() {
  * note: For send handler, can be empty
  */
 bool SendHandler::SetHandlerParams(const ModuleParamSet& params) {
-  if (impl_) {
-    DataSource* ds = dynamic_cast<DataSource*>(module_);
-    if (ds) {
-      ModuleParamSet stream_params = ds->GetStreamParams(stream_id_);
-      if (!stream_params.empty()) {
-        impl_->param_set_ = stream_params;
-        return true;
-      }
-    }
-    impl_->param_set_ = params;
+  if (!impl_) {
+    return false;
   }
+  DataSource* ds = dynamic_cast<DataSource*>(module_);
+  if (ds) {
+    ModuleParamSet stream_params = ds->GetStreamParams(stream_id_);
+    if (!stream_params.empty()) {
+      impl_->param_set_ = stream_params;
+      return true;
+    }
+  }
+  impl_->param_set_ = params;
   return true;
 }
 

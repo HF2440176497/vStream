@@ -93,17 +93,18 @@ bool ImageHandler::CheckHandlerParams(const ModuleParamSet& params) {
  * @brief 优先使用 stream 级配置, 否则使用 module 级配置
  */
 bool ImageHandler::SetHandlerParams(const ModuleParamSet& params) {
-  if (impl_) {
-    DataSource* ds = dynamic_cast<DataSource*>(module_);
-    if (ds) {
-      ModuleParamSet stream_params = ds->GetStreamParams(stream_id_);
-      if (!stream_params.empty()) {
-        impl_->param_set_ = stream_params;
-        return true;
-      }
-    }
-    impl_->param_set_ = params;
+  if (!impl_) {
+    return false;
   }
+  DataSource* ds = dynamic_cast<DataSource*>(module_);
+  if (ds) {
+    ModuleParamSet stream_params = ds->GetStreamParams(stream_id_);
+    if (!stream_params.empty()) {
+      impl_->param_set_ = stream_params;
+      return true;
+    }
+  }
+  impl_->param_set_ = params;
   return true;
 }
 

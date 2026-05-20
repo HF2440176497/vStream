@@ -22,6 +22,15 @@
 
 namespace cnstream {
 
+static const std::string             stream_id_1_ = "channel-1";
+static const std::string             stream_id_2_ = "channel-2";
+static const std::string             stream_id_3_ = "channel-3";
+static const std::string             stream_id_4_ = "channel-4";
+static std::vector<std::string>      stream_ids_image_push_ = {stream_id_1_};
+static std::vector<std::string>      stream_ids_pull_push_ = {stream_id_2_};
+static std::vector<std::string>      stream_ids_image_queue_ = {stream_id_3_};
+static std::vector<std::string>      stream_ids_send_queue_ = {stream_id_4_};
+
 static std::string test_pipeline_json = "pipeline_inference.json";
 
 class InferenceTest : public testing::Test {
@@ -43,7 +52,6 @@ class InferenceTest : public testing::Test {
   }
 
  protected:
-  const std::string             stream_id_ = "channel-1";
   std::shared_ptr<ImageHandler> image_handler_ = nullptr;
   std::shared_ptr<DataSource>   module_ = nullptr;
   std::shared_ptr<Pipeline>     pipeline_ = nullptr;
@@ -61,20 +69,21 @@ TEST_F(InferenceTest, RunYOLO) {
     LOGI(T_INFERENCE) << "REFLEX: obj_map name = " << name << std::endl;
   }
   
+  ASSERT_TRUE(pipeline_->Start());
+
   Module* module_in_pipeline = pipeline_->GetModule("decoder");
   ASSERT_NE(module_in_pipeline, nullptr);
 
   DataSource *source = dynamic_cast<DataSource*>(module_in_pipeline);
   ASSERT_NE(source, nullptr);
 
-  std::shared_ptr<SourceHandler> source_handler_ptr = ImageHandler::Create(source, stream_id_);
-  image_handler_ = std::dynamic_pointer_cast<ImageHandler>(source_handler_ptr);
-  ASSERT_NE(image_handler_, nullptr);
-
-  ASSERT_TRUE(pipeline_->Start());
-  ASSERT_FALSE(IsStreamRemoved(stream_id_));
-  ASSERT_EQ(source->AddSource(image_handler_), 0);
-  ASSERT_TRUE(image_handler_->impl_->IsRunning());
+  for (auto stream_id : stream_ids_imae_) {
+    std::shared_ptr<SourceHandler> source_handler_ptr = ImageHandler::Create(source, stream_id);
+    image_handler_ = std::dynamic_pointer_cast<ImageHandler>(source_handler_ptr);
+    ASSERT_NE(image_handler_, nullptr);
+    ASSERT_FALSE(IsStreamRemoved(stream_id));
+    EXPECT_EQ(source->AddSource(image_handler_), 0);
+  }
 
   std::this_thread::sleep_for(std::chrono::milliseconds(2000));
   LOGI(T_INFERENCE) << "Handler stream idx: " << image_handler_->GetStreamIndex();

@@ -36,8 +36,7 @@ class QueueHandlerImpl {
       : module_(module), stream_id_(handler->GetStreamId()) {}
 
   bool Open() {
-    LOGI(SINK) << "[" << stream_id_ << "]: QueueHandlerImpl Open, queue_size=" << queue_size_;
-    if (!param_set_.find(key_queue_size) == param_set_.end()) {
+    if (param_set_.find(key_queue_size) != param_set_.end()) {
       queue_size_ = static_cast<uint32_t>(std::stoi(param_set_.at(key_queue_size)));
     } else {
       queue_size_ = 20;
@@ -166,8 +165,10 @@ class QueueHandlerImpl {
   DataSink *module_ = nullptr;
   std::string stream_id_;
   std::atomic<bool> running_{false};
+
   ModuleParamSet param_set_;
-  uint32_t queue_size_;
+  uint32_t queue_size_ = 20;
+  
   std::unique_ptr<ThreadSafeQueue<s_output_data>> queue_;
 };
 

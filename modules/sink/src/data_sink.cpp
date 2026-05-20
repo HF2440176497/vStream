@@ -46,54 +46,10 @@ bool DataSink::Open(ModuleParamSet paramSet) {
 void DataSink::Close() { RemoveSinks(true); }
 
 bool DataSink::CheckParamSet(const ModuleParamSet &paramSet) const {
-  ParametersChecker checker;
   for (auto &it : paramSet) {
     if (!param_register_.IsRegisted(it.first)) {
-      LOGW(SINK) << "unknown param: " << it.first << "; maybe for handler usage";
+      LOGW(SINK) << "unknown param: " << it.first;
     }
-  }
-  // PushHandler: output_format
-  if (paramSet.find(key_output_format) != paramSet.end()) {
-    if (key_supported_formats.find(paramSet.at(key_output_format)) == key_supported_formats.end()) {
-      LOGE(SINK) << "output_format " << paramSet.at(key_output_format) << " is not supported";
-      return false;
-    }
-  }
-  std::string err_msg;
-  if (paramSet.find(key_output_fps) != paramSet.end()) {
-    if (!checker.IsNum({key_output_fps}, paramSet, err_msg, false)) {
-      LOGE(SINK) << "output_fps check failed: " << err_msg;
-      return false;
-    }
-  }
-  if (paramSet.find(key_output_height) != paramSet.end()) {
-    if (!checker.IsNum({key_output_height}, paramSet, err_msg, false)) {
-      LOGE(SINK) << "output_height check failed: " << err_msg;
-      return false;
-    }
-  }
-  if (paramSet.find(key_output_width) != paramSet.end()) {
-    if (!checker.IsNum({key_output_width}, paramSet, err_msg, false)) {
-      LOGE(SINK) << "output_width check failed: " << err_msg;
-      return false;
-    }
-  }
-  if (paramSet.find(key_output_bitrate) != paramSet.end()) {
-    if (!checker.IsNum({key_output_bitrate}, paramSet, err_msg, false)) {
-      LOGE(SINK) << "output_bitrate check failed: " << err_msg;
-      return false;
-    }
-  }
-  if (paramSet.find(key_output_device_id) != paramSet.end()) {
-    if (!checker.IsNum({key_output_device_id}, paramSet, err_msg, true)) {
-      LOGE(SINK) << "output_device_id check failed: " << err_msg;
-      return false;
-    }
-  }
-  // QueueHandler: queue_size
-  if (!checker.IsNum({key_queue_size}, paramSet, err_msg, false)) {
-    LOGE(SINK) << "queue_size check failed: " << err_msg;
-    return false;
   }
   return true;
 }
@@ -135,6 +91,72 @@ bool DataSink::LoadStreamConf(const std::string& config_file_path) {
     LOGE(SINK) << "LoadStreamConf: JSON parse error: " << e.what();
     return false;
   }
+
+  std::string err_msg;
+  ParametersChecker checker;
+  for (auto &it : stream_configs_) {
+    const std::string& stream_id = it.first;
+    const ModuleParamSet& paramSet = it.second;
+
+    bool is_push_stream = (paramSet.find(key_output_url) != paramSet.end());
+    bool is_queue_stream = (paramSet.find(key_queue_size) != paramSet.end());
+
+    if (is_push_stream) {
+      if (paramSet.at(key_output_url).empty()) {
+        LOGE(SINK) << "[" << stream_id << "]: [url] is required for push stream and must be non-empty";
+        return false;
+      }
+      if (paramSet.find(key_output_fps) == paramSet.end()) {
+        LOGE(SINK) << "[" << stream_id << "]: [fps] is required for push stream";
+        return false;
+      }
+      if (paramSet.find(key_output_width) == paramSet.end()) {
+        LOGE(SINK) << "[" << stream_id << "]: [width] is required for push stream";
+        return false;
+      }
+      if (paramSet.find(key_output_height) == paramSet.end()) {
+        LOGE(SINK) << "[" << stream_id << "]: [height] is required for push stream";
+        return false;
+      }
+      // checker for push handler
+      if (!checker.IsNum({key_output_fps}, paramSet, err_msg, false)) {
+        LOGE(SINK) << "[" << stream_id << "]: [fps] " << err_msg;
+        return false;
+      }
+      if (!checker.IsNum({key_output_width}, paramSet, err_msg, false)) {
+        LOGE(SINK) << "[" << stream_id << "]: [width] " << err_msg;
+        return false;
+      }
+      if (!checker.IsNum({key_output_height}, paramSet, err_msg, false)) {
+        LOGE(SINK) << "[" << stream_id << "]: [height] " << err_msg;
+        return false;
+      }
+    }
+
+    if (is_queue_stream) {
+      if (!checker.IsNum({key_queue_size}, paramSet, err_msg, false)) {
+        LOGE(SINK) << "[" << stream_id << "]: [queue_size] " << err_msg;
+        return false;
+      }
+      if (paramSet.find(key_queue_size) != paramSet.end()) {
+        int qs = std::stoi(paramSet.at(key_queue_size));
+        if (qs <= 0) {
+          LOGE(SINK) << "[" << stream_id << "]: [queue_size] must be positive, got " << qs;
+          return false;
+        }
+      }
+    }
+    
+    if (!checker.IsNum({key_output_device_id}, paramSet, err_msg, false)) {
+      LOGE(SINK) << "[" << stream_id << "]: [device_id] " << err_msg;
+      return false;
+    }
+    if (!checker.IsNum({key_output_bitrate}, paramSet, err_msg, false)) {
+      LOGE(SINK) << "[" << stream_id << "]: [bitrate] " << err_msg;
+      return false;
+    }
+  }
+
   return true;
 }
 
