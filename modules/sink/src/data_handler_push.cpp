@@ -114,6 +114,7 @@ class PushHandlerImpl {
   ModuleParamSet param_set_;
 
   std::string output_url_;
+  int device_id_ = -1;
   int fps_ = 20;
   int width_ = 640;
   int height_ = 480;
@@ -127,7 +128,6 @@ class PushHandlerImpl {
   int sws_src_width_  = 0;
   int sws_src_height_ = 0;
   std::atomic<bool> hw_ctx_initialized_{false};
-  int device_id_ = -1;
 
   std::chrono::steady_clock::time_point push_start_time_;
   std::chrono::steady_clock::time_point last_push_time_;
@@ -161,8 +161,6 @@ class PushHandlerImplCUDA : public PushHandlerImpl {
   bool SendFrameToCuda(const DataFramePtr& frame, AVPixelFormat src_pix_fmt);
 };
 #endif
-
-// ========== PushHandlerImpl (base) ==========
 
 bool PushHandlerImpl::Open() {
   LOGI(SINK) << "[" << stream_id_ << "]: PushHandlerImpl Open";
@@ -808,21 +806,35 @@ int PushHandler::Process(const std::shared_ptr<FrameInfo> data) {
 }
 
 void PushHandler::RegisterHandlerParams() {
-  param_register_.Register(key_output_url, "Target URL for push stream (rtmp/rtsp).");
-  param_register_.Register(key_output_fps, "Output frame rate (fps).");
-  param_register_.Register(key_output_width, "Output video width in pixels.");
-  param_register_.Register(key_output_height, "Output video height in pixels.");
-  param_register_.Register(key_output_bitrate, "Output bitrate in kbps.");
-  param_register_.Register(key_output_codec, "Encoder codec name (e.g., libx264, h264_nvenc, hevc_nvenc).");
-  param_register_.Register(key_output_device_id, "Device ID for hardware encoding (default: CPU).");
 }
 
 /**
  * @param params 来自 DataSink 的参数
  */
 bool PushHandler::CheckHandlerParams(const ModuleParamSet& params) {
-  if (params.find(key_output_url) == params.end()) {
+  DataSink* ds = dynamic_cast<DataSink*>(module_);
+  ModuleParamSet stream_params;
+  const ModuleParamSet* check_params = &params;
+  if (ds) {
+    stream_params = ds->GetStreamParams(stream_id_);
+    if (!stream_params.empty()) {
+      check_params = &stream_params;
+    }
+  }
+  if (check_params->find(key_output_url) == check_params->end()) {
     LOGE(SINK) << "[" << stream_id_ << "]: push output_url not set";
+    return false;
+  }
+  if (check_params->find(key_output_fps) == check_params->end()) {
+    LOGE(SINK) << "[" << stream_id_ << "]: push output_fps not set";
+    return false;
+  }
+  if (check_params->find(key_output_width) == check_params->end()) {
+    LOGE(SINK) << "[" << stream_id_ << "]: push output_width not set";
+    return false;
+  }
+  if (check_params->find(key_output_height) == check_params->end()) {
+    LOGE(SINK) << "[" << stream_id_ << "]: push output_height not set";
     return false;
   }
   return true;
@@ -832,9 +844,18 @@ bool PushHandler::CheckHandlerParams(const ModuleParamSet& params) {
  * @brief CheckHandlerParams SetHandlerParams 是在 AddSink 调用的
  */
 bool PushHandler::SetHandlerParams(const ModuleParamSet& params) {
-  if (impl_) {
-    impl_->param_set_ = params;
+  if (!impl_) {
+    return false;
   }
+  DataSink* ds = dynamic_cast<DataSink*>(module_);
+  if (ds) {
+    ModuleParamSet stream_params = ds->GetStreamParams(stream_id_);
+    if (!stream_params.empty()) {
+      impl_->param_set_ = stream_params;
+      return true;
+    }
+  }
+  impl_->param_set_ = params;
   return true;
 }
 

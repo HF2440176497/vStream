@@ -37,8 +37,13 @@ class QueueHandlerImpl {
 
   bool Open() {
     LOGI(SINK) << "[" << stream_id_ << "]: QueueHandlerImpl Open, queue_size=" << queue_size_;
-    running_.store(true);
+    if (!param_set_.find(key_queue_size) == param_set_.end()) {
+      queue_size_ = static_cast<uint32_t>(std::stoi(param_set_.at(key_queue_size)));
+    } else {
+      queue_size_ = 20;
+    }
     queue_ = std::make_unique<ThreadSafeQueue<s_output_data>>(queue_size_);
+    running_.store(true);
     return true;
   }
 
@@ -162,7 +167,7 @@ class QueueHandlerImpl {
   std::string stream_id_;
   std::atomic<bool> running_{false};
   ModuleParamSet param_set_;
-  uint32_t queue_size_ = 20;
+  uint32_t queue_size_;
   std::unique_ptr<ThreadSafeQueue<s_output_data>> queue_;
 };
 
@@ -219,13 +224,21 @@ int QueueHandler::Process(const std::shared_ptr<FrameInfo> data) {
 }
 
 void QueueHandler::RegisterHandlerParams() {
-  param_register_.Register(key_queue_size, "Size of the output queue. Default is 20.");
 }
 
 
 bool QueueHandler::CheckHandlerParams(const ModuleParamSet& params) {
-  if (params.find(key_queue_size) != params.end()) {
-    int size = std::stoi(params.at(key_queue_size));
+  DataSink* ds = dynamic_cast<DataSink*>(module_);
+  ModuleParamSet stream_params;
+  const ModuleParamSet* check_params = &params;
+  if (ds) {
+    stream_params = ds->GetStreamParams(stream_id_);
+    if (!stream_params.empty()) {
+      check_params = &stream_params;
+    }
+  }
+  if (check_params->find(key_queue_size) != check_params->end()) {
+    int size = std::stoi(check_params->at(key_queue_size));
     if (size <= 0) {
       LOGE(SINK) << "[" << stream_id_ << "]: queue_size must be positive";
       return false;
@@ -235,14 +248,18 @@ bool QueueHandler::CheckHandlerParams(const ModuleParamSet& params) {
 }
 
 bool QueueHandler::SetHandlerParams(const ModuleParamSet& params) {
-  if (impl_) {
-    impl_->param_set_ = params;
-    if (params.find(key_queue_size) != params.end()) {
-      impl_->queue_size_ = static_cast<uint32_t>(std::stoi(params.at(key_queue_size)));
-    } else {
-      impl_->queue_size_ = 20;
+  if (!impl_) {
+    return false;
+  }
+  DataSink* ds = dynamic_cast<DataSink*>(module_);
+  if (ds) {
+    ModuleParamSet stream_params = ds->GetStreamParams(stream_id_);
+    if (!stream_params.empty()) {
+      impl_->param_set_ = stream_params;
+      return true;
     }
-  }  // end if (impl_)
+  }
+  impl_->param_set_ = params;
   return true;
 }
 

@@ -1,6 +1,9 @@
 
-#include "cnstream_source.hpp"  // DataSource
+#include <filesystem>
+
+#include "cnstream_source.hpp"
 #include "data_handler_image.hpp"
+#include "data_source.hpp"
 
 namespace cnstream {
 
@@ -55,32 +58,51 @@ void ImageHandler::Stop() {
 
 // Note: not use，handler may carry additional params
 void ImageHandler::RegisterHandlerParams() {
-  param_register_.Register(key_file_path, "Path to the image file.");
-  param_register_.Register(key_frame_rate, "Framerate for image display. Default is 5.");
 }
 
+/**
+ * @brief 检查各个 handler 必要的参数
+ * 在 AddSource 中调用，StreamParams 来自 DataSource:Open
+ */
 bool ImageHandler::CheckHandlerParams(const ModuleParamSet& params) {
-  if (params.find(key_file_path) == params.end()) {
-    LOGE(SOURCE) << "[ImageHandler] file_path is required";
+  DataSource* ds = dynamic_cast<DataSource*>(module_);
+  ModuleParamSet stream_params;
+  const ModuleParamSet* check_params = &params;
+  if (ds) {
+    stream_params = ds->GetStreamParams(stream_id_);
+    if (!stream_params.empty()) {
+      check_params = &stream_params;
+    }
+  }
+  if (check_params->find(key_file_path) == check_params->end()) {
+    LOGE(SOURCE) << "file_path is required";
     return false;
   }
-  if (access(params.at(key_file_path).c_str(), F_OK) == -1) {
-    LOGE(SOURCE) << "[ImageHandler] file not found: " << params.at(key_file_path);
+  if (!std::filesystem::exists(check_params->at(key_file_path))) {
+    LOGE(SOURCE) << "file not found: " << check_params->at(key_file_path);
     return false;
   }
-  if (params.find(key_frame_rate) == params.end()) {
-    LOGE(SOURCE) << "[ImageHandler] frame_rate is required";
+  if (check_params->find(key_frame_rate) == check_params->end()) {
+    LOGE(SOURCE) << "frame_rate is required";
     return false;
   }
   return true;
 }
 
 /**
- * @brief 保留来自 module 的 params_set_
+ * @brief 优先使用 stream 级配置, 否则使用 module 级配置
  */
 bool ImageHandler::SetHandlerParams(const ModuleParamSet& params) {
   if (impl_) {
-    impl_->param_set_ = params;  // SourceModule param_set_
+    DataSource* ds = dynamic_cast<DataSource*>(module_);
+    if (ds) {
+      ModuleParamSet stream_params = ds->GetStreamParams(stream_id_);
+      if (!stream_params.empty()) {
+        impl_->param_set_ = stream_params;
+        return true;
+      }
+    }
+    impl_->param_set_ = params;
   }
   return true;
 }
@@ -89,17 +111,17 @@ bool ImageHandlerImpl::Open() {
   // if you need something, just get it
   image_path_ = param_set_.at(key_file_path);
   frame_rate_ = std::stoi(param_set_.at(key_frame_rate));
-  if (image_path_.empty() || access(image_path_.c_str(), F_OK) == -1) {
-    LOGE(SOURCE) << "ImageHandlerImpl: Image path not found: " << image_path_;
+  if (image_path_.empty() || !std::filesystem::exists(image_path_)) {
+    LOGE(SOURCE) << "Image path not found: " << image_path_;
     return false;
   }
   image_ = cv::imread(image_path_);
   if (image_.empty()) {
-    LOGE(SOURCE) << "ImageHandlerImpl: Failed to load image: " << image_path_;
+    LOGE(SOURCE) << "Failed to load image: " << image_path_;
     return false;
   }
   if (image_.type() != CV_8UC3 || image_.elemSize() != 3) {
-    LOGE(SOURCE) << "ImageHandlerImpl: Image format is not BGR24!";
+    LOGE(SOURCE) << "Image format is not BGR24!";
     return false;
   }
   running_.store(true);

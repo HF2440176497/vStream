@@ -86,11 +86,12 @@ int SourceModule::AddSource(std::shared_ptr<SourceHandler> handler) {
     LOGE(CORE) << "handler is null";
     return -1;
   }
-  // param_set_ set in DataSource::Open
+  // param_set_ set in DataSource::Open from Module custom params
   if (!handler->CheckHandlerParams(param_set_)) {
     LOGE(CORE) << "handler check params failed";
     return -1;
   }
+  // 设置 handlerimpl 参数
   if (!handler->SetHandlerParams(param_set_)) {
     LOGE(CORE) << "handler set params failed";
     return -1;

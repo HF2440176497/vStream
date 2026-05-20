@@ -4,6 +4,7 @@
 #define MODULES_DATA_SOURCE_HPP_
 
 
+#include <map>
 #include <memory>
 #include <string>
 #include <utility>
@@ -88,12 +89,16 @@ class DataSource : public SourceModule, public ModuleCreator<DataSource> {
    */
   DataSourceParam GetSourceParam() const;
 
+  ModuleParamSet GetStreamParams(const std::string& stream_id) const;
+  bool LoadStreamConf(const std::string& config_file_path);
+
 #ifdef VSTREAM_UNIT_TEST
   public:
 #else
   private:
 #endif
    DataSourceParam param_;
+   std::map<std::string, ModuleParamSet> stream_configs_;
 };  // class DataSource
 
 REGISTER_MODULE(DataSource);

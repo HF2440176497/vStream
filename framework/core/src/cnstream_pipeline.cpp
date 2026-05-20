@@ -137,6 +137,7 @@ bool Pipeline::Start() {
   bool open_module_failed = false;
   std::vector<std::shared_ptr<Module>> opened_modules;
   for (auto node = graph_->DFSBegin(); node != graph_->DFSEnd(); ++node) {
+    // if not custom params, parameters = {}
     if (!node->data.module->Open(node->GetConfig().parameters)) {
       LOGE(CORE) << node->data.module->GetName() << " open failed!";
       open_module_failed = true;

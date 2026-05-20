@@ -85,6 +85,8 @@ class VideoHandlerImpl : public SourceRender {
   std::atomic<bool> running_{false};
   std::thread thread_;
 
+  int interval_ = 0;
+  int device_id_ = -1;
   std::string stream_url_;
   int frame_rate_ = 10;
 
@@ -106,7 +108,6 @@ class VideoHandlerImpl : public SourceRender {
   AVPacket pkt_;
   struct SwsContext *sws_ctx_ = nullptr;
 
-  int device_id_ = -1;
   OutputType output_type_ = OutputType::OUTPUT_CPU;
 };
 

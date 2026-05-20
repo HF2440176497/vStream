@@ -243,6 +243,7 @@ class SourceHandler : private NonCopyable {
 
   // note: params of handler itself 
   virtual void RegisterHandlerParams() { }
+  
   virtual bool CheckHandlerParams(const ModuleParamSet& params) { return true; }
   virtual bool SetHandlerParams(const ModuleParamSet& params) { return true; }
 

@@ -73,7 +73,7 @@ bool SendHandler::Open() {
     return false;
   }
   if (!impl_) {
-    LOGE(SOURCE) << "[" << stream_id_ << "]: Video handler open failed, no memory left";
+    LOGE(SOURCE) << "[" << stream_id_ << "]: Send handler open failed, impl_ is null";
     return false;
   }
   if (stream_index_ == INVALID_STREAM_IDX) {
@@ -83,9 +83,20 @@ bool SendHandler::Open() {
   return impl_->Open();
 }
 
+/**
+ * note: For send handler, can be empty
+ */
 bool SendHandler::SetHandlerParams(const ModuleParamSet& params) {
   if (impl_) {
-    impl_->param_set_ = params;  // SourceModule param_set_
+    DataSource* ds = dynamic_cast<DataSource*>(module_);
+    if (ds) {
+      ModuleParamSet stream_params = ds->GetStreamParams(stream_id_);
+      if (!stream_params.empty()) {
+        impl_->param_set_ = stream_params;
+        return true;
+      }
+    }
+    impl_->param_set_ = params;
   }
   return true;
 }

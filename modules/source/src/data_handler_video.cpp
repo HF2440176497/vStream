@@ -1,8 +1,10 @@
 #include "cnstream_source.hpp"
 #include "data_handler_video.hpp"
+#include "data_source.hpp"
 #include "data_source_param.hpp"
 
 #include <memory>
+#include <sstream>
 #include <unordered_map>
 
 namespace cnstream {
@@ -63,12 +65,19 @@ void VideoHandler::Stop() {
 }
 
 void VideoHandler::RegisterHandlerParams() {
-  param_register_.Register(key_input_url, "URL of the video stream (rtsp/rtmp/file).");
-  param_register_.Register(key_frame_rate, "Framerate for video playback. Default is 25.");
 }
 
 bool VideoHandler::CheckHandlerParams(const ModuleParamSet& params) {
-  if (params.find(key_input_url) == params.end()) {
+  DataSource* ds = dynamic_cast<DataSource*>(module_);
+  ModuleParamSet stream_params;
+  const ModuleParamSet* check_params = &params;
+  if (ds) {
+    stream_params = ds->GetStreamParams(stream_id_);
+    if (!stream_params.empty()) {
+      check_params = &stream_params;
+    }
+  }
+  if (check_params->find(key_input_url) == check_params->end()) {
     LOGE(SOURCE) << "[VideoHandler] stream_url is required";
     return false;
   }
@@ -77,6 +86,14 @@ bool VideoHandler::CheckHandlerParams(const ModuleParamSet& params) {
 
 bool VideoHandler::SetHandlerParams(const ModuleParamSet& params) {
   if (impl_) {
+    DataSource* ds = dynamic_cast<DataSource*>(module_);
+    if (ds) {
+      ModuleParamSet stream_params = ds->GetStreamParams(stream_id_);
+      if (!stream_params.empty()) {
+        impl_->param_set_ = stream_params;
+        return true;
+      }
+    }
     impl_->param_set_ = params;
   }
   return true;
@@ -191,25 +208,33 @@ void VideoHandlerImpl::clean_up() {
 }
 
 bool VideoHandlerImpl::Open() {
+  if (!module_) {
+    LOGE(SOURCE) << "Video: module_ is null";
+    return false;
+  }
+  if (param_set_.find(key_device_id) != param_set_.end()) {
+    device_id_ = std::stoi(param_set_.at(key_device_id));
+  }
+  if (param_set_.find(key_output_type) != param_set_.end()) {
+    std::string out_type = param_set_.at(key_output_type);
+    auto it = param_output_map.find(out_type);
+    if (it != param_output_map.end()) {
+      output_type_ = it->second;
+    }
+  }
+  if (param_set_.find(key_interval) != param_set_.end()) {
+    interval_ = std::stoi(param_set_.at(key_interval));
+  }
+  LOGI(SOURCE) << "Video: device_id=" << device_id_
+               << ", output=" << static_cast<int>(output_type_);
+
   stream_url_ = param_set_.at(key_input_url);
   if (stream_url_.empty()) {
-    LOGE(SOURCE) << "VideoHandlerImpl: stream_url is empty";
+    LOGE(SOURCE) << "Video: url is empty";
     return false;
   }
-
   if (param_set_.find(key_frame_rate) != param_set_.end()) {
     frame_rate_ = std::stoi(param_set_.at(key_frame_rate));
-  }
-
-  if (module_) {
-    DataSourceParam source_param = module_->GetSourceParam();
-    device_id_ = source_param.device_id_;
-    output_type_ = source_param.output_type_;
-    LOGI(SOURCE) << "VideoHandlerImpl: device_id=" << device_id_ 
-                 << ", output_type=" << static_cast<int>(output_type_);
-  } else {
-    LOGE(SOURCE) << "VideoHandlerImpl: module_ is null";
-    return false;
   }
 
   ConfigureOutputType();
@@ -235,21 +260,21 @@ void VideoHandlerImpl::Close() {
 
 void VideoHandlerImpl::Loop() {
   if (!SupportHWDevice()) {
-    LOGE(SOURCE) << "VideoHandlerImpl: hardware device not supported";
+    LOGE(SOURCE) << "Video: hardware device not supported";
     OnEndFrame();
     running_.store(false);
     return;
   }
 
   if (input_format_init() < 0) {
-    LOGE(SOURCE) << "VideoHandlerImpl: input_format_init failed";
+    LOGE(SOURCE) << "input_format_init failed";
     OnEndFrame();
     running_.store(false);
     return;
   }
 
   if (codec_init() < 0) {
-    LOGE(SOURCE) << "VideoHandlerImpl: codec_init failed";
+    LOGE(SOURCE) << "codec_init failed";
     OnEndFrame();
     running_.store(false);
     return;
@@ -261,7 +286,7 @@ void VideoHandlerImpl::Loop() {
   while (running_.load()) {
     int ret = av_read_frame(ifmt_ctx_, &pkt_);
     if (ret < 0) {
-      LOGE(SOURCE) << "VideoHandlerImpl: av_read_frame error";
+      LOGE(SOURCE) << "av_read_frame error";
       break;
     }
     if (pkt_.stream_index != video_index_) {
@@ -270,7 +295,7 @@ void VideoHandlerImpl::Loop() {
     }
     ret = decode_write();
     if (ret < 0) {
-      LOGE(SOURCE) << "VideoHandlerImpl: decode_write error";
+      LOGE(SOURCE) << "decode_write error";
       break;
     }
     av_packet_unref(&pkt_);
@@ -283,12 +308,12 @@ void VideoHandlerImpl::Loop() {
 
 std::shared_ptr<FrameInfo> VideoHandlerImpl::OnDecodeFrame(DecodeFrame* frame) {
   if (!frame) {
-    LOGW(SOURCE) << "[VideoHandlerImpl] OnDecodeFrame function frame is nullptr.";
+    LOGW(SOURCE) << "Video: OnDecodeFrame function frame is nullptr.";
     return nullptr;
   }
   std::shared_ptr<FrameInfo> data = this->CreateFrameInfo();
   if (!data) {
-    LOGW(SOURCE) << "[VideoHandlerImpl] OnDecodeFrame function, failed to create FrameInfo.";
+    LOGW(SOURCE) << "Video: OnDecodeFrame function, failed to create FrameInfo.";
     return nullptr;
   }
   data->timestamp = frame->pts;
@@ -308,11 +333,11 @@ std::shared_ptr<FrameInfo> VideoHandlerImpl::OnDecodeFrame(DecodeFrame* frame) {
 void VideoHandlerImpl::OnEndFrame() {
   std::shared_ptr<FrameInfo> data = this->CreateFrameInfo(true);
   if (!data) {
-    LOGW(SOURCE) << "[VideoHandlerImpl] OnEndFrame function, failed to create FrameInfo.";
+    LOGW(SOURCE) << "Video: OnEndFrame function, failed to create FrameInfo.";
     return;
   }
   this->SendFrameInfo(data);
-  LOGI(SOURCE) << "[VideoHandlerImpl] OnEndFrame function, send end frame.";
+  LOGI(SOURCE) << "Video: OnEndFrame function, send end frame.";
 }
 
 int VideoHandlerImplCPU::decode_write() {
@@ -391,7 +416,7 @@ std::shared_ptr<FrameInfo> VideoHandlerImplCPU::ProcessFrame(AVFrame *p_frame, i
   s_frame_ = p_frame;
 
   if (!s_frame_) {
-    LOGE(SOURCE) << "VideoHandlerImpl: s_frame_ is null";
+    LOGE(SOURCE) << "Video: s_frame_ is null";
     return nullptr;
   }
 
@@ -401,7 +426,7 @@ std::shared_ptr<FrameInfo> VideoHandlerImplCPU::ProcessFrame(AVFrame *p_frame, i
   } else if (s_frame_->format == AV_PIX_FMT_NV21) {
     nv_fmt = DataFormat::PIXEL_FORMAT_YUV420_NV21;
   } else {
-    LOGE(SOURCE) << "VideoHandlerImpl: s_frame_ format not supported: " << s_frame_->format;
+    LOGE(SOURCE) << "Video: s_frame_ format not supported: " << s_frame_->format;
     ret = -1;
     return nullptr;
   }
@@ -644,7 +669,7 @@ int VideoHandlerImplCUDA::decode_write() {
     } else if (output_type_ == OutputType::OUTPUT_CUDA) {
       data = ProcessFrameCUDA(p_frame, ret);
     } else {
-      LOGF(SOURCE) << "VideoHandler: unsupported output type: " << static_cast<int>(output_type_);
+      LOGF(SOURCE) << "unsupported output type: " << static_cast<int>(output_type_);
       ret = -1;
       break;
     }
@@ -672,7 +697,7 @@ int VideoHandlerImplCUDA::decode_write() {
 
 std::shared_ptr<FrameInfo> VideoHandlerImplCUDA::ProcessFrameCPU(AVFrame *p_frame, AVFrame *sw_frame, int &ret) {
   if (!p_frame) {
-    LOGE(SOURCE) << "VideoHandlerImpl: p_frame is null";
+    LOGE(SOURCE) << "p_frame is null";
     return nullptr;
   }
   if (p_frame->format == hw_pix_fmt) {
@@ -682,12 +707,12 @@ std::shared_ptr<FrameInfo> VideoHandlerImplCUDA::ProcessFrameCPU(AVFrame *p_fram
     }
     s_frame_ = sw_frame;
   } else {
-    LOGE(SOURCE) << "VideoHandlerImpl: p_frame format not supported: " << p_frame->format;
+    LOGE(SOURCE) << "p_frame format not supported: " << p_frame->format;
     return nullptr;
   }
 
   if (!s_frame_) {
-    LOGE(SOURCE) << "VideoHandlerImpl: s_frame_ is null";
+    LOGE(SOURCE) << "s_frame_ is null";
     return nullptr;
   }
 
@@ -697,7 +722,7 @@ std::shared_ptr<FrameInfo> VideoHandlerImplCUDA::ProcessFrameCPU(AVFrame *p_fram
   } else if (s_frame_->format == AV_PIX_FMT_NV21) {
     nv_fmt = DataFormat::PIXEL_FORMAT_YUV420_NV21;
   } else {
-    LOGE(SOURCE) << "VideoHandlerImpl: s_frame_ format not supported: " << s_frame_->format;
+    LOGE(SOURCE) << "s_frame_ format not supported: " << s_frame_->format;
     ret = -1;
     return nullptr;
   }
@@ -742,11 +767,11 @@ std::shared_ptr<FrameInfo> VideoHandlerImplCUDA::ProcessFrameCPU(AVFrame *p_fram
 
 std::shared_ptr<FrameInfo> VideoHandlerImplCUDA::ProcessFrameCUDA(AVFrame *p_frame, int &ret) {
   if (!p_frame) {
-    LOGE(SOURCE) << "VideoHandlerImpl: p_frame is null";
+    LOGE(SOURCE) << "p_frame is null";
     return nullptr;
   }
   if (p_frame->format != AV_PIX_FMT_CUDA) {
-    LOGE(SOURCE) << "VideoHandlerImpl: p_frame format not supported: " << p_frame->format;
+    LOGE(SOURCE) << "p_frame format not supported: " << p_frame->format;
     ret = -1;
     return nullptr;
   }
@@ -763,7 +788,7 @@ std::shared_ptr<FrameInfo> VideoHandlerImplCUDA::ProcessFrameCUDA(AVFrame *p_fra
   frame.stride[1] = p_frame->linesize[1];
 
   if (frame.stride[0] != frame.stride[1]) {
-    LOGW(SOURCE) << "VideoHandlerImpl: stride[0] != stride[1]: " << frame.stride[0] << " != " << frame.stride[1];
+    LOGW(SOURCE) << "stride[0] != stride[1]: " << frame.stride[0] << " != " << frame.stride[1];
   }
 
   return OnDecodeFrame(&frame);

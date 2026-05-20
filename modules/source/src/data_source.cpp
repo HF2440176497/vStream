@@ -21,10 +21,12 @@
 
 #include <algorithm>
 #include <atomic>
+#include <fstream>
 #include <functional>
 #include <map>
 #include <memory>
 #include <string>
+#include <nlohmann/json.hpp>
 
 #include "data_source.hpp"
 
@@ -34,13 +36,7 @@ DataSource::DataSource(const std::string &name) : SourceModule(name) {
   param_register_.SetModuleDesc(
       "DataSource is a module for handling input data (videos or images)."
       " Feed data to codec and send decoded data to the next module if there is one.");
-  param_register_.Register(key_output_type,
-                           "Where the outputs will be stored.");
-  param_register_.Register(key_device_id, "Which device will be used. If there is only one device, it might be 0.");
-  param_register_.Register(key_interval,
-                           "How many frames will be discarded between two frames"
-                           " which will be sent to next modules.");
-  param_register_.Register(key_only_key_frame, "Only decode key frames and other frames are discarded. Default is false");
+  param_register_.Register(key_config_file, "data source config file");
 }
 
 DataSource::~DataSource() {}
@@ -65,27 +61,19 @@ bool DataSource::Open(ModuleParamSet paramSet) {
     LOGE(SOURCE) << "CheckParamSet failed";
     return false;
   }
-  if (paramSet.find(key_output_type) != paramSet.end()) {
-    std::string out_type = paramSet.at(key_output_type);
-    param_.output_type_ = param_output_map.at(out_type);
-  }
-  if (paramSet.find(key_interval) != paramSet.end()) {
-    std::stringstream ss;
-    int interval;
-    ss << paramSet.at(key_interval);
-    ss >> interval;
-    if (interval <= 0) {
-      LOGE(SOURCE) << "interval : invalid";
-      return false;
-    }
-    param_.interval_ = interval;
-  }
-  param_.device_id_ = GetDeviceId(paramSet);
-  if (paramSet.find(key_only_key_frame) != paramSet.end()) {
-    param_.only_key_frame_ = (paramSet.at(key_only_key_frame) == "true");
-  }
   param_.param_set_ = paramSet;
   param_set_ = paramSet;  // of SourceModule, for handlers
+  if (paramSet.find(key_config_file) != paramSet.end()) {
+    std::string config_file = paramSet.at(key_config_file);
+
+    // paramSet from custom params, can include "config_file_path"
+    std::string config_path = GetPathRelativeToTheJSONFile(config_file, paramSet);
+    if (!LoadStreamConf(config_path)) {
+      LOGE(SOURCE) << "LoadStreamConf failed: " << config_path;
+      return false;
+    }
+    LOGI(SOURCE) << "Loaded " << stream_configs_.size() << " stream configs from " << config_path;
+  }
   return true;
 }
 
@@ -100,42 +88,16 @@ void DataSource::Close() { RemoveSources(true); }
  */
 bool DataSource::CheckParamSet(const ModuleParamSet &paramSet) const {
   bool ret = true;
-  ParametersChecker checker;
   for (auto &it : paramSet) {
     if (!param_register_.IsRegisted(it.first)) {
-      LOGW(SOURCE) << "unknown param: " << it.first << "; maybe for handler usage";
+      LOGW(SOURCE) << "unknown param: " << it.first;
     }
-  }
-  std::string err_msg;
-  if (!checker.IsNum({key_device_id}, paramSet, err_msg, true)) {
-    LOGE(SOURCE) << "device_id check failed: " << err_msg;
-    return false;
-  }
-  int device_id = GetDeviceId(paramSet);
-  // output_type
-  if (paramSet.find(key_output_type) != paramSet.end()) {
-    std::string out_type = paramSet.at(key_output_type);
-    if (param_output_map.find(out_type) == param_output_map.end()) {
-      LOGE(SOURCE) << "[DataSource] [output_type] " << out_type << " not supported";
-      return false;
-    }
-    auto output_type = param_output_map.at(out_type);
-    if (output_type != OutputType::OUTPUT_CPU) {
-      if (device_id < 0) {
-        LOGE(SOURCE) << "[DataSource] [output_type] " << out_type << " : device_id must be set";
-        return false;
-      }
-    }
-  }
-  if (!checker.IsNum({key_interval}, paramSet, err_msg, false)) {
-    LOGE(SOURCE) << "[DataSource] " << err_msg;
-    return false;
   }
   return ret;
 }
 
 int DataSource::Process(std::shared_ptr<FrameInfo> data) {
-  LOGI(SOURCE) << "[DataSource] Process receive frame_id: " << data->stream_id;
+  LOGI(SOURCE) << "Process receive frame_id: " << data->stream_id;
   return 0;
 }
 
@@ -143,5 +105,92 @@ DataSourceParam DataSource::GetSourceParam() const {
   return param_; 
 }
 
+/**
+ * 加载 config_file 文件的参数到 stream_configs_
+ */
+bool DataSource::LoadStreamConf(const std::string& config_file) {
+  std::ifstream ifs(config_file);
+  if (!ifs.is_open()) {
+    LOGE(SOURCE) << "LoadStreamConf: cannot open " << config_file;
+    return false;
+  }
+  try {
+    nlohmann::json doc = nlohmann::json::parse(ifs);
+    if (!doc.is_object()) {
+      LOGE(SOURCE) << "LoadStreamConf: root must be an object";
+      return false;
+    }
+    stream_configs_.clear();
+    for (auto it = doc.begin(); it != doc.end(); ++it) {
+      const std::string& stream_id = it.key();
+      const nlohmann::json& stream_value = it.value();
+
+      // "stream_id" : {
+      //   "param1" : "value1",
+      //   "param2" : "value2",
+      // }
+      if (!stream_value.is_object()) {
+        LOGW(SOURCE) << "LoadStreamConf: stream [" << stream_id << "] value is not an object, skip";
+        continue;
+      }
+      ModuleParamSet params;
+      for (auto pit = stream_value.begin(); pit != stream_value.end(); ++pit) {
+        std::string val;
+        if (pit.value().is_string()) {
+          val = pit.value().get<std::string>();
+        } else {
+          val = pit.value().dump();
+        }
+        params[pit.key()] = val;
+      }
+      stream_configs_[stream_id] = std::move(params);
+      LOGI(SOURCE) << "Loaded config for stream [" << stream_id << "]";
+    }
+  } catch (const nlohmann::json::exception& e) {
+    LOGE(SOURCE) << "LoadStreamConf: JSON parse error: " << e.what();
+    return false;
+  }
+  // 检查 config_file 中设置的参数是否合法
+  std::string err_msg;
+  ParametersChecker checker;
+  for (auto &it : stream_configs_) {
+    const std::string& stream_id = it.first;
+    const ModuleParamSet& paramSet = it.second;
+    if (!checker.IsNum({key_device_id}, paramSet, err_msg, true)) {
+      LOGE(SOURCE) << stream_id << " [device_id] check failed: " << err_msg;
+      return false;
+    }
+    int device_id = GetDeviceId(paramSet);
+    // output_type
+    if (paramSet.find(key_output_type) != paramSet.end()) {
+      std::string out_type = paramSet.at(key_output_type);
+      if (param_output_map.find(out_type) == param_output_map.end()) {
+        LOGE(SOURCE) << stream_id << " [output_type] " << out_type << " check failed";
+        return false;
+      }
+      auto output_type = param_output_map.at(out_type);
+      if (output_type != OutputType::OUTPUT_CPU) {
+        if (device_id < 0) {
+          LOGE(SOURCE) << stream_id << " [output_type] " << out_type << " : device_id must be set";
+          return false;
+        }
+      }
+    }
+    if (!checker.IsNum({key_interval}, paramSet, err_msg, false)) {
+      LOGE(SOURCE) << stream_id << " [interval] check failed: " << err_msg;
+      return false;
+    }
+  }
+  return true;
+}
+
+ModuleParamSet DataSource::GetStreamParams(const std::string& stream_id) const {
+  auto it = stream_configs_.find(stream_id);
+  if (it != stream_configs_.end()) {
+    return it->second;
+  }
+  LOGW(SOURCE) << "Stream [" << stream_id << "] not found in config file";
+  return {};
+}
 
 }  // namespace cnstream

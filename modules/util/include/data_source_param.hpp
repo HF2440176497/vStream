@@ -225,10 +225,10 @@ inline const std::unordered_map<std::string, DecoderType> param_decoder_map = {
 
 inline const std::string key_device_id = "device_id";
 inline const std::string key_interval = "interval";
-// inline const std::string key_decoder_type = "decoder_type";
 inline const std::string key_output_type = "output_type";
 inline const std::string key_only_key_frame = "only_key_frame";
 
+inline const std::string key_config_file = "config_file";
 inline const std::string key_file_path = "file_path";
 inline const std::string key_frame_rate = "frame_rate";
 inline const std::string key_input_url = "url";
@@ -237,11 +237,7 @@ inline const std::string key_input_url = "url";
  * @brief DataSourceParam is a structure for private usage.
  */
 struct DataSourceParam {
-  int  device_id_ = -1;                                 /*! DataFrame 的 device_id 直接来自 decode_frame  */
-  size_t  interval_ = 1;                                /*!< The interval of outputting one frame. It outputs one frame every n (interval_) frames. */
-  OutputType output_type_ = OutputType::OUTPUT_CPU;     /*!< The output type */
-  bool only_key_frame_ = false;                         /*!< Whether only to decode key frames. */
-  ModuleParamSet param_set_ {};
+  ModuleParamSet param_set_ {};   // device_id, interval, output_type: 基本参数；param_set_: 全部 customs 参数
 };
 
 struct SendFrame {
