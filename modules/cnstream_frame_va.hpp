@@ -158,6 +158,7 @@ class InferObject {
   int id;                  ///< The ID of the classification (label value).
   std::string track_id;    ///< The tracking result.
   float score;             ///< The label score.
+  float area;              ///< The area of the object.
   InferBoundingBox bbox;   ///< The object normalized coordinates.
   Collection collection;   ///< User-defined structured information.
 

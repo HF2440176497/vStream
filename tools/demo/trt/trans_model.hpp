@@ -4,6 +4,7 @@
 
 #include <NvInfer.h>
 
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <string>
@@ -32,11 +33,16 @@ struct CompileConfig {
   bool dynamic_batch = true;  // 仅支持 batch_size 是动态的
   int  max_batch_size = 8;
   int  opt_batch_size = 4;
+  int  min_batch_size = 1;
 
-  std::map<std::string, ProfileShape> profile_shapes;  // [input_name, profile_shape]
+  // specific profile shapes
+  std::map<std::string, ProfileShape> profile_shapes;
 
-  bool strict_qdq = true;  // 对于 ORT 量化模型，开启严格 QDQ 模式
-  int min_compute_capability = 75;  // Turing (RTX 20 series)
+  bool strict_qdq = true;
+  int  min_compute_capability = 75;
+
+  std::string calibration_cache_file;
+  std::vector<std::vector<uint8_t>> calibration_data;
 };
 
 class ModelSource {

@@ -5,7 +5,6 @@
 #include <NvInfer.h>
 #include <NvInferPlugin.h>
 #include <NvOnnxParser.h>
-#include <cublas_v2.h>
 #include <cuda_runtime_api.h>
 
 #include <iostream>
@@ -14,6 +13,19 @@
 #include <sstream>
 
 using namespace nvinfer1;
+
+#define CHECK_CUDA_RUNTIME(op) __check_cuda_runtime((op), #op, __FILE__, __LINE__)
+
+inline bool __check_cuda_runtime(cudaError_t code, const char* op, const char* file, int line) {
+  if (code != cudaSuccess) {
+    const char* err_name = cudaGetErrorName(code);
+    const char* err_message = cudaGetErrorString(code);
+    printf("check_cuda_runtime error %s:%d  %s failed. \n  code = %s, message = %s\n", 
+		file, line, op, err_name, err_message);
+    return false;
+  }
+  return true;
+}
 
 class Logger : public ILogger {
  public:
@@ -69,30 +81,26 @@ const char* mode_string(Mode type) {
   }
 }
 
-// ==================== INT8 校准器实现 ====================
 
 class Int8EntropyCalibrator : public IInt8EntropyCalibrator2 {
  public:
   Int8EntropyCalibrator(const std::vector<std::vector<uint8_t>>& calibration_data, const std::vector<int>& input_dims,
                         const std::string& cache_file = "")
       : calibration_data_(calibration_data), input_dims_(input_dims), cache_file_(cache_file), current_batch_(0) {
-    // 计算 batch size 和单样本大小
     batch_size_ = input_dims_[0];
     size_t single_size =
         std::accumulate(input_dims_.begin() + 1, input_dims_.end(), sizeof(float), std::multiplies<size_t>());
     batch_bytes_ = batch_size_ * single_size;
 
-    // 分配 GPU 内存
-    cudaMalloc(&device_input_, batch_bytes_);
+    CHECK_CUDA_RUNTIME(cudaMalloc(&device_input_, batch_bytes_));
 
-    // 尝试加载已有缓存
     if (!cache_file_.empty() && file_exists(cache_file_)) {
       load_cache();
     }
   }
 
   ~Int8EntropyCalibrator() {
-    if (device_input_) cudaFree(device_input_);
+    if (device_input_) CHECK_CUDA_RUNTIME(cudaFree(device_input_));
   }
 
   int getBatchSize() const noexcept override { return batch_size_; }
@@ -100,10 +108,10 @@ class Int8EntropyCalibrator : public IInt8EntropyCalibrator2 {
   bool getBatch(void* bindings[], const char* names[], int nbBindings) noexcept override {
     if (current_batch_ >= calibration_data_.size()) return false;
 
-    // 将当前 batch 数据拷贝到 GPU
-    cudaMemcpy(device_input_, calibration_data_[current_batch_].data(), batch_bytes_, cudaMemcpyHostToDevice);
+    if (!CHECK_CUDA_RUNTIME(cudaMemcpy(device_input_, calibration_data_[current_batch_].data(), batch_bytes_, cudaMemcpyHostToDevice))) {
+      return false;
+    }
 
-    // 假设第一个输入是数据输入（根据实际模型调整）
     bindings[0] = device_input_;
     current_batch_++;
     return true;
@@ -188,45 +196,35 @@ void CompileOutput::set_data(std::vector<uint8_t>&& data) { data_ = std::move(da
 
 
 /**
- * 将 ONNX 量化后的模型编译为 TensorRT 引擎
  * @param mode 编译模式 (FP32, FP16, INT8)
  * @param source 模型源 (ONNX 文件路径或内存数据)
  * @param saveto 输出配置 (文件路径或内存指针)
  * @param config 编译配置
  * @return 是否编译成功
  */
-bool compile(
-    const ModelSource& source, 
-    const CompileOutput& saveto,
-    const CompileConfig& config) {
-  
-  std::cout << "Compiling: " << source.descript().c_str() << std::endl;
+bool compile(Mode mode, const ModelSource& source, const CompileOutput& saveto,
+             const CompileConfig& config) {
 
-  // 1. 创建 Builder
+  std::cout << "Compiling [" << mode_string(mode) << "]: " << source.descript().c_str() << std::endl;
+
   std::shared_ptr<IBuilder> builder(createInferBuilder(gLogger), destroy_trt_pointer<IBuilder>);
   if (!builder) {
     std::cerr << "Failed to create TensorRT builder" << std::endl;
     return false;
   }
 
-  // 2. 创建 Network (显式 batch 模式支持动态 shape)
-  // deprecated
-  // const uint32_t explicitBatch = 1U << static_cast<uint32_t>(NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
-
-  if (!config.strict_qdq) {
-    std::cerr << "Warning: Strict QDQ mode is disabled. Not supported." << std::endl;
-    return false;
-  } 
-  const uint32_t strongly_typed_ = 1U << static_cast<uint32_t>(NetworkDefinitionCreationFlag::kSTRONGLY_TYPED);
-  std::shared_ptr<INetworkDefinition> network(builder->createNetworkV2(strongly_typed_),
+  uint32_t network_flags = 0;
+  if (config.strict_qdq) {
+    network_flags = 1U << static_cast<uint32_t>(NetworkDefinitionCreationFlag::kSTRONGLY_TYPED);
+    std::cout << "QDQ strict mode: kSTRONGLY_TYPED enabled" << std::endl;
+  }
+  std::shared_ptr<INetworkDefinition> network(builder->createNetworkV2(network_flags),
                                               destroy_trt_pointer<INetworkDefinition>);
-
   if (!network) {
     std::cerr << "Failed to create network" << std::endl;
     return false;
   }
 
-  // 3. 创建 Parser 并解析 ONNX
   std::shared_ptr<nvonnxparser::IParser> parser(nvonnxparser::createParser(*network, gLogger),
                                                 destroy_trt_pointer<nvonnxparser::IParser>);
   if (!parser) {
@@ -250,14 +248,13 @@ bool compile(
     return false;
   }
 
-  // 4. 打印模型信息
   std::cout << "========== Model Information ==========" << std::endl;
 
   int num_inputs = network->getNbInputs();
   int num_outputs = network->getNbOutputs();
-
   std::cout << "Inputs: " << num_inputs << ", Outputs: " << num_outputs << std::endl;
 
+  bool has_dynamic_shape = false;
   std::vector<nvinfer1::Dims> input_dims_list;
   for (int i = 0; i < num_inputs; ++i) {
     auto* tensor = network->getInput(i);
@@ -268,8 +265,10 @@ bool compile(
     for (int j = 0; j < dims.nbDims; ++j) {
       dims_str += std::to_string(dims.d[j]);
       if (j < dims.nbDims - 1) dims_str += "x";
+      if (dims.d[j] == -1) has_dynamic_shape = true;
     }
-    std::cout << "  Input[" << i << "] '" << tensor->getName() << "': " << dims_str.c_str() << " [dtype=" << static_cast<int>(tensor->getType()) << "]" << std::endl;
+    std::cout << "  Input[" << i << "] '" << tensor->getName() << "': " << dims_str.c_str()
+              << " [dtype=" << static_cast<int>(tensor->getType()) << "]" << std::endl;
   }
 
   for (int i = 0; i < num_outputs; ++i) {
@@ -280,11 +279,12 @@ bool compile(
       dims_str += std::to_string(dims.d[j]);
       if (j < dims.nbDims - 1) dims_str += "x";
     }
-    std::cout << "  Output[" << i << "] '" << tensor->getName() << "': " << dims_str.c_str() << " [dtype=" << static_cast<int>(tensor->getType()) << "]" << std::endl;
+    std::cout << "  Output[" << i << "] '" << tensor->getName() << "': " << dims_str.c_str()
+              << " [dtype=" << static_cast<int>(tensor->getType()) << "]" << std::endl;
   }
+  std::cout << "Dynamic shape: " << (has_dynamic_shape ? "YES" : "NO (static)") << std::endl;
   std::cout << "=======================================" << std::endl;
 
-  // 5. 创建 Builder Config
   std::shared_ptr<IBuilderConfig> builder_config(builder->createBuilderConfig(),
                                                  destroy_trt_pointer<IBuilderConfig>);
   if (!builder_config) {
@@ -292,17 +292,42 @@ bool compile(
     return false;
   }
 
-  // 6. 设置工作空间内存池
-  size_t workspace_size = config.max_workspace_size > 0 ? config.max_workspace_size : (2ULL << 30);  // 默认 2GB
+  size_t workspace_size = config.max_workspace_size > 0 ? config.max_workspace_size : (2ULL << 30);
   builder_config->setMemoryPoolLimit(MemoryPoolType::kWORKSPACE, workspace_size);
   std::cout << "Workspace limit: " << workspace_size / 1024.0 / 1024.0 << " MB" << std::endl;
 
-  // GPU 回退（如果某些层不支持目标精度，回退到 FP32）
-  builder_config->setFlag(BuilderFlag::kGPU_FALLBACK);
+  if (mode == Mode::FP16 || mode == Mode::INT8) {
+    builder_config->setFlag(BuilderFlag::kFP16);
+    std::cout << "FP16 mode enabled" << std::endl;
+  }
+  if (mode == Mode::INT8) {
+    builder_config->setFlag(BuilderFlag::kINT8);
+    std::cout << "INT8 mode enabled" << std::endl;
+  }
 
-  // 7. 处理动态 Shape 和 Optimization Profile
-  if (config.dynamic_batch) {
-    auto* profile = builder->createOptimizationProfile();
+  std::unique_ptr<IInt8EntropyCalibrator2> calibrator;
+  if (mode == Mode::INT8 && !config.strict_qdq && !config.calibration_data.empty()) {
+    std::vector<int> dims_vec;
+    auto first_input_dims = network->getInput(0)->getDimensions();
+    dims_vec.push_back(static_cast<int>(config.calibration_data.size()));
+    for (int j = 1; j < first_input_dims.nbDims; ++j) {
+      dims_vec.push_back(first_input_dims.d[j]);
+    }
+
+    calibrator.reset(new Int8EntropyCalibrator(config.calibration_data, dims_vec, config.calibration_cache_file));
+    builder_config->setInt8Calibrator(calibrator.get());
+    std::cout << "INT8 calibrator configured (" << config.calibration_data.size() << " batches)" << std::endl;
+  }
+
+  if (has_dynamic_shape) {
+    if (!config.dynamic_batch) {
+      std::cerr << "ERROR: Model has dynamic dimensions but dynamic_batch is disabled. "
+                << "Please set dynamic_batch=true in CompileConfig." << std::endl;
+      return false;
+    }
+
+    std::unique_ptr<IOptimizationProfile, void(*)(IOptimizationProfile*)>
+        profile(builder->createOptimizationProfile(), destroy_trt_pointer<IOptimizationProfile>);
     if (!profile) {
       std::cerr << "Failed to create optimization profile" << std::endl;
       return false;
@@ -317,33 +342,43 @@ bool compile(
       nvinfer1::Dims opt_dims = dims;
       nvinfer1::Dims max_dims = dims;
 
-      if (config.dynamic_batch) {
-        min_dims.d[0] = 1;
-        opt_dims.d[0] = std::max(1, config.opt_batch_size);
-        max_dims.d[0] = config.max_batch_size;
-
-        std::cout << "Dynamic batch for '" << name << "': min=" << min_dims.d[0] << ", opt=" << opt_dims.d[0] << ", max=" << max_dims.d[0] << std::endl;
-      }
-
-      if (!config.profile_shapes.empty() && config.profile_shapes.count(name) > 0) {
+      if (config.profile_shapes.count(name) > 0) {
         const auto& shape_cfg = config.profile_shapes.at(name);
         min_dims = shape_cfg.min;
         opt_dims = shape_cfg.opt;
         max_dims = shape_cfg.max;
+      } else {
+        for (int j = 0; j < dims.nbDims; ++j) {
+          if (dims.d[j] == -1) {
+            min_dims.d[j] = config.min_batch_size;
+            opt_dims.d[j] = config.opt_batch_size;
+            max_dims.d[j] = config.max_batch_size;
+          }
+        }
       }
+
+      std::string min_str, opt_str, max_str;
+      for (int j = 0; j < min_dims.nbDims; ++j) {
+        min_str += std::to_string(min_dims.d[j]) + (j < min_dims.nbDims - 1 ? "x" : "");
+        opt_str += std::to_string(opt_dims.d[j]) + (j < opt_dims.nbDims - 1 ? "x" : "");
+        max_str += std::to_string(max_dims.d[j]) + (j < max_dims.nbDims - 1 ? "x" : "");
+      }
+      std::cout << "  Profile '" << name << "': min=" << min_str << " opt=" << opt_str << " max=" << max_str << std::endl;
 
       profile->setDimensions(name, OptProfileSelector::kMIN, min_dims);
       profile->setDimensions(name, OptProfileSelector::kOPT, opt_dims);
       profile->setDimensions(name, OptProfileSelector::kMAX, max_dims);
     }
 
-    if (!builder_config->addOptimizationProfile(profile)) {
+    if (!builder_config->addOptimizationProfile(profile.get())) {
       std::cerr << "Failed to add optimization profile" << std::endl;
       return false;
     }
-  }
+    profile.release();
 
-  // 10. 构建引擎
+  }  // end if (has_dynamic_shape) 
+
+
   std::cout << "Building TensorRT engine (this may take a while)..." << std::endl;
   auto start_time = std::chrono::high_resolution_clock::now();
 
@@ -357,7 +392,6 @@ bool compile(
         std::chrono::high_resolution_clock::now() - start_time).count();
   std::cout << "Engine built successfully in " << duration << " ms" << std::endl;
 
-  // 11. 序列化并保存
   std::shared_ptr<IHostMemory> serialized(engine->serialize(), destroy_trt_pointer<IHostMemory>);
   if (!serialized || serialized->size() == 0) {
     std::cerr << "Engine serialization failed" << std::endl;
@@ -384,21 +418,35 @@ bool compile(
 }  // namespace TRT
 
 int main(int argc, char* argv[]) {
-  if (argc < 3) {
-    std::cerr << "Usage: " << argv[0] << " <onnx_path> <out_engine_path>" << std::endl;
+  if (argc < 4) {
+    std::cerr << "Usage: " << argv[0] << " <onnx_path> <out_engine_path> <mode>" << std::endl;
+    std::cerr << "  mode: fp32 | fp16 | int8" << std::endl;
+    std::cerr << "  Example: " << argv[0] << " model.onnx model.engine fp16" << std::endl;
     return 1;
   }
 
   std::string onnx_path = argv[1];
   std::string out_engine_path = argv[2];
 
-  TRT::CompileConfig config;
-  config.dynamic_batch = false;
-  config.max_batch_size = 16;
-  config.opt_batch_size = 8;
-  config.strict_qdq = true;  // 关键：启用强类型模式
+  TRT::Mode mode = TRT::Mode::FP32;
+  std::string mode_str = argv[3];
+  if (mode_str == "fp16") {
+    mode = TRT::Mode::FP16;
+  } else if (mode_str == "int8") {
+    mode = TRT::Mode::INT8;
+  } else if (mode_str != "fp32") {
+    std::cerr << "Unknown mode: " << mode_str << ", using FP32" << std::endl;
+  }
 
-  TRT::compile(TRT::ModelSource(onnx_path), TRT::CompileOutput(out_engine_path), config);
+  TRT::CompileConfig config;
+  config.dynamic_batch = true;
+  config.max_batch_size = 8;
+  config.opt_batch_size = 4;
+  config.min_batch_size = 1;
+
+  config.strict_qdq = false;
+
+  TRT::compile(mode, TRT::ModelSource(onnx_path), TRT::CompileOutput(out_engine_path), config);
 
   return 0;
 }

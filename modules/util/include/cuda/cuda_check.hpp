@@ -13,9 +13,11 @@
 
 namespace cnstream {
 
-// #define CHECK_CUDA_RUNTIME(op) __check_cuda_runtime((op), #op, __FILE__, __LINE__)
-
+#ifdef VSTREAM_UNIT_TEST
 #define CHECK_CUDA_RUNTIME(op) __check_cuda_runtime_debug((op), #op, __FILE__, __LINE__)
+#else
+#define CHECK_CUDA_RUNTIME(op) __check_cuda_runtime((op), #op, __FILE__, __LINE__)
+#endif
 
 inline bool __check_cuda_runtime(cudaError_t code, const char* op, const char* file, int line) {
   if (code != cudaSuccess) {

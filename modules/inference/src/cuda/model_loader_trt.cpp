@@ -109,7 +109,6 @@ static std::string trt_io_mode_to_str(nvinfer1::TensorIOMode io_mode) {
 }
 
 
-
 void ModelLoaderTrt::Logger::log(nvinfer1::ILogger::Severity severity, const char* msg) noexcept {
   switch (severity) {
     case nvinfer1::ILogger::Severity::kINTERNAL_ERROR:
@@ -136,6 +135,7 @@ void ModelLoaderTrt::Logger::log(nvinfer1::ILogger::Severity severity, const cha
 ModelLoaderTrt::ModelLoaderTrt(int device_id) : ModelLoader(device_id) {
   device_type_ = DevType::CUDA;
   cudaSetDevice(device_id_);
+  cudaStreamCreate(&stream_);
 }
 
 bool ModelLoaderTrt::Init(const std::string& engine_path, const InferParams& params) {
@@ -149,7 +149,10 @@ bool ModelLoaderTrt::Init(const std::string& engine_path, const InferParams& par
 }
 
 ModelLoaderTrt::~ModelLoaderTrt() {
-  // "destroy" has deprecated in TensorRT 8.0
+  if (stream_) {
+    cudaStreamDestroy(stream_);
+    stream_ = nullptr;
+  }
   if (context_) {
     context_.reset();
   }
@@ -215,7 +218,13 @@ bool ModelLoaderTrt::ParseBindings() {
     DataType data_type = trt_dtype_to_tensor_dtype(dtype);
     if (data_type != DataType::FLOAT32) {
       LOGE(MODEL) << "Unsupported data type: " << trt_dtype_to_str(dtype) << " for tensor: " << bind_name;
-      continue;
+      return false;
+    }
+    auto trt_format = engine_->getTensorFormat(bind_name);
+    auto format = trt_format_to_tensor_format(trt_format);
+    if (format != TensorFormat::LINEAR) {
+      LOGE(MODEL) << "Unsupported format: " << trt_format_to_str(trt_format) << " for tensor: " << bind_name;
+      return false;
     }
     nvinfer1::TensorIOMode io_mode = engine_->getTensorIOMode(bind_name);
     if (io_mode == nvinfer1::TensorIOMode::kINPUT) {
@@ -228,39 +237,42 @@ bool ModelLoaderTrt::ParseBindings() {
       LOGW(MODEL) << "WARNING: Unsupport IO mode: " << trt_io_mode_to_str(io_mode) << " for tensor: " << bind_name;
       continue;
     }
-    auto trt_format = engine_->getTensorFormat(bind_name);
-    auto format = trt_format_to_tensor_format(trt_format);
-    if (format != TensorFormat::LINEAR) {
-      LOGE(MODEL) << "Unsupported format: " << trt_format_to_str(trt_format) << " for tensor: " << bind_name;
-      continue;
-    }
     bind_name_index_map_[bind_name] = i;
   }
 
   if (input_names_.size() > 1) {
       LOGW(MODEL) << "Model with " << input_names_.size() << " inputs, choose input index: " << input_ordered_index_;
-      input_name_ = input_names_[input_ordered_index_];
-      int index_ = bind_name_index_map_[input_name_];
-      if (index_ != input_ordered_index_) {
-        LOGF(MODEL) << "input_index_ not match bind_name: " << input_name_ << " actual_index: " << index_ << std::endl;
-        return false;
-      }
   }
+  if (input_ordered_index_ < 0 || input_ordered_index_ >= static_cast<int>(input_names_.size())) {
+    LOGF(MODEL) << "input_ordered_index_ out of range: " << input_ordered_index_
+                << ", input count: " << input_names_.size();
+    return false;
+  }
+  input_name_ = input_names_[input_ordered_index_];
 
   int input_num = 0;
   for (auto& input_name : input_names_) {
     nvinfer1::Dims opt_dims;
     auto dims = engine_->getTensorShape(input_name.c_str());
-    LOGI(MODEL) << "input_name [" << input_num++ << "]: " << input_name << "; dims: " << dims.d[0] << "x" << dims.d[1] << "x" << dims.d[2] << "x" << dims.d[3];
-    
-    // for dynamic input, get opt shape
-    if (dims.d[0] == -1) {
+
+    std::string input_dims_str;
+    for (int j = 0; j < dims.nbDims; ++j) {
+      input_dims_str += std::to_string(dims.d[j]);
+      if (j < dims.nbDims - 1) input_dims_str += "x";
+    }
+    LOGI(MODEL) << "input_name [" << input_num++ << "]: " << input_name << "; dims: " << input_dims_str;
+
+    bool input_has_dynamic = false;
+    for (int j = 0; j < dims.nbDims; ++j) {
+      if (dims.d[j] == -1) { input_has_dynamic = true; break; }
+    }
+    if (input_has_dynamic) {
       auto opt_profile_index = context_->getOptimizationProfile();
-      opt_dims = engine_->getProfileShape(input_name.c_str(), 
+      opt_dims = engine_->getProfileShape(input_name.c_str(),
                                           opt_profile_index,
                                           nvinfer1::OptProfileSelector::kOPT);
       context_->setInputShape(input_name.c_str(), opt_dims);
-    } else {  // static shape
+    } else {
       opt_dims = dims;
     }
     TensorShape input_shape(dims_to_vector(opt_dims));
@@ -269,13 +281,29 @@ bool ModelLoaderTrt::ParseBindings() {
 
   int output_num = 0;
   for (auto& output_name : output_names_) {
+    nvinfer1::Dims opt_dims;
     auto dims = engine_->getTensorShape(output_name.c_str());
-    if (dims.d[0] == -1) {
-      LOGF(MODEL) << "Model with dynamic output, index: " << output_num << " name: " << output_name;
-      return false;
+
+    bool output_has_dynamic = false;
+    for (int j = 0; j < dims.nbDims; ++j) {
+      if (dims.d[j] == -1) { output_has_dynamic = true; break; }
     }
-    LOGI(MODEL) << "output_name [" << output_num++ << "]: " << output_name << "; dims: " << dims.d[0] << "x" << dims.d[1] << "x" << dims.d[2] << "x" << dims.d[3];
-    TensorShape output_shape(dims_to_vector(dims));
+    if (output_has_dynamic) {
+      auto opt_profile_index = context_->getOptimizationProfile();
+      opt_dims = engine_->getProfileShape(output_name.c_str(),
+                                          opt_profile_index,
+                                          nvinfer1::OptProfileSelector::kOPT);
+    } else {
+      opt_dims = dims;
+    }
+
+    std::string output_dims_str;
+    for (int j = 0; j < opt_dims.nbDims; ++j) {
+      output_dims_str += std::to_string(opt_dims.d[j]);
+      if (j < opt_dims.nbDims - 1) output_dims_str += "x";
+    }
+    LOGI(MODEL) << "output_name [" << output_num++ << "]: " << output_name << "; dims: " << output_dims_str;
+    TensorShape output_shape(dims_to_vector(opt_dims));
     output_shapes_.push_back(output_shape);  // 对应 output_names_ 顺序
   }  // end of output_names_
   return true;
@@ -288,6 +316,11 @@ bool ModelLoaderTrt::ParseBindings() {
  */
 bool ModelLoaderTrt::RunSync(std::vector<std::shared_ptr<void>> inputs, std::vector<std::shared_ptr<void>> outputs) {
   std::lock_guard<std::mutex> lock(mutex_);
+  if (inputs.size() != input_names_.size() || outputs.size() != output_names_.size()) {
+    LOGE(MODEL) << "Tensor count mismatch: inputs " << inputs.size() << " vs " << input_names_.size()
+                << ", outputs " << outputs.size() << " vs " << output_names_.size();
+    return false;
+  }
   for (int i = 0; i < inputs.size(); ++i) {
     context_->setInputTensorAddress(input_names_[i].c_str(), inputs[i].get());
   }
