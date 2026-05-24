@@ -18,7 +18,7 @@ DataSink::DataSink(const std::string &name) : SinkModule(name) {
   param_register_.SetModuleDesc(
       "DataSink is a module for handling output data (videos or images)."
       " Receive processed data from upstream and dispatch to various sink handlers.");
-  param_register_.Register(key_config_file, "data sink config file");
+  param_register_.Register(key_sink_config_file, "data sink config file");
 }
 
 DataSink::~DataSink() {}
@@ -30,8 +30,8 @@ bool DataSink::Open(ModuleParamSet paramSet) {
   }
   param_set_ = paramSet;
 
-  if (paramSet.find(key_config_file) != paramSet.end()) {
-    std::string config_file = paramSet.at(key_config_file);
+  if (paramSet.find(key_sink_config_file) != paramSet.end()) {
+    std::string config_file = paramSet.at(key_sink_config_file);
     std::string config_path = GetPathRelativeToTheJSONFile(config_file, paramSet);
     if (!LoadStreamConf(config_path)) {
       LOGE(SINK) << "LoadStreamConf failed: " << config_path;

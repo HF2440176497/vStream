@@ -46,11 +46,7 @@ void DataHandlerWrapper(const py::module &m) {
       .value("decoder_npu", DecoderType::DECODER_NPU);
 
   py::class_<DataSourceParam>(m, "DataSourceParam")
-      .def(py::init())
-      .def_readwrite("device_id", &DataSourceParam::device_id_)
-      .def_readwrite("interval", &DataSourceParam::interval_)
-      .def_readwrite("output_type", &DataSourceParam::output_type_)
-      .def_readwrite("param_set", &DataSourceParam::param_set_);
+      .def(py::init());
 
   py::class_<DataSource, std::shared_ptr<DataSource>, SourceModule>(m, "DataSource")
       .def(py::init<const std::string&>())

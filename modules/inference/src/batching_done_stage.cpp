@@ -118,7 +118,7 @@ std::vector<std::shared_ptr<InferTask>> InferBatchingDoneStage::BatchingDone(con
 
     if (profiler_) {
       for (const auto& finfo : finfos) {
-        profiler_->RecordProcessStart(kINFERENCE_PROFILER_NAME, std::make_pair(finfo.first->stream_id, finfo.first->timestamp));
+        profiler_->RecordProcessStart(kMODEL_PROFILER_NAME, std::make_pair(finfo.first->stream_id, finfo.first->timestamp));
       }
     }
     if (!dump_resized_image_dir_.empty()) {
@@ -128,7 +128,7 @@ std::vector<std::shared_ptr<InferTask>> InferBatchingDoneStage::BatchingDone(con
 
     if (profiler_) {
       for (const auto& finfo : finfos) {
-        profiler_->RecordProcessEnd(kINFERENCE_PROFILER_NAME, std::make_pair(finfo.first->stream_id, finfo.first->timestamp));
+        profiler_->RecordProcessEnd(kMODEL_PROFILER_NAME, std::make_pair(finfo.first->stream_id, finfo.first->timestamp));
       }
     }
 
@@ -214,23 +214,20 @@ std::vector<std::shared_ptr<InferTask>> PostprocessingBatchingDoneStage::Batchin
 
           QueuingTicket cor_ticket = cpu_output_res_ticket;
           IOResValue cpu_output_value = cpu_output_res->WaitResourceByTicket(&cor_ticket);
-          std::vector<float*> net_outputs;
+          std::vector<float*> cpu_outputs;
 
-          // net_outputs 长度 == output tensor num
+          // cpu_outputs 长度 == output tensor num
           for (size_t output_idx = 0; output_idx < cpu_output_value.datas.size(); ++output_idx) {
             // bidx 指明了在当前 batch 中的 index
-            net_outputs.push_back(reinterpret_cast<float*>(cpu_output_value.datas[output_idx].Offset(bidx)));
+            cpu_outputs.push_back(reinterpret_cast<float*>(cpu_output_value.datas[output_idx].Offset(bidx)));
           }
           if (!cnstream::IsStreamRemoved(finfo.first->stream_id)) {
-            this->postprocessor_->Execute(net_outputs, this->model_, finfo.first);
+            this->postprocessor_->Execute(cpu_outputs, this->model_, finfo.first);
           }
           cpu_output_res->DeallingDone();
           return 0;
         });  // task
     
-#ifdef VSTREAM_UNIT_TEST
-    task->task_msg = "PostprocessingBatchingDoneStage, bidx: " + std::to_string(bidx);
-#endif
     tasks.push_back(task);
   }  // end for bidx
   return tasks;
@@ -262,7 +259,6 @@ std::vector<std::shared_ptr<InferTask>> PostprocessingBatchingDoneStage::Batchin
   return tasks;
 }
 
-
 std::vector<std::shared_ptr<InferTask>> ObjPostprocessingBatchingDoneStage::ObjBatchingDone(
     const BatchingDoneInput& finfos, const std::vector<std::shared_ptr<InferObject>>& objs) {
   if (cpu_output_res_ != nullptr) {
@@ -293,12 +289,12 @@ std::vector<std::shared_ptr<InferTask>> ObjPostprocessingBatchingDoneStage::ObjB
         std::make_shared<InferTask>([cpu_output_res_ticket, cpu_output_res, this, finfo, obj, bidx]() -> int {
           QueuingTicket cor_ticket = cpu_output_res_ticket;
           IOResValue cpu_output_value = cpu_output_res->WaitResourceByTicket(&cor_ticket);
-          std::vector<float*> net_outputs;
+          std::vector<float*> cpu_outputs;
           for (size_t output_idx = 0; output_idx < cpu_output_value.datas.size(); ++output_idx) {
-            net_outputs.push_back(reinterpret_cast<float*>(cpu_output_value.datas[output_idx].Offset(bidx)));
+            cpu_outputs.push_back(reinterpret_cast<float*>(cpu_output_value.datas[output_idx].Offset(bidx)));
           }
           if (!cnstream::IsStreamRemoved(finfo.first->stream_id)) {
-            this->postprocessor_->Execute(net_outputs, this->model_, finfo.first, obj);
+            this->postprocessor_->Execute(cpu_outputs, this->model_, finfo.first, obj);
           }
           cpu_output_res->DeallingDone();
           return 0;

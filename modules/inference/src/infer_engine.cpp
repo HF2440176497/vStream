@@ -44,6 +44,11 @@ InferEngine::InferEngine(const InferOptions& options)
 
   batchsize_ = model_->get_batch_size();
 
+  if (batching_by_obj_ && batchsize_ != 1) {
+    LOGE(INFER) << "[" << module_name_ << "] obj model requires batch_size == 1, but got "
+                << batchsize_ << ". This may cause objects to be discarded.";
+  }
+
   thread_pool_ = std::make_shared<InferThreadPool>();
   thread_pool_->SetErrorHandleFunc(error_func_);
   thread_pool_->Init(device_id_, batchsize_ * 3 + 4);
@@ -145,7 +150,6 @@ void InferEngine::StageAssemble() {
 InferEngine::ResultWaitingCard InferEngine::FeedData(std::shared_ptr<FrameInfo> frame_info) {
 
   timeout_helper_.LockOperator();
-  cached_frame_cnt_++;  // 表示当前 batch 内正在处理的 frame 的计数
 
   auto ret_promise = std::make_shared<std::promise<void>>();
   ResultWaitingCard card(ret_promise);
@@ -164,6 +168,7 @@ InferEngine::ResultWaitingCard InferEngine::FeedData(std::shared_ptr<FrameInfo> 
     std::vector<std::shared_ptr<InferObject>> objs = objs_holder->objs_;
     objs_holder->mutex_.unlock();
 
+    // note: objs size not fixed
     for (int obj_idx = 0; obj_idx < objs.size(); ++obj_idx) {
       auto& obj = objs[obj_idx];  // shared_ptr<InferObject>
 
@@ -181,16 +186,9 @@ InferEngine::ResultWaitingCard InferEngine::FeedData(std::shared_ptr<FrameInfo> 
         BatchingDone();
         timeout_helper_.Reset(nullptr);
       } else {
-        // TODO: 若 objs 数量非 batch_size 整数倍，存在超时丢弃
-        // obj model 最好 batch_size == 1
         timeout_helper_.Reset([this]() -> void { BatchingDone(); });
       }
     }  // end for objs
-    
-    if (cached_frame_cnt_ >= batchsize_) {
-      BatchingDone();
-      timeout_helper_.Reset(nullptr);
-    }
 
   } else {  // batching_by_obj_ = false
 
@@ -219,23 +217,23 @@ void InferEngine::ForceBatchingDone() {
   }
 }
 
-// 正常调用条件：batched_finfos_.size == batch_size_
-// 超时情况：Force submit, batched_finfos_ 数量不定
+// 正常调用：batched_finfos_.size == batch_size_
+// 超时触发：batchsize_ != 1 时存在丢弃风险，obj 模型应保证 batch_size == 1
 void InferEngine::BatchingDone() {
-  cached_frame_cnt_ = 0;
-
-  // obj_batching_stage_ 和 obj_postproc_stage_ 分别是前后处理
-
   // reset batch_idx
-  if (batching_by_obj_) {  // params: object_infer
+  if (batching_by_obj_) {
     obj_batching_stage_->Reset();
   } else {
     batching_stage_->Reset();
   }
 
-  // TODO: 有可能超时，暂定丢弃
   if (!batched_finfos_.empty() && batched_finfos_.size() != batchsize_) {
+    if (batching_by_obj_) {
+      LOGW(INFER) << "[" << module_name_ << "] obj batch is incomplete ("
+                  << batched_finfos_.size() << "/" << batchsize_ << "), discarding.";
+    }
     batched_finfos_.clear();
+    batched_objs_.clear();
     return;
   }
 
@@ -257,6 +255,7 @@ void InferEngine::BatchingDone() {
 
     batched_finfos_.clear();
   }
+  return;
 }
 
 }  // namespace cnstream

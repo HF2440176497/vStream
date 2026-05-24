@@ -106,7 +106,7 @@ class PushHandlerImpl {
   bool EncodeFrame(AVFrame* frame);
   void ClearStream();
   int64_t ComputePts();
-  void ControlFps();
+  bool ControlFps();
 
   DataSink *module_ = nullptr;
   std::string stream_id_;
@@ -210,7 +210,9 @@ int PushHandlerImpl::Process(const std::shared_ptr<FrameInfo> data) {
     LOGI(SINK) << "[" << stream_id_ << "]: received EOS";
     return 0;
   }
-  ControlFps();
+  if (!ControlFps()) {
+    return 0;  // 超过推流帧率，丢弃此帧
+  }
 
   DataFramePtr frame = nullptr;
   if (data->collection.HasValue(cnstream::kDataFrameTag)) {
@@ -494,22 +496,23 @@ int64_t PushHandlerImpl::ComputePts() {
   return elapsed_us * fps_ / 1000000;
 }
 
-void PushHandlerImpl::ControlFps() {
+bool PushHandlerImpl::ControlFps() {
   auto now = std::chrono::steady_clock::now();
   if (first_frame_) {
     push_start_time_ = now;
     fps_stat_start_time_ = now;
     last_push_time_ = now;
     first_frame_ = false;
-  } else {
-    auto elapsed = now - last_push_time_;
-    auto frame_interval = std::chrono::microseconds(1000000 / fps_);
-    if (elapsed < frame_interval) {
-      std::this_thread::sleep_for(frame_interval - elapsed);
-      now = std::chrono::steady_clock::now();
-    }
-    last_push_time_ = now;
+    fps_stat_frame_count_++;
+    return true;
   }
+
+  auto elapsed = now - last_push_time_;
+  auto frame_interval = std::chrono::microseconds(1000000 / fps_);
+  if (elapsed < frame_interval) {
+    return false;
+  }
+  last_push_time_ = now;
 
   fps_stat_frame_count_++;
   if (fps_stat_frame_count_ >= kFpsStatInterval) {
@@ -524,6 +527,7 @@ void PushHandlerImpl::ControlFps() {
     fps_stat_frame_count_ = 0;
     fps_stat_start_time_ = now;
   }
+  return true;
 }
 
 // ========== PushHandlerImplCPU ==========
@@ -621,9 +625,33 @@ bool PushHandlerImplCUDA::SendFrameCuda(const DataFramePtr& frame, AVPixelFormat
 #endif
 
   const void* cuda_data = frame->data_[0]->GetDevData();
+
+  bool need_resize = (src_width != width_ || src_height != height_);
+  uint8_t* resized_cuda_data = nullptr;
+  const void* npp_src_data = cuda_data;
+
+  int npp_src_stride = src_stride;
+  int npp_src_width  = src_width;
+  int npp_src_height = src_height;
+  if (need_resize) {
+    int out_stride = GetStride_8U_C3(width_);
+    CHECK_CUDA_RUNTIME(cudaMalloc(&resized_cuda_data, static_cast<size_t>(height_) * out_stride));
+
+    CHECK_NPP(nppiResize_8u_C3R(
+        static_cast<const Npp8u*>(cuda_data), src_stride, {src_width, src_height}, {0, 0, src_width, src_height},
+        static_cast<Npp8u*>(resized_cuda_data), out_stride, {width_, height_}, {0, 0, width_, height_},
+        NPPI_INTER_LINEAR));
+
+    npp_src_data   = resized_cuda_data;
+    npp_src_stride = out_stride;
+    npp_src_width  = width_;
+    npp_src_height = height_;
+  }
+
   int ret = av_frame_make_writable(ctx_.hw_frame);
   if (ret < 0) {
     LOGE(SINK) << "[" << stream_id_ << "]: av_frame_make_writable (hw_frame) failed";
+    cudaFree(resized_cuda_data);
     return false;
   }
 
@@ -637,19 +665,21 @@ bool PushHandlerImplCUDA::SendFrameCuda(const DataFramePtr& frame, AVPixelFormat
   if (src_pix_fmt == AV_PIX_FMT_RGB24) {
     npp_ret = NppRGB24ToNV12(
       dst_y, dst_uv, y_stride, uv_stride,
-      cuda_data, src_stride,
-      src_width, src_height
+      npp_src_data, npp_src_stride,
+      npp_src_width, npp_src_height
     );
   } else if (src_pix_fmt == AV_PIX_FMT_BGR24) {
     npp_ret = NppBGR24ToNV12(
       dst_y, dst_uv, y_stride, uv_stride,
-      cuda_data, src_stride,
-      src_width, src_height
+      npp_src_data, npp_src_stride,
+      npp_src_width, npp_src_height
     );
   } else {
     LOGW(SINK) << "[" << stream_id_ << "]: unsupported GPU src format, fallback to CPU";
+    cudaFree(resized_cuda_data);
     return SendFrameCpuFallback(frame, src_pix_fmt);
   }
+  cudaFree(resized_cuda_data);
 
   if (npp_ret != 0) {
     LOGW(SINK) << "[" << stream_id_ << "]: NPP conversion failed: "
@@ -686,10 +716,32 @@ bool PushHandlerImplCUDA::SendFrameToCuda(const DataFramePtr& frame, AVPixelForm
                                   src_width * 3, src_height,
                                   cudaMemcpyHostToDevice));
 
+  bool need_resize = (src_width != width_ || src_height != height_);
+  uint8_t* resized_cuda_data = nullptr;
+  
+  const void* npp_src_data = cuda_data;
+  int npp_src_stride = src_stride;
+  int npp_src_width  = src_width;
+  int npp_src_height = src_height;
+  if (need_resize) {
+    int out_stride = GetStride_8U_C3(width_);
+    CHECK_CUDA_RUNTIME(cudaMalloc(&resized_cuda_data, static_cast<size_t>(height_) * out_stride));
+    CHECK_NPP(nppiResize_8u_C3R(
+        static_cast<const Npp8u*>(cuda_data), src_stride, {src_width, src_height}, {0, 0, src_width, src_height},
+        static_cast<Npp8u*>(resized_cuda_data), out_stride, {width_, height_}, {0, 0, width_, height_},
+        NPPI_INTER_LINEAR));
+
+    npp_src_data   = resized_cuda_data;
+    npp_src_stride = out_stride;
+    npp_src_width  = width_;
+    npp_src_height = height_;
+  }
+
   int ret = av_frame_make_writable(ctx_.hw_frame);
   if (ret < 0) {
     LOGE(SINK) << "[" << stream_id_ << "]: av_frame_make_writable (hw_frame) failed";
     cudaFree(cuda_data);
+    cudaFree(resized_cuda_data);
     return false;
   }
 
@@ -701,16 +753,18 @@ bool PushHandlerImplCUDA::SendFrameToCuda(const DataFramePtr& frame, AVPixelForm
 
   if (src_pix_fmt == AV_PIX_FMT_RGB24) {
     npp_ret = NppRGB24ToNV12(dst_y, dst_uv, y_stride, uv_stride,
-                              cuda_data, src_stride, src_width, src_height);
+                              npp_src_data, npp_src_stride, npp_src_width, npp_src_height);
   } else if (src_pix_fmt == AV_PIX_FMT_BGR24) {
     npp_ret = NppBGR24ToNV12(dst_y, dst_uv, y_stride, uv_stride,
-                              cuda_data, src_stride, src_width, src_height);
+                              npp_src_data, npp_src_stride, npp_src_width, npp_src_height);
   } else {
     LOGW(SINK) << "[" << stream_id_ << "]: unsupported CPU src format for CUDA path, fallback";
     cudaFree(cuda_data);
+    cudaFree(resized_cuda_data);
     return SendFrameCpuFallback(frame, src_pix_fmt);
   }
   cudaFree(cuda_data);
+  cudaFree(resized_cuda_data);
 
   if (npp_ret != 0) {
     LOGW(SINK) << "[" << stream_id_ << "]: NPP conversion failed: "

@@ -103,7 +103,6 @@ class InferEngine {
 
   BatchingDoneInput batched_finfos_;
   std::vector<std::shared_ptr<InferObject>> batched_objs_;
-  uint32_t cached_frame_cnt_ = 0;  // ++ on FeedData
   std::string dump_resized_image_dir_;
   bool saving_infer_input_ = false;
 

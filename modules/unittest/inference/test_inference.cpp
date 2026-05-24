@@ -77,24 +77,23 @@ TEST_F(InferenceTest, RunYOLO) {
   DataSource *source = dynamic_cast<DataSource*>(module_in_pipeline);
   ASSERT_NE(source, nullptr);
 
-  for (auto stream_id : stream_ids_imae_) {
+  for (auto stream_id : stream_ids_image_push_) {
     std::shared_ptr<SourceHandler> source_handler_ptr = ImageHandler::Create(source, stream_id);
     image_handler_ = std::dynamic_pointer_cast<ImageHandler>(source_handler_ptr);
     ASSERT_NE(image_handler_, nullptr);
     ASSERT_FALSE(IsStreamRemoved(stream_id));
     EXPECT_EQ(source->AddSource(image_handler_), 0);
   }
+  
+  auto stream_id = stream_ids_image_push_[0];
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+  std::this_thread::sleep_for(std::chrono::seconds(2));
   LOGI(T_INFERENCE) << "Handler stream idx: " << image_handler_->GetStreamIndex();
   EXPECT_NE(image_handler_->GetStreamIndex(), INVALID_STREAM_IDX);  // 等同 data->GetStreamIndex
   EXPECT_TRUE(pipeline_->IsRunning());
-  
-  PrintStreamEos();
-  std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
   LOGI(T_INFERENCE) << "Wait for EOS message to be processed";
-  LOGI(T_INFERENCE) << "CheckStreamEosReached(stream_id_) = " << std::boolalpha << CheckStreamEosReached(stream_id_, true);
+  LOGI(T_INFERENCE) << "CheckStreamEosReached = " << std::boolalpha << CheckStreamEosReached(stream_id, true);
   LOGI(T_INFERENCE) << "Wait for EOS message complete";
   
   // 直接调用 pipeline->stop 可以实现 source handler 的 stop

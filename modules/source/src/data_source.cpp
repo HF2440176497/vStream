@@ -36,7 +36,7 @@ DataSource::DataSource(const std::string &name) : SourceModule(name) {
   param_register_.SetModuleDesc(
       "DataSource is a module for handling input data (videos or images)."
       " Feed data to codec and send decoded data to the next module if there is one.");
-  param_register_.Register(key_config_file, "data source config file");
+  param_register_.Register(key_source_config_file, "data source config file");
 }
 
 DataSource::~DataSource() {}
@@ -63,8 +63,8 @@ bool DataSource::Open(ModuleParamSet paramSet) {
   }
   param_.param_set_ = paramSet;  // note: use param_set_ instead
   param_set_ = paramSet;  // of SourceModule, for handlers
-  if (paramSet.find(key_config_file) != paramSet.end()) {
-    std::string config_file = paramSet.at(key_config_file);
+  if (paramSet.find(key_source_config_file) != paramSet.end()) {
+    std::string config_file = paramSet.at(key_source_config_file);
 
     // paramSet from custom params, can include "config_file_path"
     std::string config_path = GetPathRelativeToTheJSONFile(config_file, paramSet);

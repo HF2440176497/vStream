@@ -13,8 +13,6 @@
 
 namespace TRT {
 
-enum class Mode { FP32, FP16, INT8 };
-
 enum class ModelSourceType { ONNX, ONNXDATA };
 
 enum class CompileOutputType { File, Memory };
@@ -79,7 +77,7 @@ class CompileOutput {
 };
 
 
-bool compile(Mode mode, const ModelSource& source, const CompileOutput& saveto,
+bool compile(const ModelSource& source, const CompileOutput& saveto,
              const CompileConfig& config = CompileConfig{});
 
 

@@ -68,99 +68,6 @@ static void destroy_trt_pointer(_T* ptr) {
   if (ptr) delete ptr;
 }
 
-const char* mode_string(Mode type) {
-  switch (type) {
-    case Mode::FP32:
-      return "FP32";
-    case Mode::FP16:
-      return "FP16";
-    case Mode::INT8:
-      return "INT8";
-    default:
-      return "Unknown";
-  }
-}
-
-
-class Int8EntropyCalibrator : public IInt8EntropyCalibrator2 {
- public:
-  Int8EntropyCalibrator(const std::vector<std::vector<uint8_t>>& calibration_data, const std::vector<int>& input_dims,
-                        const std::string& cache_file = "")
-      : calibration_data_(calibration_data), input_dims_(input_dims), cache_file_(cache_file), current_batch_(0) {
-    batch_size_ = input_dims_[0];
-    size_t single_size =
-        std::accumulate(input_dims_.begin() + 1, input_dims_.end(), sizeof(float), std::multiplies<size_t>());
-    batch_bytes_ = batch_size_ * single_size;
-
-    CHECK_CUDA_RUNTIME(cudaMalloc(&device_input_, batch_bytes_));
-
-    if (!cache_file_.empty() && file_exists(cache_file_)) {
-      load_cache();
-    }
-  }
-
-  ~Int8EntropyCalibrator() {
-    if (device_input_) CHECK_CUDA_RUNTIME(cudaFree(device_input_));
-  }
-
-  int getBatchSize() const noexcept override { return batch_size_; }
-
-  bool getBatch(void* bindings[], const char* names[], int nbBindings) noexcept override {
-    if (current_batch_ >= calibration_data_.size()) return false;
-
-    if (!CHECK_CUDA_RUNTIME(cudaMemcpy(device_input_, calibration_data_[current_batch_].data(), batch_bytes_, cudaMemcpyHostToDevice))) {
-      return false;
-    }
-
-    bindings[0] = device_input_;
-    current_batch_++;
-    return true;
-  }
-
-  const void* readCalibrationCache(size_t& length) noexcept override {
-    if (cache_.empty()) return nullptr;
-    length = cache_.size();
-    return cache_.data();
-  }
-
-  void writeCalibrationCache(const void* cache, size_t length) noexcept override {
-    cache_.assign(static_cast<const uint8_t*>(cache), static_cast<const uint8_t*>(cache) + length);
-    if (!cache_file_.empty()) {
-      save_cache();
-    }
-  }
-
- private:
-  bool file_exists(const std::string& filename) {
-    std::ifstream file(filename);
-    return file.good();
-  }
-
-  void load_cache() {
-    std::ifstream file(cache_file_, std::ios::binary);
-    if (file) {
-      cache_.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
-      std::cout << "Loaded calibration cache from " << cache_file_.c_str() << std::endl;
-    }
-  }
-
-  void save_cache() {
-    std::ofstream file(cache_file_, std::ios::binary);
-    if (file) {
-      file.write(reinterpret_cast<const char*>(cache_.data()), cache_.size());
-      std::cout << "Saved calibration cache to " << cache_file_.c_str() << std::endl;
-    }
-  }
-
-  std::vector<std::vector<uint8_t>> calibration_data_;
-  std::vector<int>                  input_dims_;
-  std::string                       cache_file_;
-  size_t                            current_batch_;
-  int                               batch_size_;
-  size_t                            batch_bytes_;
-  void*                             device_input_ = nullptr;
-  std::vector<uint8_t>              cache_;
-};
 
 // ==================== 模型源和输出实现 ====================
 
@@ -202,10 +109,8 @@ void CompileOutput::set_data(std::vector<uint8_t>&& data) { data_ = std::move(da
  * @param config 编译配置
  * @return 是否编译成功
  */
-bool compile(Mode mode, const ModelSource& source, const CompileOutput& saveto,
+bool compile(const ModelSource& source, const CompileOutput& saveto,
              const CompileConfig& config) {
-
-  std::cout << "Compiling [" << mode_string(mode) << "]: " << source.descript().c_str() << std::endl;
 
   std::shared_ptr<IBuilder> builder(createInferBuilder(gLogger), destroy_trt_pointer<IBuilder>);
   if (!builder) {
@@ -296,29 +201,6 @@ bool compile(Mode mode, const ModelSource& source, const CompileOutput& saveto,
   builder_config->setMemoryPoolLimit(MemoryPoolType::kWORKSPACE, workspace_size);
   std::cout << "Workspace limit: " << workspace_size / 1024.0 / 1024.0 << " MB" << std::endl;
 
-  if (mode == Mode::FP16 || mode == Mode::INT8) {
-    builder_config->setFlag(BuilderFlag::kFP16);
-    std::cout << "FP16 mode enabled" << std::endl;
-  }
-  if (mode == Mode::INT8) {
-    builder_config->setFlag(BuilderFlag::kINT8);
-    std::cout << "INT8 mode enabled" << std::endl;
-  }
-
-  std::unique_ptr<IInt8EntropyCalibrator2> calibrator;
-  if (mode == Mode::INT8 && !config.strict_qdq && !config.calibration_data.empty()) {
-    std::vector<int> dims_vec;
-    auto first_input_dims = network->getInput(0)->getDimensions();
-    dims_vec.push_back(static_cast<int>(config.calibration_data.size()));
-    for (int j = 1; j < first_input_dims.nbDims; ++j) {
-      dims_vec.push_back(first_input_dims.d[j]);
-    }
-
-    calibrator.reset(new Int8EntropyCalibrator(config.calibration_data, dims_vec, config.calibration_cache_file));
-    builder_config->setInt8Calibrator(calibrator.get());
-    std::cout << "INT8 calibrator configured (" << config.calibration_data.size() << " batches)" << std::endl;
-  }
-
   if (has_dynamic_shape) {
     if (!config.dynamic_batch) {
       std::cerr << "ERROR: Model has dynamic dimensions but dynamic_batch is disabled. "
@@ -326,8 +208,7 @@ bool compile(Mode mode, const ModelSource& source, const CompileOutput& saveto,
       return false;
     }
 
-    std::unique_ptr<IOptimizationProfile, void(*)(IOptimizationProfile*)>
-        profile(builder->createOptimizationProfile(), destroy_trt_pointer<IOptimizationProfile>);
+    nvinfer1::IOptimizationProfile* profile = builder->createOptimizationProfile();
     if (!profile) {
       std::cerr << "Failed to create optimization profile" << std::endl;
       return false;
@@ -370,11 +251,10 @@ bool compile(Mode mode, const ModelSource& source, const CompileOutput& saveto,
       profile->setDimensions(name, OptProfileSelector::kMAX, max_dims);
     }
 
-    if (!builder_config->addOptimizationProfile(profile.get())) {
+    if (!builder_config->addOptimizationProfile(profile)) {
       std::cerr << "Failed to add optimization profile" << std::endl;
       return false;
     }
-    profile.release();
 
   }  // end if (has_dynamic_shape) 
 
@@ -418,25 +298,14 @@ bool compile(Mode mode, const ModelSource& source, const CompileOutput& saveto,
 }  // namespace TRT
 
 int main(int argc, char* argv[]) {
-  if (argc < 4) {
-    std::cerr << "Usage: " << argv[0] << " <onnx_path> <out_engine_path> <mode>" << std::endl;
-    std::cerr << "  mode: fp32 | fp16 | int8" << std::endl;
-    std::cerr << "  Example: " << argv[0] << " model.onnx model.engine fp16" << std::endl;
+  if (argc < 3) {
+    std::cerr << "Usage: " << argv[0] << " <onnx_path> <out_engine_path>" << std::endl;
+    std::cerr << "  Example: " << argv[0] << " model.onnx model.engine" << std::endl;
     return 1;
   }
 
   std::string onnx_path = argv[1];
   std::string out_engine_path = argv[2];
-
-  TRT::Mode mode = TRT::Mode::FP32;
-  std::string mode_str = argv[3];
-  if (mode_str == "fp16") {
-    mode = TRT::Mode::FP16;
-  } else if (mode_str == "int8") {
-    mode = TRT::Mode::INT8;
-  } else if (mode_str != "fp32") {
-    std::cerr << "Unknown mode: " << mode_str << ", using FP32" << std::endl;
-  }
 
   TRT::CompileConfig config;
   config.dynamic_batch = true;
@@ -444,9 +313,8 @@ int main(int argc, char* argv[]) {
   config.opt_batch_size = 4;
   config.min_batch_size = 1;
 
-  config.strict_qdq = false;
-
-  TRT::compile(mode, TRT::ModelSource(onnx_path), TRT::CompileOutput(out_engine_path), config);
+  config.strict_qdq = true;
+  TRT::compile(TRT::ModelSource(onnx_path), TRT::CompileOutput(out_engine_path), config);
 
   return 0;
 }

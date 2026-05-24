@@ -108,7 +108,7 @@ class Postproc : virtual public ReflexObjectEx<Postproc> {
 
  protected:
   std::map<std::string, std::string> params_;
-  std::string config_file_;  // json 配置文件路径
+  std::string config_file_;
 };  // class Postproc
 
 using PostprocPtr = std::shared_ptr<Postproc>;
@@ -149,40 +149,32 @@ class ObjPostproc : virtual public ReflexObjectEx<ObjPostproc> {
   /**
    * @brief Executes post processing on network outputs.
    *
-   * @param[in] net_outputs Network outputs, and the data is stored on the host.
-   * @param[in] model Model information including input shape and output shape.
-   * @param[in,out] finfo Smart pointer of ``FrameInfo`` to store processed data.
-   * @param[in] pobj The deduced object information.
-   *
    * @return Returns 0 if successful, otherwise returns -1.
    *
    * @note
    * - This function is called by the Inferencer module when the parameter `obj_infer` is set to true.
           See the Inferencer parameter description for details.
    */
-  virtual int Execute(const std::vector<float*>& net_outputs, ModelLoader* model,
+  virtual int Execute(const std::vector<float*>& outputs, ModelLoader* model,
                       const FrameInfoPtr& finfo, const std::shared_ptr<InferObject>& pobj) { return 0; }
 
   /**
    * @brief Execute post processing on network outputs.
    *
-   * @param[in] net_outputs Network outputs, and the data is stored on the MLU.
-   * @param[in] model Model information including input shape and output shape.
-   * @param[in,out] obj_infos The batched frames's result of postprocessing.
-   *
    * @return Returns 0 if successful, otherwise returns -1.
    *
    * @note
    * - This function is called by the Inferencer module when the parameter `obj_infer` is set to true.
           See the Inferencer parameter description for details.
    */
-  virtual int Execute(const std::vector<void*>& net_outputs, ModelLoader* model,
+  virtual int Execute(const std::vector<void*>& outputs, ModelLoader* model,
                       const std::vector<std::pair<FrameInfoPtr, std::shared_ptr<InferObject>>>& obj_infos) {
     return 0;
   }
 
  protected:
   std::map<std::string, std::string> params_;
+  std::string config_file_;
 };  // class ObjPostproc
 
 using ObjPostprocPtr = std::shared_ptr<ObjPostproc>;

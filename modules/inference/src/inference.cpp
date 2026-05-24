@@ -282,6 +282,8 @@ bool Inference::Open(ModuleParamSet raw_params) {
         GetProfiler()->RegisterProcess(kPOSTPROC_PROFILER_NAME);
       }
       GetProfiler()->RegisterProcess(kINFERENCE_PROFILER_NAME);
+      GetProfiler()->RegisterProcess(kMODEL_PROFILER_NAME);
+
     }
   }
 

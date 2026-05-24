@@ -112,6 +112,8 @@ bool ImageHandlerImpl::Open() {
   // if you need something, just get it
   image_path_ = param_set_.at(key_file_path);
   frame_rate_ = std::stoi(param_set_.at(key_frame_rate));
+  LOGI(SOURCE) << "Open image: " << image_path_ << ", frame_rate: " << frame_rate_;
+
   if (image_path_.empty() || !std::filesystem::exists(image_path_)) {
     LOGE(SOURCE) << "Image path not found: " << image_path_;
     return false;
@@ -183,7 +185,7 @@ void ImageHandlerImpl::Loop() {
     controller.Control();
     frame_index_++;
     frame.pts = frame_index_ * 1000 / frame_rate_;  // ms
-    
+
     if (!running_.load()) break;
     std::shared_ptr<FrameInfo> data = OnDecodeFrame(&frame);
     if (!module_ || !handler_) {

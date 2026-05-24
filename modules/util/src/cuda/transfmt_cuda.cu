@@ -1,26 +1,8 @@
 
-
 #include "cuda/transfmt_cuda.cuh"
-
 #include <cstring>
 
-
 namespace cnstream {
-
-#define CHECK_NPP(op) __check_npp((op), #op, __FILE__, __LINE__)
-
-static std::string nppGetStatusString(NppStatus code) {
-    return "NPP error code: " + std::to_string(code);
-}
-
-static bool __check_npp(NppStatus code, const char* op, const char* file, int line) {
-  if (code != NPP_SUCCESS) {
-    printf("check_npp error %s:%d  %s failed. \n  code = %d, message = %s\n",
-           file, line, op, code, nppGetStatusString(code).c_str());
-    return false;
-  }
-  return true;
-}
 
 static const Npp32f MATRIX_RGB_TO_YUV709[3][4] = {
   { 0.183f,  0.614f,  0.062f,  16.0f },

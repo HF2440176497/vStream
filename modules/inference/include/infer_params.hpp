@@ -79,6 +79,7 @@ class InferParamManager {
 
 inline const std::string kPREPROC_PROFILER_NAME = "PRE_PROC";
 inline const std::string kINFERENCE_PROFILER_NAME = "INFER";
+inline const std::string kMODEL_PROFILER_NAME = "MODEL";
 inline const std::string kPOSTPROC_PROFILER_NAME = "POST_PROC";
 
 }  // namespace cnstream

@@ -88,16 +88,18 @@ TEST_F(StableImage, Run) {
   auto inference_module = pipeline_->GetModule("Inference");
   EXPECT_NE(inference_module, nullptr);
 
-  std::this_thread::sleep_for(std::chrono::seconds(300));
+  std::this_thread::sleep_for(std::chrono::seconds(20));
 
   auto profiler = inference_module->GetProfiler();
   if (profiler) {
     auto infer_profile = profiler->GetProcessProfile(kINFERENCE_PROFILER_NAME);
+    auto model_profile = profiler->GetProcessProfile(kMODEL_PROFILER_NAME);
     auto module_profile = profiler->GetProcessProfile(kPROCESS_PROFILER_NAME);
     LOGI(T_STABLE) << "Inference Profile: " << infer_profile;
+    LOGI(T_STABLE) << "Model Profile: " << model_profile;
     LOGI(T_STABLE) << "Module Profile: " << module_profile;
   }
-  std::this_thread::sleep_for(std::chrono::seconds(300));
+  std::this_thread::sleep_for(std::chrono::seconds(10));
   if (!force_exit) {
     pipeline_->Stop();
   } else {

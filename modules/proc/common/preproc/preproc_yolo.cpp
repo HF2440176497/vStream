@@ -17,7 +17,7 @@ namespace cnstream {
 /**
  * @brief YOLO CPU 前处理
  */
-class YoloPre_CPU: public Preproc {
+class Pre_YOLO_CPU: public Preproc {
 
 /**
  * @param cpu_outputs 相对于 preproc 是输出，相对于 H2D 是输入，仍然位于 CPU 上
@@ -96,13 +96,13 @@ int Execute(const std::vector<float*>& cpu_outputs, ModelLoader* model,
   std::string save_file_ = "save/test_preproc_save.jpg";
 
  private:
-  DECLARE_REFLEX_OBJECT_EX(YoloPre_CPU, cnstream::Preproc);
-};  // class YoloPre_CPU
+  DECLARE_REFLEX_OBJECT_EX(Pre_YOLO_CPU, cnstream::Preproc);
+};  // class Pre_YOLO_CPU
 
-IMPLEMENT_REFLEX_OBJECT_EX(YoloPre_CPU, cnstream::Preproc);
+IMPLEMENT_REFLEX_OBJECT_EX(Pre_YOLO_CPU, cnstream::Preproc);
 
 
-class YoloPre_CPU_v2: public Preproc {
+class Pre_YOLO_CPU_v2: public Preproc {
 
   int Execute(const std::vector<float*>& cpu_outputs, ModelLoader* model,
               const std::shared_ptr<cnstream::FrameInfo>& package) override {
@@ -123,9 +123,9 @@ class YoloPre_CPU_v2: public Preproc {
     int input_h = model->get_height();
     int input_w = model->get_width();
 
-    float img_scale = std::min((float)input_w / img_w, (float)input_h / img_h);
-    int new_w = int(img_w * img_scale);
-    int new_h = int(img_h * img_scale);
+    float scale = std::min((float)input_w / img_w, (float)input_h / img_h);
+    int new_w = int(img_w * scale);
+    int new_h = int(img_h * scale);
     cv::Mat resize_img;
     cv::resize(img, resize_img, cv::Size(new_w, new_h), cv::INTER_LINEAR);
 
@@ -137,11 +137,11 @@ class YoloPre_CPU_v2: public Preproc {
     int roi_h = std::min(new_h, input_h - top);
 
     // 2. 获取输出指针（CHW, float）
-    float* output = cpu_outputs[input_index];
+    float* cpu_output = cpu_outputs[input_index];
     const int stride = input_h * input_w;  // pixel stride
-    float* ch_r = output;               // R 通道
-    float* ch_g = output + stride;      // G 通道
-    float* ch_b = output + stride * 2;  // B 通道
+    float* ch_r = cpu_output;               // R 通道
+    float* ch_g = cpu_output + stride;      // G 通道
+    float* ch_b = cpu_output + stride * 2;  // B 通道
 
     // 3. 预填充背景值（114/255 = 0.4470588f）
     const float bg_val = 114.0f / 255.0f;
@@ -159,9 +159,9 @@ class YoloPre_CPU_v2: public Preproc {
             const uint8_t* src_row = resize_img.ptr<uint8_t>(y);
             int dst_idx = (top + y) * input_w + left;
             for (int x = 0; x < roi_w; ++x) {
-                float r = src_row[3 * x + 2] * scale;
-                float g = src_row[3 * x + 1] * scale;
-                float b = src_row[3 * x + 0] * scale;
+                float r = src_row[3 * x + 2] / 255.0f;
+                float g = src_row[3 * x + 1] / 255.0f;
+                float b = src_row[3 * x + 0] / 255.0f;
                 ch_r[dst_idx + x] = r;
                 ch_g[dst_idx + x] = g;
                 ch_b[dst_idx + x] = b;
@@ -183,9 +183,9 @@ class YoloPre_CPU_v2: public Preproc {
   std::string save_file_ = "save/test_preproc_save.jpg";
 
  private:
-  DECLARE_REFLEX_OBJECT_EX(YoloPre_CPU_v2, cnstream::Preproc);
+  DECLARE_REFLEX_OBJECT_EX(Pre_YOLO_CPU_v2, cnstream::Preproc);
 };
-IMPLEMENT_REFLEX_OBJECT_EX(YoloPre_CPU_v2, cnstream::Preproc);
+IMPLEMENT_REFLEX_OBJECT_EX(Pre_YOLO_CPU_v2, cnstream::Preproc);
 
 
 

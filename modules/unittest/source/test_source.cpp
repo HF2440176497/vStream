@@ -149,12 +149,13 @@ TEST_F(SourceBase, Run) {
     EXPECT_NE(image_handler_, nullptr);
     EXPECT_EQ(source->AddSource(image_handler_), 0);
   }
+  auto stream_id = stream_ids_image_push_[0];
 
   EXPECT_TRUE(image_handler_->impl_->IsRunning());
   LOGI(T_SOURCE) << "Handler image_path = " << image_handler_->impl_->image_path_ << std::endl;
   LOGI(T_SOURCE) << "Handler frame_rate_ = " << image_handler_->impl_->frame_rate_ << std::endl;
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+  std::this_thread::sleep_for(std::chrono::seconds(2));
   LOGI(T_SOURCE) << "Handler stream idx: " << image_handler_->GetStreamIndex();
   EXPECT_NE(image_handler_->GetStreamIndex(), INVALID_STREAM_IDX);  // == data->stream_idx_
   EXPECT_TRUE(pipeline_->IsRunning());
@@ -162,11 +163,8 @@ TEST_F(SourceBase, Run) {
   image_handler_->Stop();
   image_handler_->Close();
   
-  PrintStreamEos();
-  std::this_thread::sleep_for(std::chrono::milliseconds(500));
-  
   LOGI(T_SOURCE) << "Wait for EOS message to be processed";
-  LOGI(T_SOURCE) << "CheckStreamEosReached(stream_id_) = " << std::boolalpha << CheckStreamEosReached(stream_id_, true);
+  LOGI(T_SOURCE) << "CheckStreamEosReached = " << std::boolalpha << CheckStreamEosReached(stream_id, true);
   LOGI(T_SOURCE) << "Wait for EOS message complete";
   
   pipeline_->Stop();
@@ -264,12 +262,14 @@ TEST_F(SourceVideo, Run) {
     EXPECT_NE(push_handler_, nullptr);
     EXPECT_EQ(sink->AddSink(push_handler_), 0);
   }
-
+  
+  auto stream_id = stream_ids_pull_push_[0];
+  
   LOGI(T_SOURCE) << "Handler stream_url_ = " << video_handler_->impl_->stream_url_ << std::endl;
   LOGI(T_SOURCE) << "Handler frame_rate_ = " << video_handler_->impl_->frame_rate_ << std::endl;
   
   if (video_handler_->impl_->IsRunning()) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(3000));
+    std::this_thread::sleep_for(std::chrono::seconds(2));
   }
 
   LOGI(T_SOURCE) << "Handler stream idx: " << video_handler_->GetStreamIndex();
@@ -280,10 +280,10 @@ TEST_F(SourceVideo, Run) {
   video_handler_->Close();
   
   PrintStreamEos();
-  std::this_thread::sleep_for(std::chrono::milliseconds(500));
+  std::this_thread::sleep_for(std::chrono::seconds(2));
 
   LOGI(T_SOURCE) << "Wait for EOS message to be processed";
-  LOGI(T_SOURCE) << "CheckStreamEosReached(stream_id_) = " << std::boolalpha << CheckStreamEosReached(stream_id_, true);
+  LOGI(T_SOURCE) << "CheckStreamEosReached = " << std::boolalpha << CheckStreamEosReached(stream_id, true);
   LOGI(T_SOURCE) << "Wait for EOS message complete";
   
   pipeline_->Stop();

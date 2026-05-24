@@ -88,7 +88,7 @@ class Preproc : virtual public ReflexObjectEx<Preproc> {
 
  protected:
   std::map<std::string, std::string> params_;
-
+  std::string config_file_;
 };  // class Preproc
 
 
@@ -142,6 +142,7 @@ class ObjPreproc : virtual public ReflexObjectEx<ObjPreproc> {
 
  protected:
   std::map<std::string, std::string> params_;
+  std::string config_file_;
 
 };  // class ObjPreproc
 

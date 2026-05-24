@@ -228,7 +228,7 @@ inline const std::string key_interval = "interval";
 inline const std::string key_output_type = "output_type";
 inline const std::string key_only_key_frame = "only_key_frame";
 
-inline const std::string key_config_file = "config_file";
+inline const std::string key_source_config_file = "config_file";
 inline const std::string key_file_path = "file_path";
 inline const std::string key_frame_rate = "frame_rate";
 inline const std::string key_input_url = "url";

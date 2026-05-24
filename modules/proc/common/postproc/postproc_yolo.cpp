@@ -21,7 +21,9 @@ using json = nlohmann::json;
 namespace cnstream {
 
 static const std::string key_config_file = "config_file";
-static const std::string key_threshold_map = "threshold";  // 配置文件中的阈值字典对应的
+
+static const std::string key_name = "name";
+static const std::string key_threshold = "threshold";
 
 
 static float box_iou(float aleft, float atop, float aright, float abottom, 
@@ -95,7 +97,7 @@ void fast_nms(ObjsVec& objs, int max_boxes, float threshold) {
 }
 
 
-class Yolov8Post_CPU: public Postproc {
+class Post_YOLOv8_CPU: public Postproc {
 
  public:
   /**
@@ -129,8 +131,8 @@ class Yolov8Post_CPU: public Postproc {
         return false;
       }
       ItemInfo info;
-      info.name = value["name"].get<std::string>();
-      info.threshold = value["threshold"].get<float>();
+      info.name = value[key_name].get<std::string>();
+      info.threshold = value[key_threshold].get<float>();
       item_infos_[std::stoi(key)] = info;
     }
     return true;
@@ -271,10 +273,10 @@ class Yolov8Post_CPU: public Postproc {
   std::string save_file_ = "save/test_postproc_save.jpg";
 
  private:
-  DECLARE_REFLEX_OBJECT_EX(Yolov8Post_CPU, cnstream::Postproc);
-};  // class Yolov8Post_CPU
+  DECLARE_REFLEX_OBJECT_EX(Post_YOLOv8_CPU, cnstream::Postproc);
+};  // class Post_YOLOv8_CPU
 
-IMPLEMENT_REFLEX_OBJECT_EX(Yolov8Post_CPU, cnstream::Postproc);
+IMPLEMENT_REFLEX_OBJECT_EX(Post_YOLOv8_CPU, cnstream::Postproc);
 
 
 static float box_iou_v2(float aleft, float atop, float aright, float abottom, float a_area,
@@ -341,7 +343,7 @@ void fast_nms_class(ObjsVec& objs, int max_boxes, float threshold) {
 }
 
 
-class Yolov8Post_CPU_v2: public Postproc {
+class Post_YOLOv8_CPU_v2: public Postproc {
  public:
   bool Init(const std::map<std::string, std::string> &params) override {
     params_ = params;
@@ -508,17 +510,17 @@ class Yolov8Post_CPU_v2: public Postproc {
   bool has_save_frame_mat_ = false;
   std::string save_file_ = "save/test_postproc_save.jpg";
 
-  DECLARE_REFLEX_OBJECT_EX(Yolov8Post_CPU_v2, cnstream::Postproc);
-};  // class Yolov8Post_CPU_v2
+  DECLARE_REFLEX_OBJECT_EX(Post_YOLOv8_CPU_v2, cnstream::Postproc);
+};  // class Post_YOLOv8_CPU_v2
 
-IMPLEMENT_REFLEX_OBJECT_EX(Yolov8Post_CPU_v2, cnstream::Postproc);
+IMPLEMENT_REFLEX_OBJECT_EX(Post_YOLOv8_CPU_v2, cnstream::Postproc);
 
 
 /**
  * @brief YOLOv5 后处理类
  * @note 此后处理假设输出已进行了 NMS
  */
-class Yolov5Post_CPU_NoNMS: public Postproc {
+class Post_YOLOv5_CPU_NoNMS: public Postproc {
 
  public:
   /**
@@ -656,6 +658,12 @@ class Yolov5Post_CPU_NoNMS: public Postproc {
   }
 
  private:
+  struct ItemInfo {
+    std::string name;
+    float threshold = 0.0f;
+  };
+  std::map<int, ItemInfo> item_infos_;
+
   const int max_boxes_num_ = 100;
   std::string model_name_;  ///< The name of the model.
 
@@ -663,9 +671,9 @@ class Yolov5Post_CPU_NoNMS: public Postproc {
   std::string save_file_ = "save/test_postproc_save.jpg";
 
  private:
-  DECLARE_REFLEX_OBJECT_EX(Yolov5Post_CPU_NoNMS, cnstream::Postproc);
-};  // class Yolov5Post_CPU_NoNMS
+  DECLARE_REFLEX_OBJECT_EX(Post_YOLOv5_CPU_NoNMS, cnstream::Postproc);
+};  // class Post_YOLOv5_CPU_NoNMS
 
-IMPLEMENT_REFLEX_OBJECT_EX(Yolov5Post_CPU_NoNMS, cnstream::Postproc);
+IMPLEMENT_REFLEX_OBJECT_EX(Post_YOLOv5_CPU_NoNMS, cnstream::Postproc);
 
 }  // namespace cnstream

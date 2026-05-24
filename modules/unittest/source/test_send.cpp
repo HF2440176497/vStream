@@ -10,6 +10,7 @@
 #include "data_handler_image.hpp"
 #include "data_handler_send.hpp"
 
+#include "infer_params.hpp"
 #include "data_sink.hpp"
 
 #include <atomic>
@@ -32,7 +33,7 @@ static std::string test_pipeline_send_json = "pipeline_source_send.json";
 static std::string test_image_path = "image.png";
 
 
-class SourceSendTest : public testing::Test {
+class SourceSend : public testing::Test {
 
  protected:
   virtual void SetUp() {
@@ -51,13 +52,13 @@ class SourceSendTest : public testing::Test {
    int send_count_ = 0;
    cv::Mat   image_;
 
-};  // SourceSendTest
+};  // SourceSend
 
 
 /*
  * @brief 启动线程读取图片，不断发送给 SendHandler
  */
-TEST_F(SourceSendTest, TestSend) {
+TEST_F(SourceSend, TestSend) {
   EXPECT_TRUE(pipeline_->Start());
 
   Module* source_module = pipeline_->GetModule("decoder");
@@ -100,7 +101,7 @@ TEST_F(SourceSendTest, TestSend) {
       // frame_id_s start from 0
       send_handler_->Send(pts, std::to_string(send_count_), image_);
       send_count_++;
-      std::this_thread::sleep_for(std::chrono::milliseconds(20));
+      std::this_thread::sleep_for(std::chrono::milliseconds(4));
     }
   });
 
@@ -118,6 +119,21 @@ TEST_F(SourceSendTest, TestSend) {
       }
     }
   });
+
+  auto inference_module = pipeline_->GetModule("Inference");
+  EXPECT_NE(inference_module, nullptr);
+
+  std::this_thread::sleep_for(std::chrono::seconds(10));
+
+  auto profiler = inference_module->GetProfiler();
+  if (profiler) {
+    auto infer_profile = profiler->GetProcessProfile(kINFERENCE_PROFILER_NAME);
+    auto model_profile = profiler->GetProcessProfile(kMODEL_PROFILER_NAME);
+    auto module_profile = profiler->GetProcessProfile(kPROCESS_PROFILER_NAME);
+    LOGI(T_STABLE) << "Inference Profile: " << infer_profile;
+    LOGI(T_STABLE) << "Model Profile: " << model_profile;
+    LOGI(T_STABLE) << "Module Profile: " << module_profile;
+  }
 
   std::this_thread::sleep_for(std::chrono::seconds(10));
   pipeline_->Stop();

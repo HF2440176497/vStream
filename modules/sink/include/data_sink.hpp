@@ -14,6 +14,8 @@
 
 namespace cnstream {
 
+inline const std::string key_sink_config_file = "config_file";
+
 inline const std::string key_output_url = "url";
 inline const std::string key_output_format = "format";
 inline const std::string key_queue_size = "queue_size";
