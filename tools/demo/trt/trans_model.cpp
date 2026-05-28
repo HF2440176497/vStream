@@ -69,8 +69,6 @@ static void destroy_trt_pointer(_T* ptr) {
 }
 
 
-// ==================== 模型源和输出实现 ====================
-
 ModelSource::ModelSource(const char* onnxmodel) : type_(ModelSourceType::ONNX), onnxmodel_(onnxmodel) {}
 
 ModelSource::ModelSource(const std::string& onnxmodel) : type_(ModelSourceType::ONNX), onnxmodel_(onnxmodel) {}
@@ -258,7 +256,6 @@ bool compile(const ModelSource& source, const CompileOutput& saveto,
 
   }  // end if (has_dynamic_shape) 
 
-
   std::cout << "Building TensorRT engine (this may take a while)..." << std::endl;
   auto start_time = std::chrono::high_resolution_clock::now();
 
@@ -309,7 +306,7 @@ int main(int argc, char* argv[]) {
 
   TRT::CompileConfig config;
   config.dynamic_batch = true;
-  config.max_batch_size = 8;
+  config.max_batch_size = 4;
   config.opt_batch_size = 4;
   config.min_batch_size = 1;
 

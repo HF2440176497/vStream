@@ -154,7 +154,6 @@ class Post_YOLOv8_CPU: public Postproc {
     if (model_name_.empty()) {
       model_name_ = model->get_name();
     }
-    int input_index = model->get_input_ordered_index();
     int output_index = 0;  // output tensor index
 
     const int input_w = model->get_width();
@@ -401,7 +400,6 @@ class Post_YOLOv8_CPU_v2: public Postproc {
     if (model_name_.empty()) {
       model_name_ = model->get_name();
     }
-    int input_index = model->get_input_ordered_index();
     int output_index = 0;
 
     const int input_w = model->get_width();
@@ -561,7 +559,7 @@ class Post_YOLOv5_CPU_NoNMS: public Postproc {
   }
 
   int Execute(const std::vector<float*>& cpu_outputs, ModelLoader* model,
-              const std::shared_ptr<cnstream::FrameInfo>& package) {
+              const std::shared_ptr<cnstream::FrameInfo>& package) override {
 
     LOGD(POSTPROC) << "Execute for data: " << package->GetStreamId() << ", timestamp: " << package->GetTimestamp();
  
@@ -572,7 +570,6 @@ class Post_YOLOv5_CPU_NoNMS: public Postproc {
     if (model_name_.empty()) {
       model_name_ = model->get_name();
     }
-    int input_index = model->get_input_ordered_index();
     int output_index = 0;  // output tensor index
 
     const int input_w = model->get_width();

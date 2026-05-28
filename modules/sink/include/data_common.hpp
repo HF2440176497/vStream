@@ -9,8 +9,6 @@
 #include <unordered_map>
 #include <opencv2/opencv.hpp>
 
-#include "cnstream_collection.hpp"
-
 namespace cnstream {
 
 namespace output_constants {
@@ -24,45 +22,44 @@ inline const std::string key_objects_json = "objects_json";
 inline const std::string key_image_dict = "image_dict";
 inline const std::string key_original_image = "original_image";
 
-}
+}  // namespace output_constants
 
-typedef struct classInfos_ {
-  int id;                             //分类序号
-  std::string model_name;             //modelName  模型名
-  std::string id_name;                //分类名称
-  float score;                        //得分
-  float value;                        //得分（0，1化）
-} s_class_infos;
-
+/**
+ * @brief 分类信息结构体（输出层独立定义，不与框架 InferObjectInfo 耦合）
+ */
+struct s_class_infos {
+  int id = -1;                // 分类序号
+  std::string model_name;     // 模型名
+  std::string id_name;        // 分类名称
+  float score = 0;            // 得分
+  float value = 0;            // 归一化得分
+};
 
 /**
  * @brief 对象 obj 结构体
  */
-typedef struct objIn_ {
-  std::string track_id;               // 追踪id
-  float score;                        // 得分
-  std::vector<int> bboxs;             // xywh
-  std::vector<float> feature;         // 特征向量
-  std::vector<s_class_infos> classes; // 分类框模型结果
-  std::string str_id;                 // 分类框序号
-  std::string model_name;             // 模型名
-} s_obj_in;
-
+struct s_obj_in {
+  int id = -1;                              // 检测 class label
+  std::string track_id;                     // 追踪 id
+  float score = 0;                          // 置信度
+  std::vector<float> bboxs;                 // xywh（float 保留精度）
+  std::vector<float> feature;               // 特征向量
+  std::vector<s_class_infos> classes;       // 分类结果列表
+  std::string model_name;                   // 模型名
+};
 
 /**
  * @brief 单帧的输出数据结构
  */
-typedef struct outputData_ {
-  int result = -1;      // 结果码
-  uint64_t timestamp;   // 时间戳
-  std::string frame_id_s;  // frame
-  std::vector<s_obj_in> objects;    // 检测框
-  std::vector<std::map<std::string,std::string>> objects_dict;
-  std::string objects_json;         // 序列化后的字符串
-  std::unordered_map<std::string, cv::Mat> image_dict;  // 原始图像字典
-} s_output_data;
-
-
+struct s_output_data {
+  int result = -1;                                            // 结果码
+  uint64_t timestamp = 0;                                     // 时间戳
+  std::string frame_id_s;                                     // frame 标识
+  std::vector<s_obj_in> objects;                              // 检测对象列表
+  std::vector<std::map<std::string, std::string>> objects_dict;
+  std::string objects_json;                                   // JSON 序列化结果
+  std::unordered_map<std::string, cv::Mat> image_dict;        // 图像字典
+};
 
 }  // namespace cnstream
 

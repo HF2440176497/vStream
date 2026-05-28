@@ -22,6 +22,7 @@
 #include "cnstream_collection.hpp"
 #include "cnstream_frame_va.hpp"
 #include "cnstream_logging.hpp"
+#include "data_converter.hpp"
 #include "util/cnstream_queue.hpp"
 
 #include <atomic>
@@ -81,45 +82,11 @@ class QueueHandlerImpl {
 
     LOGI(SINK) << "[" << stream_id_ << "]: OnFrame timestamp=" << frame_info->timestamp;
 
-    s_output_data data;
-
-    if (frame_info->collection.HasValue(cnstream::kDataFrameTag)) {
-      auto img_data = frame_info->collection.Get<cnstream::DataFramePtr>(cnstream::kDataFrameTag);
-      data.image_dict[output_constants::key_original_image] = img_data->GetImage();
+    // 通过 data_converter 桥接层将框架内部 FrameInfo 转换为输出格式
+    s_output_data data = ConvertFrameInfo(frame_info);
+    if (data.result != 0) {
+      return 0;  // 无推理结果，跳过此帧
     }
-
-    data.frame_id_s = frame_info->frame_id_s;
-    data.timestamp = frame_info->timestamp;
-
-    InferObjsPtr objs_holder = nullptr;
-    if (frame_info->collection.HasValue(cnstream::kInferObjsTag)) {
-      objs_holder = frame_info->collection.Get<InferObjsPtr>(cnstream::kInferObjsTag);
-    } else {
-      LOGW(SINK) << "[" << stream_id_ << "]: frame_info has no infer objs";
-      data.result = -1;
-      return 0;  // 没有推理结果也返回0，表示处理完成
-    }
-
-    {
-      std::lock_guard<std::mutex> lk(objs_holder->mutex_);
-      for (auto re : objs_holder->objs_) {
-        s_obj_in data_obj;
-        data_obj.str_id = re->id;
-        data_obj.track_id = re->track_id;
-        data_obj.score = re->score;
-        data_obj.model_name = re->model_name;
-
-        std::vector<int> bboxs;
-        bboxs.push_back(re->bbox.x);
-        bboxs.push_back(re->bbox.y);
-        bboxs.push_back(re->bbox.w);
-        bboxs.push_back(re->bbox.h);
-        data_obj.bboxs = bboxs;
-        data.objects.push_back(data_obj);
-      }
-    }
-
-    data.result = 0;
     Push(data);
     return 0;
   }

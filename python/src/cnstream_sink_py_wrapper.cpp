@@ -67,12 +67,12 @@ void SinkModuleWrapper(py::module &m) {
 
   py::class_<s_obj_in>(m, "obj_in")
       .def(py::init<>())
+      .def_readwrite("id", &s_obj_in::id)
       .def_readwrite("track_id", &s_obj_in::track_id)
       .def_readwrite("score", &s_obj_in::score)
       .def_readwrite("bboxs", &s_obj_in::bboxs)
       .def_readwrite("feature", &s_obj_in::feature)
       .def_readwrite("classes", &s_obj_in::classes)
-      .def_readwrite("str_id", &s_obj_in::str_id)
       .def_readwrite("model_name", &s_obj_in::model_name);
 
   py::class_<s_output_data>(m, "output_data")
@@ -87,7 +87,7 @@ void SinkModuleWrapper(py::module &m) {
         [](const s_output_data& data) {
           py::dict dict;
           for (auto& [key, mat] : data.image_dict) {
-            dict[key.c_str()] = MatToArray(const_cast<cv::Mat&>(mat));
+            dict[key.c_str()] = MatToArray(mat);
           }
           return dict;
         },
@@ -153,7 +153,8 @@ void SinkModuleWrapper(py::module &m) {
           bool ok = self.GetData(data, wait_ms);
           return std::make_pair(ok, data);
         },
-        py::arg("wait_ms") = 0);
+        py::arg("wait_ms") = 0,
+        py::call_guard<py::gil_scoped_release>());
 
   py::class_<PushHandler, std::shared_ptr<PushHandler>, SinkHandler>(m, "PushHandler")
       .def(py::init([](DataSink *module, const std::string& stream_id) {

@@ -17,12 +17,16 @@ import cv2
 
 import vstream
 
+key_source = "source"
+key_sink = "sink"
+
+stream_id = "channel-4"
 
 def get_timestamp_ms() -> int:
     return int(datetime.now().timestamp() * 1000)
 
 def create_test_image(height: int = 480, width: int = 640) -> np.ndarray:
-    """创建一张测试用的 BGR 图像（numpy uint8 数组）。"""
+    """创建一张测试用的 BGR 图像"""
     image = np.zeros((height, width, 3), dtype=np.uint8)
     image[:] = (128, 64, 32)  # BGR
     return image
@@ -30,7 +34,7 @@ def create_test_image(height: int = 480, width: int = 640) -> np.ndarray:
 
 class MyPythonModule(vstream.Module):
     """
-    在 Python 中继承 vstream.Module，实现自定义处理逻辑。
+    在 Python 中继承 vstream.Module 实现自定义处理逻辑。
     对应 C++ 中的 Pybind11ModuleV<Pybind11Module>。
     """
 
@@ -80,13 +84,13 @@ def test_python_module():
         "profiler_config": {
             "enable_profile": False
         },
-        "decoder": {
+        "source": {
             "parallelism": 1,
             "max_input_queue_size": 20,
             "class_name": "cnstream::DataSource",
             "next_modules": ["py_module"],
             "custom_params": {
-                "output_type": "cpu"
+                "config_file": "data_source.json"
             }
         },
         "py_module": {
@@ -104,7 +108,7 @@ def test_python_module():
             "class_name": "cnstream::DataSink",
             "next_modules": [],
             "custom_params": {
-                "queue_size": "100"
+                "config_file": "data_sink.json"
             }
         }
     }
@@ -119,28 +123,27 @@ def test_python_module():
     print("Pipeline built successfully")
 
     # 获取模块
-    source = pipeline.get_data_source("decoder")
+    source = pipeline.get_data_source(key_source)
     assert source is not None
 
-    stream_id = "channel-1"
     send_handler = vstream.SendHandler(source, stream_id)
     assert send_handler is not None
 
-    sink = pipeline.get_data_sink("sink")
+    sink = pipeline.get_data_sink(key_sink)
     assert sink is not None
 
     queue_handler = vstream.QueueHandler(sink, stream_id)
     assert queue_handler is not None
+
+    ok = pipeline.start()
+    assert ok, "Pipeline start failed"
+    print("Pipeline started")
 
     ret = source.add_source(send_handler)
     assert ret == 0
 
     ret = sink.add_sink(queue_handler)
     assert ret == 0, f"AddSink failed, ret={ret}"
-
-    ok = pipeline.start()
-    assert ok, "Pipeline start failed"
-    print("Pipeline started")
 
     running = True
     send_count = 0
@@ -172,7 +175,7 @@ def test_python_module():
     t_send.start()
     t_recv.start()
 
-    time.sleep(3)
+    time.sleep(10)
 
     running = False
     t_send.join()

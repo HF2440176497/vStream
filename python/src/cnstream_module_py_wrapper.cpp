@@ -224,7 +224,7 @@ void ModuleWrapper(py::module &m) {  // NOLINT
       // Pipeline 初始化时调用了 C++ 的 PyModule::Open, proxy_ 能实现调用 C++ 的相关代码
       .def("post_event", [] (detail::Pybind11Module* module, EventType type, const std::string &smsg) {
             return module->proxy_ ? module->proxy_->PostEvent(type, smsg) : false;
-          })
+          }, py::call_guard<py::gil_scoped_release>())
       .def("transmit_data", [] (detail::Pybind11Module* module, std::shared_ptr<FrameInfo> data) {
             return module->HasTransmit() ? (module->proxy_ ? module->proxy_->TransmitData(data) : false) : false;
           }, py::call_guard<py::gil_scoped_release>())

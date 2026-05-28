@@ -112,10 +112,12 @@ void DataHandlerWrapper(const py::module &m) {
       .def("send", [](SendHandler& self, uint64_t pts, const std::string& frame_id_s, py::array_t<uint8_t> image) {
         cv::Mat mat = ArrayToMat(image);
         return self.Send(pts, frame_id_s, mat);
-      }, py::arg("pts"), py::arg("frame_id_s"), py::arg("image"))
+      }, py::arg("pts"), py::arg("frame_id_s"), py::arg("image"),
+         py::call_guard<py::gil_scoped_release>())
       .def("send_frame", [](SendHandler& self, const SendFrame& frame) {
         return self.Send(frame);
-      }, py::arg("frame"));
+      }, py::arg("frame"),
+         py::call_guard<py::gil_scoped_release>());
 
 
 }  // DataHandlerWrapper

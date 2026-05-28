@@ -158,14 +158,6 @@ void InferObjsWrapper(const py::module &m) {
       .def_readwrite("track_id", &InferObject::track_id)
       .def_readwrite("score", &InferObject::score)
       .def_readwrite("bbox", &InferObject::bbox)
-
-      // 单独为 py 提供的一个容器
-      .def("get_py_collection", [](std::shared_ptr<InferObject> obj) {
-          if (!obj->collection.HasValue("py_collection")) {
-            obj->collection.Add("py_collection", py::dict());
-          }
-          return obj->collection.Get<py::dict>("py_collection");
-      })
       .def("add_attribute", [](std::shared_ptr<InferObject> obj, const std::string& key, const InferAttr& attr) {
         obj->AddAttribute(key, attr);
       })

@@ -100,7 +100,8 @@ void SourceModuleWrapper(const py::module &m) {
       .def("create_frame_info", [](std::shared_ptr<SourceHandler> handler, bool eos) {
         return handler->CreateFrameInfo(eos);
         }, py::arg("eos") = false)
-      .def("send_data", &SourceHandler::SendData);
+      .def("send_data", &SourceHandler::SendData,
+        py::call_guard<py::gil_scoped_release>());
 }
 
 }  // namespace cnstream

@@ -15,7 +15,6 @@ def get_timestamp_ms() -> int:
     return int(datetime.now().timestamp() * 1000)
 
 def create_test_image(height: int = 480, width: int = 640) -> np.ndarray:
-    """创建一张测试用的 BGR 图像（numpy uint8 数组）。"""
     image = np.zeros((height, width, 3), dtype=np.uint8)
     image[:] = (128, 64, 32)  # BGR
     return image
@@ -36,7 +35,6 @@ def test_data_structures():
     assert data_frame.get_planes() == 0
     print("DataFrame OK")
 
-    # InferObjs / InferObject / InferBoundingBox / InferAttr
     infer_objs = vstream.InferObjs()
     obj = vstream.InferObject()
     obj.id = 1
@@ -47,7 +45,6 @@ def test_data_structures():
     assert len(infer_objs.objs) == 1
     print("InferObjs OK")
 
-    # class_infos / obj_in / output_data (sink 相关结构)
     cls = vstream.class_infos()
     cls.id = 0
     cls.model_name = "model"
@@ -57,11 +54,16 @@ def test_data_structures():
     print(f"class_infos: id={cls.id}, name={cls.id_name}")
 
     obj_in = vstream.obj_in()
+    obj_in.id = 0
     obj_in.track_id = "100"
     obj_in.score = 0.88
-    obj_in.bboxs = [10, 20, 30, 40]
+    obj_in.bboxs = [10.0, 20.0, 30.0, 40.0]
     obj_in.classes = [cls]
-    print(f"obj_in: track_id={obj_in.track_id}, bboxs={obj_in.bboxs}")
+    obj_in.model_name = "yolo"
+    obj_in.feature = [0.1, 0.2, 0.3]
+    print(f"obj_in: id={obj_in.id}, track_id={obj_in.track_id}, score={obj_in.score}, "
+          f"bboxs={obj_in.bboxs}, model_name={obj_in.model_name}, "
+          f"feature={obj_in.feature}, classes={len(obj_in.classes)}")
 
     out_data = vstream.output_data()
     out_data.result = 0

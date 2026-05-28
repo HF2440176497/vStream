@@ -135,6 +135,14 @@ using InferFeatures = std::vector<std::pair<std::string, InferFeature>>;
  */
 using StringPairs = std::vector<std::pair<std::string, std::string>>;
 
+struct InferObjectInfo {
+  int id = -1;                ///< 分类序号
+  std::string model_name;     ///< 模型名
+  std::string id_name;        ///< 分类名称
+  float score = 0;            ///< 得分
+  float value = 0;            ///< 归一化得分
+};
+
 /**
  * @class InferObject
  *
@@ -161,6 +169,8 @@ class InferObject {
   float area;              ///< The area of the object.
   InferBoundingBox bbox;   ///< The object normalized coordinates.
   Collection collection;   ///< User-defined structured information.
+  std::vector<InferObjectInfo> classes;  ///< Full classification results (primary + secondary).
+  cv::Mat mask;            ///< Segmentation mask (optional).
 
   /**
    * @brief Adds the key of an attribute to a specified object.
@@ -394,6 +404,12 @@ using InferDataPtr = std::shared_ptr<InferData>;
 inline constexpr char kDataFrameTag[] = "DataFrame"; /*!< value type in FrameInfo::Collection : DataFramePtr. */
 inline constexpr char kInferObjsTag[] = "InferObjs"; /*!< value type in FrameInfo::Collection : InferObjsPtr. */
 inline constexpr char kInferDataTag[] = "InferData"; /*!< value type in FrameInfo::Collection : InferDataPtr. */
+inline constexpr char kCustomImagesTag[] = "CustomImages"; /*!< value type in FrameInfo::Collection : CustomImagesPtr. */
+/*!
+ * Defines an alias for std::shared_ptr<std::map<std::string, cv::Mat>>.
+ * Used to pass additional images (e.g. segmentation masks) from any module to the sink.
+ */
+using CustomImagesPtr = std::shared_ptr<std::map<std::string, cv::Mat>>;
 
 
 }  // namespace cnstream
