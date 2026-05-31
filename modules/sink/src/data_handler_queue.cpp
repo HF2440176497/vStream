@@ -1,22 +1,3 @@
-/*************************************************************************
- * Copyright (C) [2019] by Cambricon, Inc. All rights reserved
- *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- *************************************************************************/
 
 #include "data_sink.hpp"
 #include "cnstream_collection.hpp"
@@ -82,7 +63,6 @@ class QueueHandlerImpl {
 
     LOGI(SINK) << "[" << stream_id_ << "]: OnFrame timestamp=" << frame_info->timestamp;
 
-    // 通过 data_converter 桥接层将框架内部 FrameInfo 转换为输出格式
     s_output_data data = ConvertFrameInfo(frame_info);
     if (data.result != 0) {
       return 0;  // 无推理结果，跳过此帧

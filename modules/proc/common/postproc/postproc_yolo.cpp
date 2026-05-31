@@ -14,6 +14,8 @@
 #include <string>
 #include <nlohmann/json.hpp>
 #include <opencv2/opencv.hpp>
+#include <cuda_runtime.h>
+
 
 
 using json = nlohmann::json;
@@ -112,6 +114,12 @@ class Post_YOLOv8_CPU: public Postproc {
       LOGE(POSTPROC) << "Init config_file must be in custom_postproc_params.";
       return false;
     }
+    std::string config_file_path = "./";
+    if (params_.find(CNS_JSON_DIR_PARAM_NAME) != params_.end()) {
+      config_file_path = params_[CNS_JSON_DIR_PARAM_NAME];
+    }
+    config_file_ = GetPathRelativeToTheJSONFile(config_file_, config_file_path);
+
     LOGI(POSTPROC) << "model_name: " << model_name_ << ", post conf file: " << config_file_;
     std::ifstream file(config_file_);
     if (!file.is_open()) {
@@ -240,21 +248,6 @@ class Post_YOLOv8_CPU: public Postproc {
     }
     fast_nms(objs, max_boxes_num_, 0.5f);
 
-#ifdef VSTREAM_UNIT_TEST
-    if (!has_save_frame_mat_) {
-      cv::Mat img = frame->GetImage().clone();  // BGR
-      for (auto& obj : objs) {
-        float x = obj->bbox.x;
-        float y = obj->bbox.y;
-        float w = obj->bbox.w;
-        float h = obj->bbox.h;
-        cv::rectangle(img, cv::Rect(x, y, w, h), cv::Scalar(0, 255, 0), 2);
-      }
-      cv::imwrite(save_file_, img);
-      has_save_frame_mat_ = true;
-    }
-#endif
-
     return 0;
   }
 
@@ -352,6 +345,12 @@ class Post_YOLOv8_CPU_v2: public Postproc {
       LOGE(POSTPROC) << "Init config_file must be in custom_postproc_params.";
       return false;
     }
+    std::string config_file_path = "./";
+    if (params_.find(CNS_JSON_DIR_PARAM_NAME) != params_.end()) {
+      config_file_path = params_[CNS_JSON_DIR_PARAM_NAME];
+    }
+    config_file_ = GetPathRelativeToTheJSONFile(config_file_, config_file_path);
+
     LOGI(POSTPROC) << "model_name: " << model_name_ << ", post conf file: " << config_file_;
     std::ifstream file(config_file_);
     if (!file.is_open()) {
@@ -482,16 +481,35 @@ class Post_YOLOv8_CPU_v2: public Postproc {
     }
 
 #ifdef VSTREAM_UNIT_TEST
-    if (!has_save_frame_mat_) {
-      cv::Mat img = frame->GetImage().clone();
-      for (auto& obj : local_objs) {
-          cv::rectangle(img, cv::Rect(obj->bbox.x, obj->bbox.y, obj->bbox.w, obj->bbox.h),
-                        cv::Scalar(0, 255, 0), 2);
+
+    cudaDeviceSynchronize();
+
+    {
+      std::lock_guard<std::mutex> lock(last_save_time_mutex_);
+      auto now = std::chrono::steady_clock::now();
+      if (save_duration_ms_ > 0) {
+        if (last_save_time_.time_since_epoch().count() == 0 ||
+            std::chrono::duration_cast<std::chrono::milliseconds>(now - last_save_time_).count() >= save_duration_ms_) {
+            
+            cv::Mat img = frame->GetImage().clone();
+            for (auto& obj : local_objs) {
+                cv::rectangle(img, cv::Rect(obj->bbox.x, obj->bbox.y, obj->bbox.w, obj->bbox.h),
+                              cv::Scalar(0, 255, 0), 2);
+            }
+            
+            auto sys_now = std::chrono::system_clock::now();
+            auto timestamp_ms = std::chrono::duration_cast<std::chrono::milliseconds>(sys_now.time_since_epoch()).count();
+            std::string filename = "save/post-" +  std::to_string(timestamp_ms) + ".jpg";
+            
+            cv::imwrite(filename, img);
+            last_save_time_ = now;
+        }
       }
-      cv::imwrite(save_file_, img);
-      has_save_frame_mat_ = true;
+
     }
+
 #endif
+
     return 0;
   }
 
@@ -505,8 +523,10 @@ class Post_YOLOv8_CPU_v2: public Postproc {
   const int max_boxes_num_ = 100;
   std::string model_name_;
 
-  bool has_save_frame_mat_ = false;
-  std::string save_file_ = "save/test_postproc_save.jpg";
+private:
+  std::mutex last_save_time_mutex_;
+  std::chrono::steady_clock::time_point last_save_time_;
+  uint32_t save_duration_ms_ = 1000;
 
   DECLARE_REFLEX_OBJECT_EX(Post_YOLOv8_CPU_v2, cnstream::Postproc);
 };  // class Post_YOLOv8_CPU_v2

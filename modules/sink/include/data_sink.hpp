@@ -27,6 +27,10 @@ inline const std::string key_output_bitrate = "bitrate";
 inline const std::string key_output_codec = "codec";
 inline const std::string key_output_device_id = "device_id";
 
+inline const std::string key_mark_enable = "mark_enable";
+inline const std::string key_mark_label = "mark_label";
+inline const std::string key_mark_score = "mark_score";
+
 inline const std::set<std::string> key_supported_formats = {"mp4", "flv"};
 
 /*!

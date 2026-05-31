@@ -48,7 +48,7 @@ class DataFrame : public NonCopyable {
 
   size_t GetBytes() const;
 
-  void CopyToSyncMem(DecodeFrame* decode_frame);
+  void CopyToSyncMem(DecodeFrame* decode_frame, void* stream = nullptr);
 
   std::shared_ptr<MemOp> CreateMemOp();
 

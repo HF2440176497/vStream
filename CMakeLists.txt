@@ -12,7 +12,11 @@ else()
 endif()
 
 project(vStream LANGUAGES C CXX)
-set(CMAKE_BUILD_TYPE Debug)
+
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type: Debug or Release" FORCE)
+endif()
+message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -39,6 +43,17 @@ option(VSTREAM_BUILD_TOOLS "build tools" ON)
 # 第三方库 默认都为 ON
 option(VSTREAM_BUILD_LIBYUV "build libyuv" ON)
 option(VSTREAM_BUILD_PYBIND11 "build pybind11" ON)
+
+# Release 构建类型编译器优化
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+  if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    set(CMAKE_CXX_FLAGS_RELEASE "-O2 -DNDEBUG" CACHE STRING "C++ flags for Release" FORCE)
+    set(CMAKE_C_FLAGS_RELEASE "-O2 -DNDEBUG" CACHE STRING "C flags for Release" FORCE)
+  endif()
+  if(VSTREAM_USE_CUDA AND CMAKE_CUDA_COMPILER_ID MATCHES "NVIDIA")
+    set(CMAKE_CUDA_FLAGS_RELEASE "-O2 -DNDEBUG" CACHE STRING "CUDA flags for Release" FORCE)
+  endif()
+endif()
 
 # Python 路径配置
 set(VSTREAM_PYTHON_ROOT_DIR "/usr/local/python3.12"

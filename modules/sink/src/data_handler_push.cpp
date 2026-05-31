@@ -1,166 +1,9 @@
-#include "data_sink.hpp"
+#include "data_handler_push.hpp"
 #include "cnstream_logging.hpp"
-#include "cnstream_frame_va.hpp"
-#include "data_common.hpp"
-#include "memop.hpp"
 
-
-#include <atomic>
-#include <chrono>
-#include <memory>
-#include <string>
-#include <mutex>
-#include <optional>
-#include <thread>
-#include <unordered_map>
-#include <vector>
 #include <opencv2/opencv.hpp>
 
-extern "C" {
-#include <libavcodec/avcodec.h>
-#include <libavformat/avformat.h>
-#include <libavutil/imgutils.h>
-#include <libavutil/opt.h>
-#include <libavutil/hwcontext.h>
-#include <libswscale/swscale.h>
-}
-
-#ifdef VSTREAM_USE_CUDA
-#include "cuda/cuda_check.hpp"
-#include "cuda/transfmt_cuda.cuh"
-#include "cuda/cnstream_syncmem_cuda.hpp"
-
-static constexpr AVPixelFormat kEncoderPixFmt = AV_PIX_FMT_CUDA;
-static constexpr AVPixelFormat kSwsPixFmt     = AV_PIX_FMT_NV12;
-static constexpr const char* kDefaultEncoder = "h264_nvenc";
-#else
-static constexpr AVPixelFormat kEncoderPixFmt = AV_PIX_FMT_YUV420P;
-static constexpr AVPixelFormat kSwsPixFmt     = AV_PIX_FMT_YUV420P;  // 转换的目标的格式
-static constexpr const char* kDefaultEncoder = nullptr;
-#endif
-
 namespace cnstream {
-
-struct StreamContext {
-  AVFormatContext* fmt_ctx   = nullptr;
-  AVCodecContext*  codec_ctx = nullptr;
-  AVStream*        stream    = nullptr;
-  SwsContext*      sws_ctx   = nullptr;
-  AVFrame*         sws_frame = nullptr;
-  uint64_t         frame_idx = 0;
-  bool             header_written = false;
-#ifdef VSTREAM_USE_CUDA
-  AVBufferRef*     hw_device_ctx = nullptr;
-  AVBufferRef*     hw_frames_ctx = nullptr;
-  AVFrame*         hw_frame      = nullptr;
-#endif
-};
-
-static std::string GetFormatFromUrl(const std::string& url) {
-  if (url.find("rtmp://") == 0) return "flv";
-  if (url.find("rtsp://") == 0) return "rtsp";
-  if (url.find("http://") == 0 || url.find("https://") == 0) return "mpegts";
-  return "flv";
-}
-
-static const std::unordered_map<DataFormat, AVPixelFormat> kAvFmtMap = {
-  {DataFormat::PIXEL_FORMAT_RGB24, AV_PIX_FMT_RGB24},
-  {DataFormat::PIXEL_FORMAT_BGR24, AV_PIX_FMT_BGR24},
-};
-
-class PushHandlerImpl {
-  friend class PushHandler;
-
- public:
-  explicit PushHandlerImpl(DataSink *module, SinkHandler *handler)
-      : module_(module), stream_id_(handler->GetStreamId()) {}
-  virtual ~PushHandlerImpl() { Close(); }
-
-  static std::optional<int> GetIntParam(const ModuleParamSet& m, const std::string& key) {
-    auto it = m.find(key);
-    return it != m.end() ? std::optional<int>(std::stoi(it->second)) : std::nullopt;
-  }
-
-  static std::optional<std::string> GetStrParam(const ModuleParamSet& m, const std::string& key) {
-    auto it = m.find(key);
-    return it != m.end() ? std::optional<std::string>(it->second) : std::nullopt;
-  }
-
-  bool Open();
-  void Stop();
-  void Close();
-  bool IsRunning() const { return running_.load(); }
-  int Process(const std::shared_ptr<FrameInfo> data);
-
- protected:
-  bool InitStream();
-  const AVCodec* FindEncoder();
-  bool ReinitStream(int device_id);
-  virtual bool InitDeviceCtx() { return true; }
-  bool InitSwsFrame();
-  virtual void CleanDeviceCtx() {}
-  virtual bool SendDataFrame(const DataFramePtr& frame, AVPixelFormat src_pix_fmt) = 0;
-  bool SendFrame(const DataFramePtr& frame, AVPixelFormat src_pix_fmt);
-  void EnsureSwsContext(AVPixelFormat src_pix_fmt, int src_width, int src_height);
-  bool SendFrameCpuFallback(const DataFramePtr& frame, AVPixelFormat src_pix_fmt);
-  bool EncodeFrame(AVFrame* frame);
-  void ClearStream();
-  int64_t ComputePts();
-  bool ControlFps();
-
-  DataSink *module_ = nullptr;
-  std::string stream_id_;
-  std::atomic<bool> running_{false};
-  ModuleParamSet param_set_;
-
-  std::string output_url_;
-  int device_id_ = -1;
-  int fps_ = 20;
-  int width_ = 640;
-  int height_ = 480;
-  int bitrate_kbps_ = 1000;
-  std::string codec_name_;
-
-  StreamContext ctx_;
-  std::mutex stream_mtx_;
-
-  AVPixelFormat src_pix_fmt_ = AV_PIX_FMT_RGB24;
-  int sws_src_width_  = 0;
-  int sws_src_height_ = 0;
-  std::atomic<bool> hw_ctx_initialized_{false};
-
-  std::chrono::steady_clock::time_point push_start_time_;
-  std::chrono::steady_clock::time_point last_push_time_;
-  bool first_frame_ = true;
-
-  static constexpr int kFpsStatInterval = 100;
-  std::chrono::steady_clock::time_point fps_stat_start_time_;
-  uint64_t fps_stat_frame_count_ = 0;
-};
-
-class PushHandlerImplCPU : public PushHandlerImpl {
- public:
-  using PushHandlerImpl::PushHandlerImpl;
-
- protected:
-  bool SendDataFrame(const DataFramePtr& frame, AVPixelFormat src_pix_fmt) override;
-};
-
-#ifdef VSTREAM_USE_CUDA
-class PushHandlerImplCUDA : public PushHandlerImpl {
- public:
-  using PushHandlerImpl::PushHandlerImpl;
-
- protected:
-  bool InitDeviceCtx() override;
-  void CleanDeviceCtx() override;
-  bool SendDataFrame(const DataFramePtr& frame, AVPixelFormat src_pix_fmt) override;
-
- private:
-  bool SendFrameCuda(const DataFramePtr& frame, AVPixelFormat src_pix_fmt);
-  bool SendFrameToCuda(const DataFramePtr& frame, AVPixelFormat src_pix_fmt);
-};
-#endif
 
 bool PushHandlerImpl::Open() {
   LOGI(SINK) << "[" << stream_id_ << "]: PushHandlerImpl Open";
@@ -178,10 +21,12 @@ bool PushHandlerImpl::Open() {
   codec_name_   = GetStrParam(param_set_, key_output_codec).value_or(codec_name_);
   device_id_    = GetIntParam(param_set_, key_output_device_id).value_or(device_id_);
 
-  if (!InitStream()) {
-    LOGE(SINK) << "[" << stream_id_ << "]: InitStream failed";
-    return false;
+  mark_render_ = GetIntParam(param_set_, key_mark_enable).value_or(0) != 0;
+  if (mark_render_) {
+    mark_config_.draw_label = GetIntParam(param_set_, key_mark_label).value_or(0) != 0;
+    mark_config_.draw_score = GetIntParam(param_set_, key_mark_score).value_or(0) != 0;
   }
+
   running_.store(true);
   return true;
 }
@@ -211,7 +56,7 @@ int PushHandlerImpl::Process(const std::shared_ptr<FrameInfo> data) {
     return 0;
   }
   if (!ControlFps()) {
-    return 0;  // 超过推流帧率，丢弃此帧
+    return 0;
   }
 
   DataFramePtr frame = nullptr;
@@ -228,8 +73,25 @@ int PushHandlerImpl::Process(const std::shared_ptr<FrameInfo> data) {
                << static_cast<int>(frame->GetFmt());
     return -1;
   }
-  std::lock_guard<std::mutex> lk(stream_mtx_);
+
+  if (mark_render_ && data->collection.HasValue(cnstream::kInferObjsTag)) {
+    if (!render_) {
+      render_ = MarkRender::Create(frame->GetCtx().device_type);
+    }
+    auto objs = data->collection.Get<cnstream::InferObjsPtr>(cnstream::kInferObjsTag);
+    if (objs && !objs->objs_.empty()) {
+      render_->Render(frame, objs, mark_config_);
+    }
+  }
+
+  std::lock_guard<std::recursive_mutex> lk(stream_mtx_);
   if (IsRunning()) {
+    if (!stream_initialized_) {
+      if (!InitStream()) {
+        LOGE(SINK) << "[" << stream_id_ << "]: InitStream failed";
+        return -1;
+      }
+    }
     if (!SendDataFrame(frame, it->second)) {
       LOGE(SINK) << "[" << stream_id_ << "]: SendDataFrame failed";
       return -1;
@@ -315,6 +177,7 @@ bool PushHandlerImpl::InitStream() {
   }
   LOGI(SINK) << "[" << stream_id_ << "]: Stream initialized, url=" << output_url_
              << " res=" << width_ << "x" << height_ << " fps=" << fps_;
+  stream_initialized_ = true;
   return true;
 }
 
@@ -330,7 +193,7 @@ const AVCodec* PushHandlerImpl::FindEncoder() {
 }
 
 bool PushHandlerImpl::ReinitStream(int device_id) {
-  std::lock_guard<std::mutex> lk(stream_mtx_);
+  std::lock_guard<std::recursive_mutex> lk(stream_mtx_);
   ClearStream();
   device_id_ = device_id;
   return InitStream();
@@ -419,7 +282,14 @@ bool PushHandlerImpl::EncodeFrame(AVFrame* frame) {
     if (ret == 0) {
       av_packet_rescale_ts(drain_pkt, ctx_.codec_ctx->time_base, ctx_.stream->time_base);
       drain_pkt->stream_index = ctx_.stream->index;
-      av_interleaved_write_frame(ctx_.fmt_ctx, drain_pkt);
+      int write_ret = av_interleaved_write_frame(ctx_.fmt_ctx, drain_pkt);
+      if (write_ret < 0) {
+        char errbuf[1024];
+        av_strerror(write_ret, errbuf, sizeof(errbuf));
+        LOGE(SINK) << "[" << stream_id_ << "]: av_interleaved_write_frame error during drain: " << errbuf;
+        av_packet_free(&drain_pkt);
+        return false;
+      }
     }
     av_packet_free(&drain_pkt);
     if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
@@ -443,7 +313,7 @@ bool PushHandlerImpl::EncodeFrame(AVFrame* frame) {
       break;
     }
     if (ret < 0) {
-      LOGE(SINK) << "[" << stream_id_ << "]: avcodec_receive_packet error";
+      LOGE(SINK) << "[" << stream_id_ << "]: avcodec_receive_packet error: " << ret;
       av_packet_free(&pkt);
       return false;
     }
@@ -451,7 +321,10 @@ bool PushHandlerImpl::EncodeFrame(AVFrame* frame) {
     pkt->stream_index = ctx_.stream->index;
     ret = av_interleaved_write_frame(ctx_.fmt_ctx, pkt);
     if (ret < 0) {
-      LOGE(SINK) << "[" << stream_id_ << "]: av_interleaved_write_frame error";
+      char errbuf[1024];
+      av_strerror(ret, errbuf, sizeof(errbuf));
+      std::string error_msg(errbuf);
+      LOGE(SINK) << "[" << stream_id_ << "]: av_interleaved_write_frame error: " << error_msg;
       av_packet_free(&pkt);
       return false;
     }
@@ -462,7 +335,7 @@ bool PushHandlerImpl::EncodeFrame(AVFrame* frame) {
 
 void PushHandlerImpl::ClearStream() {
   AVPacket* pkt = nullptr;
-  std::lock_guard<std::mutex> lk(stream_mtx_);
+  std::lock_guard<std::recursive_mutex> lk(stream_mtx_);
   if (ctx_.codec_ctx && ctx_.stream) {
     avcodec_send_frame(ctx_.codec_ctx, nullptr);
     pkt = av_packet_alloc();
@@ -486,6 +359,7 @@ void PushHandlerImpl::ClearStream() {
     avformat_free_context(ctx_.fmt_ctx);
   }
   ctx_ = StreamContext();
+  stream_initialized_ = false;
   LOGI(SINK) << "[" << stream_id_ << "]: Stream clean done";
 }
 
@@ -530,7 +404,6 @@ bool PushHandlerImpl::ControlFps() {
   return true;
 }
 
-// ========== PushHandlerImplCPU ==========
 
 bool PushHandlerImplCPU::SendDataFrame(const DataFramePtr& frame, AVPixelFormat src_pix_fmt) {
   auto dev_type = frame->GetCtx().device_type;
@@ -540,258 +413,6 @@ bool PushHandlerImplCPU::SendDataFrame(const DataFramePtr& frame, AVPixelFormat 
   LOGE(SINK) << "[" << stream_id_ << "]: unknown device type " << DevType2Str(dev_type);
   return true;
 }
-
-// ========== PushHandlerImplCUDA ==========
-
-#ifdef VSTREAM_USE_CUDA
-
-bool PushHandlerImplCUDA::InitDeviceCtx() {
-  int ret = av_hwdevice_ctx_create(&ctx_.hw_device_ctx, AV_HWDEVICE_TYPE_CUDA,
-                                   std::to_string(device_id_).c_str(), nullptr, 0);
-  if (ret < 0) {
-    LOGE(SINK) << "[" << stream_id_ << "]: av_hwdevice_ctx_create (CUDA) failed: " << ret;
-    return false;
-  }
-
-  ctx_.hw_frames_ctx = av_hwframe_ctx_alloc(ctx_.hw_device_ctx);
-  if (!ctx_.hw_frames_ctx) {
-    LOGE(SINK) << "[" << stream_id_ << "]: av_hwframe_ctx_alloc failed";
-    return false;
-  }
-
-  AVHWFramesContext* hw_frames = reinterpret_cast<AVHWFramesContext*>(ctx_.hw_frames_ctx->data);
-  hw_frames->format            = AV_PIX_FMT_CUDA;
-  hw_frames->sw_format         = AV_PIX_FMT_NV12;
-  hw_frames->width             = width_;
-  hw_frames->height            = height_;
-  hw_frames->initial_pool_size = 20;
-
-  ret = av_hwframe_ctx_init(ctx_.hw_frames_ctx);
-  if (ret < 0) {
-    LOGE(SINK) << "[" << stream_id_ << "]: av_hwframe_ctx_init failed: " << ret;
-    return false;
-  }
-
-  ctx_.codec_ctx->hw_device_ctx = av_buffer_ref(ctx_.hw_device_ctx);
-  ctx_.codec_ctx->hw_frames_ctx = av_buffer_ref(ctx_.hw_frames_ctx);
-
-  ctx_.hw_frame = av_frame_alloc();
-  ret = av_hwframe_get_buffer(ctx_.hw_frames_ctx, ctx_.hw_frame, 0);
-  if (ret < 0) {
-    LOGE(SINK) << "[" << stream_id_ << "]: av_hwframe_get_buffer failed: " << ret;
-    return false;
-  }
-  return true;
-}
-
-void PushHandlerImplCUDA::CleanDeviceCtx() {
-  if (ctx_.hw_frame)      { av_frame_free(&ctx_.hw_frame); }
-  if (ctx_.hw_frames_ctx) { av_buffer_unref(&ctx_.hw_frames_ctx); }
-  if (ctx_.hw_device_ctx) { av_buffer_unref(&ctx_.hw_device_ctx); }
-}
-
-bool PushHandlerImplCUDA::SendDataFrame(const DataFramePtr& frame, AVPixelFormat src_pix_fmt) {
-  auto dev_type = frame->GetCtx().device_type;
-  if (dev_type == DevType::CUDA) {
-    int actual_device = frame->GetCtx().device_id;
-    if (!hw_ctx_initialized_.load()) {
-      if (actual_device >= 0 && actual_device != device_id_) {
-        LOGI(SINK) << "Reinitializing stream for device " << actual_device;
-        if (!ReinitStream(actual_device)) {
-            return false;
-        }
-        device_id_ = actual_device;
-      }
-      hw_ctx_initialized_.store(true);
-    }
-    return SendFrameCuda(frame, src_pix_fmt);
-  } else if (dev_type == DevType::CPU) {
-    return SendFrameToCuda(frame, src_pix_fmt);
-  } else {
-    return SendFrame(frame, src_pix_fmt);
-  }
-}
-
-bool PushHandlerImplCUDA::SendFrameCuda(const DataFramePtr& frame, AVPixelFormat src_pix_fmt) {
-  const int src_width  = frame->GetWidth();
-  const int src_height = frame->GetHeight();
-  const int src_stride = frame->GetStride(0);
-
-#ifdef VSTREAM_UNIT_TEST
-  if (src_stride != GetStride_8U_C3(src_width)) {
-    LOGE(SINK) << "[" << stream_id_ << "]: src_stride != GetStride_8U_C3(src_width)";
-    return false;
-  }
-#endif
-
-  const void* cuda_data = frame->data_[0]->GetDevData();
-
-  bool need_resize = (src_width != width_ || src_height != height_);
-  uint8_t* resized_cuda_data = nullptr;
-  const void* npp_src_data = cuda_data;
-
-  int npp_src_stride = src_stride;
-  int npp_src_width  = src_width;
-  int npp_src_height = src_height;
-  if (need_resize) {
-    int out_stride = GetStride_8U_C3(width_);
-    CHECK_CUDA_RUNTIME(cudaMalloc(&resized_cuda_data, static_cast<size_t>(height_) * out_stride));
-
-    CHECK_NPP(nppiResize_8u_C3R(
-        static_cast<const Npp8u*>(cuda_data), src_stride, {src_width, src_height}, {0, 0, src_width, src_height},
-        static_cast<Npp8u*>(resized_cuda_data), out_stride, {width_, height_}, {0, 0, width_, height_},
-        NPPI_INTER_LINEAR));
-
-    npp_src_data   = resized_cuda_data;
-    npp_src_stride = out_stride;
-    npp_src_width  = width_;
-    npp_src_height = height_;
-  }
-
-  int ret = av_frame_make_writable(ctx_.hw_frame);
-  if (ret < 0) {
-    LOGE(SINK) << "[" << stream_id_ << "]: av_frame_make_writable (hw_frame) failed";
-    cudaFree(resized_cuda_data);
-    return false;
-  }
-
-  int npp_ret = -1;
-
-  uint8_t* dst_y  = ctx_.hw_frame->data[0];
-  uint8_t* dst_uv = ctx_.hw_frame->data[1];
-  int y_stride    = ctx_.hw_frame->linesize[0];
-  int uv_stride   = ctx_.hw_frame->linesize[1];
-
-  if (src_pix_fmt == AV_PIX_FMT_RGB24) {
-    npp_ret = NppRGB24ToNV12(
-      dst_y, dst_uv, y_stride, uv_stride,
-      npp_src_data, npp_src_stride,
-      npp_src_width, npp_src_height
-    );
-  } else if (src_pix_fmt == AV_PIX_FMT_BGR24) {
-    npp_ret = NppBGR24ToNV12(
-      dst_y, dst_uv, y_stride, uv_stride,
-      npp_src_data, npp_src_stride,
-      npp_src_width, npp_src_height
-    );
-  } else {
-    LOGW(SINK) << "[" << stream_id_ << "]: unsupported GPU src format, fallback to CPU";
-    cudaFree(resized_cuda_data);
-    return SendFrameCpuFallback(frame, src_pix_fmt);
-  }
-  cudaFree(resized_cuda_data);
-
-  if (npp_ret != 0) {
-    LOGW(SINK) << "[" << stream_id_ << "]: NPP conversion failed: "
-               << npp_ret << ", falling back to CPU path";
-    return SendFrameCpuFallback(frame, src_pix_fmt);
-  }
-
-  ctx_.hw_frame->pts = ComputePts();
-  return EncodeFrame(ctx_.hw_frame);
-}
-
-bool PushHandlerImplCUDA::SendFrameToCuda(const DataFramePtr& frame, AVPixelFormat src_pix_fmt) {
-  if (!hw_ctx_initialized_.load()) {
-    hw_ctx_initialized_.store(true);
-  }
-  const int src_width  = frame->GetWidth();
-  const int src_height = frame->GetHeight();
-  const int src_stride = frame->GetStride(0);
-
-#ifdef VSTREAM_UNIT_TEST
-  if (src_stride != GetStride_8U_C3(src_width)) {
-    LOGE(SINK) << "[" << stream_id_ << "]: src_stride != GetStride_8U_C3(src_width)";
-    return false;
-  }
-#endif
-
-  const uint8_t* cpu_data = static_cast<const uint8_t*>(frame->data_[0]->GetCpuData());
-  size_t src_size = static_cast<size_t>(src_height) * src_stride;
-
-  uint8_t* cuda_data = nullptr;
-  CHECK_CUDA_RUNTIME(cudaMalloc(&cuda_data, src_size));
-  CHECK_CUDA_RUNTIME(cudaMemcpy2D(cuda_data, src_stride,
-                                  cpu_data, src_stride,
-                                  src_width * 3, src_height,
-                                  cudaMemcpyHostToDevice));
-
-  bool need_resize = (src_width != width_ || src_height != height_);
-  uint8_t* resized_cuda_data = nullptr;
-  
-  const void* npp_src_data = cuda_data;
-  int npp_src_stride = src_stride;
-  int npp_src_width  = src_width;
-  int npp_src_height = src_height;
-  if (need_resize) {
-    int out_stride = GetStride_8U_C3(width_);
-    CHECK_CUDA_RUNTIME(cudaMalloc(&resized_cuda_data, static_cast<size_t>(height_) * out_stride));
-    CHECK_NPP(nppiResize_8u_C3R(
-        static_cast<const Npp8u*>(cuda_data), src_stride, {src_width, src_height}, {0, 0, src_width, src_height},
-        static_cast<Npp8u*>(resized_cuda_data), out_stride, {width_, height_}, {0, 0, width_, height_},
-        NPPI_INTER_LINEAR));
-
-    npp_src_data   = resized_cuda_data;
-    npp_src_stride = out_stride;
-    npp_src_width  = width_;
-    npp_src_height = height_;
-  }
-
-  int ret = av_frame_make_writable(ctx_.hw_frame);
-  if (ret < 0) {
-    LOGE(SINK) << "[" << stream_id_ << "]: av_frame_make_writable (hw_frame) failed";
-    cudaFree(cuda_data);
-    cudaFree(resized_cuda_data);
-    return false;
-  }
-
-  int npp_ret = -1;
-  uint8_t* dst_y  = ctx_.hw_frame->data[0];
-  uint8_t* dst_uv = ctx_.hw_frame->data[1];
-  int y_stride    = ctx_.hw_frame->linesize[0];
-  int uv_stride   = ctx_.hw_frame->linesize[1];
-
-  if (src_pix_fmt == AV_PIX_FMT_RGB24) {
-    npp_ret = NppRGB24ToNV12(dst_y, dst_uv, y_stride, uv_stride,
-                              npp_src_data, npp_src_stride, npp_src_width, npp_src_height);
-  } else if (src_pix_fmt == AV_PIX_FMT_BGR24) {
-    npp_ret = NppBGR24ToNV12(dst_y, dst_uv, y_stride, uv_stride,
-                              npp_src_data, npp_src_stride, npp_src_width, npp_src_height);
-  } else {
-    LOGW(SINK) << "[" << stream_id_ << "]: unsupported CPU src format for CUDA path, fallback";
-    cudaFree(cuda_data);
-    cudaFree(resized_cuda_data);
-    return SendFrameCpuFallback(frame, src_pix_fmt);
-  }
-  cudaFree(cuda_data);
-  cudaFree(resized_cuda_data);
-
-  if (npp_ret != 0) {
-    LOGW(SINK) << "[" << stream_id_ << "]: NPP conversion failed: "
-                << npp_ret << ", falling back to CPU path";
-    return SendFrameCpuFallback(frame, src_pix_fmt);
-  }
-
-#ifdef VSTREAM_UNIT_TEST
-  {
-    static int dump_count = 0;
-    if (dump_count < 3) {
-      dump_count++;
-      uint8_t* mutable_cpu_data = static_cast<uint8_t*>(frame->data_[0]->GetMutableCpuData());
-      cv::Mat img(src_height, src_width, CV_8UC3, mutable_cpu_data, src_stride);
-
-      cv::Mat bgr_mat;
-      cv::cvtColor(img, bgr_mat, cv::COLOR_RGB2BGR);
-      cv::imwrite("/tmp/" + stream_id_ + "-" + std::to_string(dump_count) + ".png", bgr_mat);
-    }
-  }
-#endif
-
-  ctx_.hw_frame->pts = ComputePts();
-  return EncodeFrame(ctx_.hw_frame);
-}
-
-#endif  // VSTREAM_USE_CUDA
 
 std::shared_ptr<SinkHandler> PushHandler::Create(DataSink *module, const std::string &stream_id) {
   if (!module) {
@@ -828,7 +449,7 @@ bool PushHandler::Open() {
     return false;
   }
   if (!impl_->Open()) {
-    impl_->Close();   // 确保失败时清理
+    impl_->Close();
     return false;
   }
   return true;

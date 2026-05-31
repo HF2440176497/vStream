@@ -230,4 +230,15 @@ std::string GetPathRelativeToTheJSONFile(const std::string& path, const ModulePa
   return ret;
 }
 
+std::string GetPathRelativeToTheJSONFile(const std::string& path, std::string config_file_path) {
+  std::string ret = "";
+  if (path.size() > 0 && '/' == path[0]) {
+    /*absolute path*/
+    ret = path;
+  } else {
+    ret = config_file_path + path;
+  }
+  return ret;
+}
+
 }  // namespace cnstream

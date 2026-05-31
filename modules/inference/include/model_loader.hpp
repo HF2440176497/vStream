@@ -29,6 +29,7 @@ class ModelLoader {
   public:
   int GetDeviceId() const { return device_id_; }
   DevType GetDeviceType() const { return device_type_; }
+  virtual void* GetStream() const { return nullptr; }
 
   /** 单输入模型，获取对应的信息 */
   uint32_t get_batch_size() const { return input_shapes_[input_ordered_index_].N(); }

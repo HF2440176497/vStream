@@ -65,9 +65,14 @@ class MemOp {
   virtual void CopyFromHost(void* dst, const void* src, size_t size);
   virtual void CopyToHost(void* dst, const void* src, size_t size);
 
+  virtual void CopyFromHostAsync(void* dst, const void* src, size_t size, void* stream = nullptr);
+  virtual void CopyToHostAsync(void* dst, const void* src, size_t size, void* stream = nullptr);
+  virtual void SyncStream(void* stream = nullptr);
+
   virtual int GetDeviceId() const;
   virtual std::unique_ptr<CNSyncedMemory> CreateSyncedMemory(size_t size);
-  virtual int ConvertImageFormat(CNSyncedMemory* dst_mem, DataFormat dst_fmt, const DecodeFrame* src_frame);
+  virtual int ConvertImageFormat(CNSyncedMemory* dst_mem, DataFormat dst_fmt, const DecodeFrame* src_frame,
+                                  void* stream = nullptr);
 
  protected:
   size_t size_ = 0;  // only used in Allocate RAII mem

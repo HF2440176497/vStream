@@ -20,6 +20,11 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+extern "C" {
+  #include <libavutil/log.h>
+}
+#include "cnstream_ffmpeg_logging.hpp"
+
 namespace py = pybind11;
 
 namespace cnstream {
@@ -34,6 +39,11 @@ void SinkModuleWrapper(py::module &);
 
 PYBIND11_MODULE(vstream, m) {
   m.doc() = "vstream python api";
+
+  SetFFmpegLogLevel(AV_LOG_WARNING);
+  m.def("set_ffmpeg_log_level", &SetFFmpegLogLevel,
+        "Set the FFmpeg log level (e.g., AV_LOG_ERROR=16, AV_LOG_WARNING=24, AV_LOG_INFO=32, AV_LOG_DEBUG=48)");
+
   FrameInfoWrapper(m);
   FrameVaWrapper(m);
   ModuleWrapper(m);

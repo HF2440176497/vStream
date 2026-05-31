@@ -49,7 +49,9 @@ int NppNV12ToRGB24(void* dst, int dst_stride,
   CHECK_NPP(status);
 
   CHECK_CUDA_RUNTIME(cudaGetLastError());
-  CHECK_CUDA_RUNTIME(cudaDeviceSynchronize());
+  if (stream) {
+    CHECK_CUDA_RUNTIME(cudaStreamSynchronize(stream));
+  }
 
   return 0;
 }
@@ -86,7 +88,9 @@ int NppNV12ToBGR24(void* dst, int dst_stride,
   CHECK_NPP(status);
 
   CHECK_CUDA_RUNTIME(cudaGetLastError());
-  CHECK_CUDA_RUNTIME(cudaDeviceSynchronize());
+  if (stream) {
+    CHECK_CUDA_RUNTIME(cudaStreamSynchronize(stream));
+  }
 
   return 0;
 }
@@ -124,7 +128,9 @@ int NppRGB24ToNV12(void* dst_y, void* dst_uv,
   CHECK_NPP(status);
 
   CHECK_CUDA_RUNTIME(cudaGetLastError());
-  CHECK_CUDA_RUNTIME(cudaDeviceSynchronize());
+  if (stream) {
+    CHECK_CUDA_RUNTIME(cudaStreamSynchronize(stream));
+  }
 
   return 0;
 }
@@ -165,7 +171,9 @@ int NppBGR24ToNV12(void* dst_y, void* dst_uv,
   CHECK_NPP(status);
 
   CHECK_CUDA_RUNTIME(cudaGetLastError());
-  CHECK_CUDA_RUNTIME(cudaDeviceSynchronize());
+  if (stream) {
+    CHECK_CUDA_RUNTIME(cudaStreamSynchronize(stream));
+  }
 
   return 0;
 }
@@ -267,7 +275,9 @@ int NppNV21ToRGB24(void* dst, int dst_stride,
     width, height);
 
   CHECK_CUDA_RUNTIME(cudaGetLastError());
-  CHECK_CUDA_RUNTIME(cudaDeviceSynchronize());
+  if (stream) {
+    CHECK_CUDA_RUNTIME(cudaStreamSynchronize(stream));
+  }
 
   return 0;
 }
@@ -289,7 +299,9 @@ int NppNV21ToBGR24(void* dst, int dst_stride,
     width, height);
 
   CHECK_CUDA_RUNTIME(cudaGetLastError());
-  CHECK_CUDA_RUNTIME(cudaDeviceSynchronize());
+  if (stream) {
+    CHECK_CUDA_RUNTIME(cudaStreamSynchronize(stream));
+  }
 
   return 0;
 }
@@ -320,7 +332,9 @@ static int NppSwapChannels_8u_C3R(void* dst, int dst_stride,
   CHECK_NPP(status);
 
   CHECK_CUDA_RUNTIME(cudaGetLastError());
-  CHECK_CUDA_RUNTIME(cudaDeviceSynchronize());
+  if (stream) {
+    CHECK_CUDA_RUNTIME(cudaStreamSynchronize(stream));
+  }
 
   return 0;
 }
@@ -338,5 +352,87 @@ int NppBGR24ToRGB24(void* dst, int dst_stride,
                 cudaStream_t stream) {
   return NppSwapChannels_8u_C3R(dst, dst_stride, width, height, src, src_stride, stream);
 }
+
+int ConvertRGB24ToNV12_Resize(void* dst_y, int y_stride, void* dst_uv, int uv_stride,
+                            int dst_width, int dst_height,
+                            const void* src, int src_stride, int src_width, int src_height,
+                            cudaStream_t stream) {
+  const void* npp_src = src;
+  int npp_src_stride = src_stride;
+  int npp_src_width = src_width;
+  int npp_src_height = src_height;
+
+  uint8_t* resized_data = nullptr;
+  bool need_resize = (src_width != dst_width || src_height != dst_height);
+  if (need_resize) {
+    int out_stride = GetStride_8U_C3(dst_width);
+    CHECK_CUDA_RUNTIME(cudaMallocAsync(&resized_data, static_cast<size_t>(dst_height) * out_stride, stream));
+
+    NppStreamContext npp_ctx;
+    CHECK_NPP(nppGetStreamContext(&npp_ctx));
+    npp_ctx.hStream = stream;
+
+    CHECK_NPP(nppiResize_8u_C3R_Ctx(
+        static_cast<const Npp8u*>(src), src_stride, {src_width, src_height}, {0, 0, src_width, src_height},
+        static_cast<Npp8u*>(resized_data), out_stride, {dst_width, dst_height}, {0, 0, dst_width, dst_height},
+        NPPI_INTER_LINEAR, npp_ctx));
+
+    npp_src = resized_data;
+    npp_src_stride = out_stride;
+    npp_src_width = dst_width;
+    npp_src_height = dst_height;
+  }
+
+  int ret = -1;
+  ret = NppRGB24ToNV12(dst_y, dst_uv, y_stride, uv_stride,
+                      npp_src, npp_src_stride, npp_src_width, npp_src_height,
+                      stream);
+  if (resized_data) {
+    CHECK_CUDA_RUNTIME(cudaFreeAsync(resized_data, stream));
+  }
+  return ret;
+}
+
+
+int ConvertBGR24ToNV12_Resize(void* dst_y, int y_stride, void* dst_uv, int uv_stride,
+                            int dst_width, int dst_height,
+                            const void* src, int src_stride, int src_width, int src_height,
+                            cudaStream_t stream) {
+  const void* npp_src = src;
+  int npp_src_stride = src_stride;
+  int npp_src_width = src_width;
+  int npp_src_height = src_height;
+
+  uint8_t* resized_data = nullptr;
+  bool need_resize = (src_width != dst_width || src_height != dst_height);
+  if (need_resize) {
+    int out_stride = GetStride_8U_C3(dst_width);
+    CHECK_CUDA_RUNTIME(cudaMallocAsync(&resized_data, static_cast<size_t>(dst_height) * out_stride, stream));
+
+    NppStreamContext npp_ctx;
+    CHECK_NPP(nppGetStreamContext(&npp_ctx));
+    npp_ctx.hStream = stream;
+
+    CHECK_NPP(nppiResize_8u_C3R_Ctx(
+        static_cast<const Npp8u*>(src), src_stride, {src_width, src_height}, {0, 0, src_width, src_height},
+        static_cast<Npp8u*>(resized_data), out_stride, {dst_width, dst_height}, {0, 0, dst_width, dst_height},
+        NPPI_INTER_LINEAR, npp_ctx));
+
+    npp_src = resized_data;
+    npp_src_stride = out_stride;
+    npp_src_width = dst_width;
+    npp_src_height = dst_height;
+  }
+
+  int ret = -1;
+  ret = NppBGR24ToNV12(dst_y, dst_uv, y_stride, uv_stride,
+                        npp_src, npp_src_stride, npp_src_width, npp_src_height,
+                        stream);
+  if (resized_data) {
+    CHECK_CUDA_RUNTIME(cudaFreeAsync(resized_data, stream));
+  }
+  return ret;
+}
+
 
 }  // namespace cnstream

@@ -27,6 +27,10 @@
 
 namespace cnstream {
 
+static const std::string             key_source_module_name = "source";
+static const std::string             key_sink_module_name = "sink";
+static const std::string             key_inference_module_name = "inference";
+
 static const std::string             stream_id_1_ = "channel-1";
 static const std::string             stream_id_2_ = "channel-2";
 static const std::string             stream_id_3_ = "channel-3";
@@ -64,12 +68,12 @@ TEST_F(StableImage, Run) {
   bool force_exit = false;
   EXPECT_TRUE(pipeline_->Start());
 
-  DataSource *source = dynamic_cast<DataSource*>(pipeline_->GetModule("decoder"));
+  DataSource *source = dynamic_cast<DataSource*>(pipeline_->GetModule(key_source_module_name));
   EXPECT_NE(source, nullptr);
 
   for (auto stream_id : stream_ids_image_push_) {
-    std::shared_ptr<SourceHandler> source_handler_ptr = ImageHandler::Create(source, stream_id);
-    auto handler = std::dynamic_pointer_cast<ImageHandler>(source_handler_ptr);
+    auto source_handler = ImageHandler::Create(source, stream_id);
+    auto handler = std::dynamic_pointer_cast<ImageHandler>(source_handler);
     EXPECT_NE(handler, nullptr);
     EXPECT_EQ(source->AddSource(handler), 0);
     EXPECT_TRUE(handler->impl_->IsRunning());
@@ -79,16 +83,16 @@ TEST_F(StableImage, Run) {
   EXPECT_NE(sink, nullptr);
 
   for (auto stream_id : stream_ids_image_push_) {
-    std::shared_ptr<SinkHandler> sink_handler = PushHandler::Create(sink, stream_id);
+    auto sink_handler = PushHandler::Create(sink, stream_id);
     auto push_handler = std::dynamic_pointer_cast<PushHandler>(sink_handler);
     EXPECT_NE(push_handler, nullptr);
     EXPECT_EQ(sink->AddSink(push_handler), 0);
   }
 
-  auto inference_module = pipeline_->GetModule("Inference");
+  auto inference_module = pipeline_->GetModule(key_inference_module_name);
   EXPECT_NE(inference_module, nullptr);
 
-  std::this_thread::sleep_for(std::chrono::seconds(20));
+  std::this_thread::sleep_for(std::chrono::seconds(30));
 
   auto profiler = inference_module->GetProfiler();
   if (profiler) {
@@ -99,7 +103,7 @@ TEST_F(StableImage, Run) {
     LOGI(T_STABLE) << "Model Profile: " << model_profile;
     LOGI(T_STABLE) << "Module Profile: " << module_profile;
   }
-  std::this_thread::sleep_for(std::chrono::seconds(10));
+  std::this_thread::sleep_for(std::chrono::seconds(30));
   if (!force_exit) {
     pipeline_->Stop();
   } else {

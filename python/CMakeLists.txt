@@ -55,6 +55,16 @@ else()
   message(FATAL_ERROR "OpenCV not found. Please ensure OpenCV is installed")
 endif()
 
+# ---[ FFmpeg
+include(${VSTREAM_ROOT_PATH}/cmake/FindFFmpeg.cmake)
+if(FFMPEG_FOUND)
+  list(APPEND VSTREAM_PYTHON_3RDPARTY_INCLUDE ${FFMPEG_INCLUDE_DIR})
+  list(APPEND VSTREAM_PYTHON_3RDPARTY_LIBS ${FFMPEG_LIBRARIES})
+else()
+  message(FATAL_ERROR "FFmpeg not found! Please ensure FFmpeg is installed and set FFMPEG_ROOT_DIR")
+endif()
+
+
 # ---[ nlohmann/json
 list(APPEND VSTREAM_PYTHON_3RDPARTY_INCLUDE ${VSTREAM_ROOT_PATH}/3rdparty/nlohmann-json/include)
 

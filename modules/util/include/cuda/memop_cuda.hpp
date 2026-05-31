@@ -23,7 +23,11 @@ class CudaMemOp : public MemOp {
   void Copy(void* dst, const void* src, size_t size) override;
   void CopyFromHost(void* dst, const void* src, size_t size) override;
   void CopyToHost(void* dst, const void* src, size_t size) override;
-  int ConvertImageFormat(CNSyncedMemory* dst_mem, DataFormat dst_fmt, const DecodeFrame* src_frame) override;
+  void CopyFromHostAsync(void* dst, const void* src, size_t size, void* stream = nullptr) override;
+  void CopyToHostAsync(void* dst, const void* src, size_t size, void* stream = nullptr) override;
+  void SyncStream(void* stream = nullptr) override;
+  int ConvertImageFormat(CNSyncedMemory* dst_mem, DataFormat dst_fmt, const DecodeFrame* src_frame,
+                        void* stream = nullptr) override;
 
  protected:
   int device_id_;

@@ -22,6 +22,9 @@
 
 namespace cnstream {
 
+static const std::string             key_source_module_name = "source";
+static const std::string             key_sink_module_name = "sink";
+
 static const std::string             stream_id_1_ = "channel-1";
 static const std::string             stream_id_2_ = "channel-2";
 static const std::string             stream_id_3_ = "channel-3";
@@ -250,7 +253,7 @@ TEST_F(SourceVideo, Run) {
     EXPECT_NE(video_handler_, nullptr);
     EXPECT_EQ(source->AddSource(video_handler_), 0);
   }
-  Module* sink_module = pipeline_->GetModule("sink");
+  Module* sink_module = pipeline_->GetModule(key_sink_module_name);
   EXPECT_NE(sink_module, nullptr);
 
   DataSink *sink = dynamic_cast<DataSink*>(sink_module);

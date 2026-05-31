@@ -7,7 +7,7 @@
 #include "cnstream_config.hpp"
 
 static std::string test_pipeline_json = "pipeline_inference.json";
-static std::string inference_name = "Inference";
+static std::string inference_name = "inference";
 
 TEST(JSON, ReadFile) {
     std::string json_str = readFile(test_pipeline_json.c_str());

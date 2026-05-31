@@ -72,13 +72,15 @@ class SourceRender {
 
  public:
   static int Process(std::shared_ptr<FrameInfo> frame_info,
-                     DecodeFrame *frame, uint64_t frame_id);
+                     DecodeFrame *frame, uint64_t frame_id,
+                     void* stream = nullptr);
  
  protected:
   SourceHandler *handler_;
   ModuleParamSet param_set_;  // from SourceModule param_set_
   bool eos_sent_ = false;
   std::atomic<bool> interrupt_{false};
+  void* src_stream_ = nullptr;
   uint64_t frame_count_ = 0;
   uint64_t frame_id_ = 0;
 };  // class SourceRender

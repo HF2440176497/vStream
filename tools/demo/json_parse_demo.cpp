@@ -8,7 +8,7 @@
 using json = nlohmann::json;
 
 static std::string json_file = "pipeline_inference.json";
-static std::string module_name = "Inference";
+static std::string module_name = "inference";
 
 bool parse_from_file(std::string json_file, json& data) {
   std::ifstream file(json_file);

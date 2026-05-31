@@ -93,6 +93,18 @@ void MemOp::CopyToHost(void* dst, const void* src, size_t size) {
   memcpy(dst, src, size);
 }
 
+void MemOp::CopyFromHostAsync(void* dst, const void* src, size_t size, void* stream) {
+  CopyFromHost(dst, src, size);
+}
+
+void MemOp::CopyToHostAsync(void* dst, const void* src, size_t size, void* stream) {
+  CopyToHost(dst, src, size);
+}
+
+void MemOp::SyncStream(void* stream) {
+  // CPU: no-op
+}
+
 int MemOp::GetDeviceId() const { return -1; }
 
 std::unique_ptr<CNSyncedMemory> MemOp::CreateSyncedMemory(size_t size) {
@@ -103,7 +115,8 @@ std::unique_ptr<CNSyncedMemory> MemOp::CreateSyncedMemory(size_t size) {
  * 调用时，dst_mem 的 size 需设置完成
  */
 int MemOp::ConvertImageFormat(CNSyncedMemory* dst_mem, DataFormat dst_fmt,
-                              const DecodeFrame* src_frame) {
+                              const DecodeFrame* src_frame,
+                              void* stream) {
   if (!dst_mem) return -1;
 
   // 

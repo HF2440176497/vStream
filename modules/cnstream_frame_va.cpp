@@ -140,13 +140,18 @@ std::shared_ptr<MemOp> DataFrame::CreateMemOp() {
   return memop;
 }
 
-void DataFrame::CopyToSyncMem(DecodeFrame* dec_frame) {
+/**
+ * @brief 复制数据到同步内存
+ * @param dec_frame 解码后的数据
+ * @param stream 同步内存流
+ */
+void DataFrame::CopyToSyncMem(DecodeFrame* dec_frame, void* stream) {
   if (this->ctx_.device_type == DevType::INVALID) {
-    LOGF(FRAME) << "CopyToSyncMem: device_type is INVALID";
+    LOGF(FRAME) << "DataFrame: device_type is INVALID";
     return;
   }
   if (DataFormat::PIXEL_FORMAT_RGB24 != this->fmt_ && DataFormat::PIXEL_FORMAT_BGR24 != this->fmt_) {
-    LOGF(FRAME) << "CopyToSyncMem: fmt not RGB24 or BGR24, this fmt is " << static_cast<int>(this->fmt_);
+    LOGF(FRAME) << "DataFrame: fmt not RGB24 or BGR24, this fmt is " << static_cast<int>(this->fmt_);
     return;
   }
 
@@ -166,11 +171,12 @@ void DataFrame::CopyToSyncMem(DecodeFrame* dec_frame) {
   }
   const size_t bytes = GetPlaneBytes(0);
   this->data_[0] = memop->CreateSyncedMemory(bytes);
-  int ret = memop->ConvertImageFormat(this->data_[0].get(), this->fmt_, dec_frame);
+  int ret = memop->ConvertImageFormat(this->data_[0].get(), this->fmt_, dec_frame, stream);
   if (ret != 0) {
-    LOGF(FRAME) << "CopyToSyncMem: Format conversion failed with error code: " << ret;
+    LOGF(FRAME) << "DataFrame: Format conversion failed with error code: " << ret;
     return;
   }
+  memop->SyncStream(stream);
   this->deAllocator_.reset();
 }
 

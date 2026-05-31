@@ -66,7 +66,7 @@ class VideoHandlerImpl : public SourceRender {
   std::shared_ptr<FrameInfo> OnDecodeFrame(DecodeFrame* frame);
 
  protected:
-  virtual int codec_init();
+  virtual int codec_init() = 0;
   virtual int decode_write() = 0;
   virtual bool SupportHWDevice() { return true; }
   virtual void ConfigureOutputType() {}
@@ -83,30 +83,29 @@ class VideoHandlerImpl : public SourceRender {
  protected:
 #endif
   std::atomic<bool> running_{false};
-  std::thread thread_;
+  std::thread        thread_;
 
-  int interval_ = 0;
-  int device_id_ = -1;
+  int         interval_    = 0;
+  int         device_id_   = -1;
   std::string stream_url_;
-  int frame_rate_ = 10;
+  int         frame_rate_  = 10;
 
   DataSource *module_;
   std::string stream_id_;
 
-  AVFormatContext *ifmt_ctx_ = nullptr;
-  AVDictionary *ifmt_opts_ = nullptr;
-  int video_index_ = -1;
+  AVFormatContext   *ifmt_ctx_      = nullptr;
+  AVDictionary      *ifmt_opts_     = nullptr;
+  int                video_index_   = -1;
 
-  AVFrame *s_frame_ = nullptr;
-
-  enum AVHWDeviceType device_type_ = AV_HWDEVICE_TYPE_NONE;
-  AVBufferRef *hw_device_ctx_ = nullptr;
-
-  AVCodec *codec_ = nullptr;
-  AVCodecContext *codec_ctx_ = nullptr;
-  AVCodecParameters *codecpar_ = nullptr;
-  AVPacket pkt_;
-  struct SwsContext *sws_ctx_ = nullptr;
+  AVFrame           *s_frame_       = nullptr;
+  AVBufferRef       *hw_device_ctx_ = nullptr;
+  enum AVHWDeviceType device_type_  = AV_HWDEVICE_TYPE_NONE;
+  
+  AVCodec           *codec_        = nullptr;
+  AVCodecContext    *codec_ctx_    = nullptr;
+  AVCodecParameters *codecpar_     = nullptr;
+  AVPacket           pkt_;
+  struct SwsContext *sws_ctx_      = nullptr;
 
   OutputType output_type_ = OutputType::OUTPUT_CPU;
 };
@@ -116,35 +115,18 @@ class VideoHandlerImplCPU : public VideoHandlerImpl {
   using VideoHandlerImpl::VideoHandlerImpl;
 
  protected:
+  int codec_init() override;
   int decode_write() override;
 
  private:
   std::shared_ptr<FrameInfo> ProcessFrame(AVFrame *p_frame, int &ret);
 };
 
-#ifdef VSTREAM_USE_CUDA
-class VideoHandlerImplCUDA : public VideoHandlerImpl {
- public:
-  using VideoHandlerImpl::VideoHandlerImpl;
-
- protected:
-  int codec_init() override;
-  int decode_write() override;
-  bool SupportHWDevice() override;
-  void ConfigureOutputType() override;
-
- private:
-  bool support_hwdevice();
-  int init_hwdevice_conf();
-  int hw_decoder_init();
-  static enum AVPixelFormat get_hw_format(AVCodecContext *ctx, const enum AVPixelFormat *pix_fmts);
-  std::shared_ptr<FrameInfo> ProcessFrameCPU(AVFrame *p_frame, AVFrame *sw_frame, int &ret);
-  std::shared_ptr<FrameInfo> ProcessFrameCUDA(AVFrame *p_frame, int &ret);
-
-  std::string type_name_ = "cuda";
-};
-#endif
-
 }  // namespace cnstream
+
+#ifdef VSTREAM_USE_CUDA
+#include "cuda/data_handler_video_cuda.hpp"
+
+#endif
 
 #endif

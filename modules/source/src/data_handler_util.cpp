@@ -9,7 +9,7 @@ namespace cnstream {
 /**
  * OnDecodeFrame 同步调用
  */
-int SourceRender::Process(std::shared_ptr<FrameInfo> frame_info, DecodeFrame *dec_frame, uint64_t frame_id) {
+int SourceRender::Process(std::shared_ptr<FrameInfo> frame_info, DecodeFrame *dec_frame, uint64_t frame_id, void* stream) {
   DataFramePtr frame = frame_info->collection.Get<DataFramePtr>(kDataFrameTag);
   if (!frame || !dec_frame) {
     LOGF(SOURCE) << "SourceRender::Process: frame or dec_frame is NULL";
@@ -32,7 +32,7 @@ int SourceRender::Process(std::shared_ptr<FrameInfo> frame_info, DecodeFrame *de
       frame->stride_[i] = GetStride_8U_C3(frame->width_);
     }
   }
-  frame->CopyToSyncMem(dec_frame);
+  frame->CopyToSyncMem(dec_frame, stream);
   return 0;
 }
 

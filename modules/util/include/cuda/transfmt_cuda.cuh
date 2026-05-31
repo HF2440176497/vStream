@@ -70,6 +70,16 @@ int NppBGR24ToRGB24(void* dst, int dst_stride,
                 const void* src, int src_stride,
                 cudaStream_t stream = nullptr);
 
+int ConvertRGB24ToNV12_Resize(void* dst_y, int y_stride, void* dst_uv, int uv_stride,
+                            int dst_width, int dst_height,
+                            const void* src, int src_stride, int src_width, int src_height,
+                            cudaStream_t stream = nullptr);
+
+int ConvertBGR24ToNV12_Resize(void* dst_y, int y_stride, void* dst_uv, int uv_stride,
+                            int dst_width, int dst_height,
+                            const void* src, int src_stride, int src_width, int src_height,
+                            cudaStream_t stream = nullptr);
+
 }  // namespace cnstream
 
 #endif  // TRANSFMT_CUDA_CUH_

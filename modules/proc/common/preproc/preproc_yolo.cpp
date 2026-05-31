@@ -169,9 +169,21 @@ class Pre_YOLO_CPU_v2: public Preproc {
         }
     });
 #ifdef VSTREAM_UNIT_TEST
-    if (!has_save_frame_mat_) {
-        save_float_image_chw_cpu(cpu_output, input_h, input_w, save_file_, ChannelsArrange::RGB, true);
-        has_save_frame_mat_ = true;
+    auto now = std::chrono::steady_clock::now();
+
+    if (save_duration_ms_ > 0) {
+      if (last_save_time_.time_since_epoch().count() == 0 ||
+          std::chrono::duration_cast<std::chrono::milliseconds>(now - last_save_time_).count() >= save_duration_ms_) {
+          
+          cv::Mat img = frame->GetImage().clone();
+
+          auto sys_now = std::chrono::system_clock::now();
+          auto timestamp_ms = std::chrono::duration_cast<std::chrono::milliseconds>(sys_now.time_since_epoch()).count();
+          std::string filename = "save/pre-" +  std::to_string(timestamp_ms) + ".jpg";
+          
+          cv::imwrite(filename, img);
+          last_save_time_ = now;
+      }
     }
 #endif
     return 0;
@@ -179,10 +191,9 @@ class Pre_YOLO_CPU_v2: public Preproc {
   }
 
  private:
-  bool has_save_frame_mat_ = false;
-  std::string save_file_ = "save/test_preproc_save.jpg";
+  std::chrono::steady_clock::time_point last_save_time_;
+  uint32_t save_duration_ms_ = 1000;
 
- private:
   DECLARE_REFLEX_OBJECT_EX(Pre_YOLO_CPU_v2, cnstream::Preproc);
 };
 IMPLEMENT_REFLEX_OBJECT_EX(Pre_YOLO_CPU_v2, cnstream::Preproc);

@@ -20,6 +20,10 @@
 
 namespace cnstream {
 
+static const std::string             key_source_module_name = "source";
+static const std::string             key_inference_module_name = "inference";
+static const std::string             key_sink_module_name = "sink";
+
 static const std::string             stream_id_1_ = "channel-1";
 static const std::string             stream_id_2_ = "channel-2";
 static const std::string             stream_id_3_ = "channel-3";
@@ -61,30 +65,30 @@ class SourceSend : public testing::Test {
 TEST_F(SourceSend, TestSend) {
   EXPECT_TRUE(pipeline_->Start());
 
-  Module* source_module = pipeline_->GetModule("decoder");
+  Module* source_module = pipeline_->GetModule(key_source_module_name);
   EXPECT_NE(source_module, nullptr);
 
   DataSource *source = dynamic_cast<DataSource*>(source_module);
   EXPECT_NE(source, nullptr);
 
   for (auto stream_id : stream_ids_send_queue_) {
-    std::shared_ptr<SourceHandler> source_handler_ptr = SendHandler::Create(source, stream_id);
-    EXPECT_NE(source_handler_ptr, nullptr);
-    send_handler_ = std::dynamic_pointer_cast<SendHandler>(source_handler_ptr);
+    auto source_handler = SendHandler::Create(source, stream_id);
+    EXPECT_NE(source_handler, nullptr);
+    send_handler_ = std::dynamic_pointer_cast<SendHandler>(source_handler);
     EXPECT_NE(send_handler_, nullptr);
     EXPECT_EQ(source->AddSource(send_handler_), 0);
   }
   
-  Module* sink_module = pipeline_->GetModule("sink");
+  Module* sink_module = pipeline_->GetModule(key_sink_module_name);
   EXPECT_NE(sink_module, nullptr);
 
   DataSink *sink = dynamic_cast<DataSink*>(sink_module);
   EXPECT_NE(sink, nullptr);
 
   for (auto stream_id : stream_ids_send_queue_) {
-    std::shared_ptr<SinkHandler> sink_handler_ptr = QueueHandler::Create(sink, stream_id);
-    EXPECT_NE(sink_handler_ptr, nullptr);
-    queue_handler_ = std::dynamic_pointer_cast<QueueHandler>(sink_handler_ptr);
+    auto sink_handler = QueueHandler::Create(sink, stream_id);
+    EXPECT_NE(sink_handler, nullptr);
+    queue_handler_ = std::dynamic_pointer_cast<QueueHandler>(sink_handler);
     EXPECT_NE(queue_handler_, nullptr);
     EXPECT_EQ(sink->AddSink(queue_handler_), 0);
   }
@@ -120,7 +124,7 @@ TEST_F(SourceSend, TestSend) {
     }
   });
 
-  auto inference_module = pipeline_->GetModule("Inference");
+  auto inference_module = pipeline_->GetModule(key_inference_module_name);
   EXPECT_NE(inference_module, nullptr);
 
   std::this_thread::sleep_for(std::chrono::seconds(10));

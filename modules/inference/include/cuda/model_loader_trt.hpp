@@ -50,6 +50,8 @@ class ModelLoaderTrt : public ModelLoader {
 
   bool RunSync(std::vector<std::shared_ptr<void>> inputs, std::vector<std::shared_ptr<void>> outputs) override;
 
+  void* GetStream() const override { return static_cast<void*>(stream_); }
+
   nvinfer1::IExecutionContext* CreateExecutionContext();
 
 #ifdef VSTREAM_UNIT_TEST

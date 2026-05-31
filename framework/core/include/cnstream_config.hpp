@@ -58,6 +58,8 @@ using ModuleParamSet = std::map<std::string, std::string>;
  */
 std::string GetPathRelativeToTheJSONFile(const std::string &path, const ModuleParamSet &param_set);
 
+std::string GetPathRelativeToTheJSONFile(const std::string& path, std::string config_file_path);
+
 /**
  * @struct CNConfigBase
  *

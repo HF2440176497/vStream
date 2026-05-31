@@ -135,7 +135,7 @@ void ModelLoaderTrt::Logger::log(nvinfer1::ILogger::Severity severity, const cha
 ModelLoaderTrt::ModelLoaderTrt(int device_id) : ModelLoader(device_id) {
   device_type_ = DevType::CUDA;
   cudaSetDevice(device_id_);
-  cudaStreamCreate(&stream_);
+  CHECK_CUDA_RUNTIME(cudaStreamCreate(reinterpret_cast<cudaStream_t*>(&stream_)));
 }
 
 bool ModelLoaderTrt::Init(const std::string& engine_path, const InferParams& params) {
@@ -150,7 +150,7 @@ bool ModelLoaderTrt::Init(const std::string& engine_path, const InferParams& par
 
 ModelLoaderTrt::~ModelLoaderTrt() {
   if (stream_) {
-    cudaStreamDestroy(stream_);
+    CHECK_CUDA_RUNTIME(cudaStreamDestroy(stream_));
     stream_ = nullptr;
   }
   if (context_) {
