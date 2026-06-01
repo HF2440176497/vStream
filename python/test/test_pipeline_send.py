@@ -16,9 +16,9 @@ stream_id_image_push = "channel-1"
 stream_id_video_push = "channel-2"
 stream_id_send_queue = "channel-4"
 
-key_source = "source"
-key_inference = "inference"
-key_sink = "sink"
+source_module_name = "source"
+inference_module_name = "inference"
+sink_module_name = "sink"
 
 import signal
 signal.signal(signal.SIGINT, signal.SIG_DFL)
@@ -58,11 +58,11 @@ def test_send_queue_pipeline():
     print("Pipeline built successfully")
 
     # 获取 DataSource 模块
-    source = pipeline.get_data_source(key_source)
+    source = pipeline.get_data_source(source_module_name)
     assert source is not None
     print(f"Source module type: {type(source)}")
 
-    sink = pipeline.get_data_sink(key_sink)
+    sink = pipeline.get_data_sink(sink_module_name)
     assert sink is not None
     print(f"DataSink module type: {type(sink)}")
 

@@ -132,12 +132,12 @@ class ImageHandler : public SourceHandler {
   ImageHandlerImpl* impl_ = nullptr;
 };  // class ImageHandler
 
-class VideoHandlerImpl;
+class PullHandlerImpl;
 
-class VideoHandler : public SourceHandler {
+class PullHandler : public SourceHandler {
  public:
   static std::shared_ptr<SourceHandler> Create(DataSource *module, const std::string &stream_id);
-  ~VideoHandler();
+  ~PullHandler();
 
   bool Open() override;
   void Stop() override;
@@ -148,15 +148,15 @@ class VideoHandler : public SourceHandler {
   bool SetHandlerParams(const ModuleParamSet& params) override;
 
  private:
-  explicit VideoHandler(DataSource *module, const std::string &stream_id);
+  explicit PullHandler(DataSource *module, const std::string &stream_id);
 
 #ifdef VSTREAM_UNIT_TEST
  public:
 #else
  private:
 #endif
-  VideoHandlerImpl* impl_ = nullptr;
-};  // class VideoHandler
+  PullHandlerImpl* impl_ = nullptr;
+};  // class PullHandler
 
 class SendHandlerImpl;
 

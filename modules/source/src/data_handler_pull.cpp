@@ -1,5 +1,5 @@
 #include "cnstream_source.hpp"
-#include "data_handler_video.hpp"
+#include "data_handler_pull.hpp"
 #include "data_source.hpp"
 #include "data_source_param.hpp"
 
@@ -16,24 +16,24 @@ extern "C" {
 
 namespace cnstream {
 
-std::shared_ptr<SourceHandler> VideoHandler::Create(DataSource *module, const std::string &stream_id) {
+std::shared_ptr<SourceHandler> PullHandler::Create(DataSource *module, const std::string &stream_id) {
   if (!module) {
     LOGE(SOURCE) << "[" << stream_id << "]: module_ null";
     return nullptr;
   }
-  return std::shared_ptr<VideoHandler>(new VideoHandler(module, stream_id));
+  return std::shared_ptr<PullHandler>(new PullHandler(module, stream_id));
 }
 
-VideoHandler::VideoHandler(DataSource *module, const std::string &stream_id)
+PullHandler::PullHandler(DataSource *module, const std::string &stream_id)
     : SourceHandler(module, stream_id) {
 #ifdef VSTREAM_USE_CUDA
-  impl_ = new VideoHandlerImplCUDA(module, this);
+  impl_ = new PullHandlerImplCUDA(module, this);
 #else
-  impl_ = new VideoHandlerImplCPU(module, this);
+  impl_ = new PullHandlerImplCPU(module, this);
 #endif
 }
 
-VideoHandler::~VideoHandler() {
+PullHandler::~PullHandler() {
   Close();
   if (impl_) {
     delete impl_;
@@ -41,7 +41,7 @@ VideoHandler::~VideoHandler() {
   }
 }
 
-bool VideoHandler::Open() {
+bool PullHandler::Open() {
   if (!module_) {
     LOGE(SOURCE) << "[" << stream_id_ << "]: module_ null";
     return false;
@@ -57,22 +57,22 @@ bool VideoHandler::Open() {
   return impl_->Open();
 }
 
-void VideoHandler::Close() {
+void PullHandler::Close() {
   if (impl_) {
     impl_->Close();
   }
 }
 
-void VideoHandler::Stop() {
+void PullHandler::Stop() {
   if (impl_) {
     impl_->Stop();
   }
 }
 
-void VideoHandler::RegisterHandlerParams() {
+void PullHandler::RegisterHandlerParams() {
 }
 
-bool VideoHandler::CheckHandlerParams(const ModuleParamSet& params) {
+bool PullHandler::CheckHandlerParams(const ModuleParamSet& params) {
   DataSource* ds = dynamic_cast<DataSource*>(module_);
   ModuleParamSet stream_params;
   const ModuleParamSet* check_params = &params;
@@ -83,13 +83,13 @@ bool VideoHandler::CheckHandlerParams(const ModuleParamSet& params) {
     }
   }
   if (check_params->find(key_input_url) == check_params->end()) {
-    LOGE(SOURCE) << "[VideoHandler] stream_url is required";
+    LOGE(SOURCE) << "[PullHandler] stream_url is required";
     return false;
   }
   return true;
 }
 
-bool VideoHandler::SetHandlerParams(const ModuleParamSet& params) {
+bool PullHandler::SetHandlerParams(const ModuleParamSet& params) {
   if (!impl_) {
     return false;
   }
@@ -106,11 +106,11 @@ bool VideoHandler::SetHandlerParams(const ModuleParamSet& params) {
 }
 
 static int interrupt_cb(void *ctx) {
-    auto *self = static_cast<VideoHandlerImpl*>(ctx);
+    auto *self = static_cast<PullHandlerImpl*>(ctx);
     return !self->IsRunning() ? 1 : 0;
 }
 
-int VideoHandlerImpl::input_format_init() {
+int PullHandlerImpl::input_format_init() {
   int ret = 0;
   ret = avformat_network_init();
   if (ret != 0) {
@@ -161,7 +161,7 @@ int VideoHandlerImpl::input_format_init() {
   return 0;
 }
 
-void VideoHandlerImpl::clean_up() {
+void PullHandlerImpl::clean_up() {
   av_frame_free(&s_frame_);
   if (sws_ctx_) {
     sws_freeContext(sws_ctx_);
@@ -182,7 +182,7 @@ void VideoHandlerImpl::clean_up() {
   avformat_network_deinit();
 }
 
-bool VideoHandlerImpl::Open() {
+bool PullHandlerImpl::Open() {
   if (!module_) {
     LOGE(SOURCE) << "Video: module_ is null";
     return false;
@@ -215,17 +215,17 @@ bool VideoHandlerImpl::Open() {
   ConfigureOutputType();
 
   running_.store(true);
-  thread_ = std::thread(&VideoHandlerImpl::Loop, this);
+  thread_ = std::thread(&PullHandlerImpl::Loop, this);
   return true;
 }
 
-void VideoHandlerImpl::Stop() {
+void PullHandlerImpl::Stop() {
   if (running_.load()) {
     running_.store(false);
   }
 }
 
-void VideoHandlerImpl::Close() {
+void PullHandlerImpl::Close() {
   Stop();
   if (thread_.joinable()) {
     thread_.join();
@@ -233,7 +233,7 @@ void VideoHandlerImpl::Close() {
   clean_up();
 }
 
-void VideoHandlerImpl::Loop() {
+void PullHandlerImpl::Loop() {
   if (!SupportHWDevice()) {
     LOGE(SOURCE) << "Video: hardware device not supported";
     OnEndFrame();
@@ -281,7 +281,7 @@ void VideoHandlerImpl::Loop() {
   OnEndFrame();
 }
 
-std::shared_ptr<FrameInfo> VideoHandlerImpl::OnDecodeFrame(DecodeFrame* frame) {
+std::shared_ptr<FrameInfo> PullHandlerImpl::OnDecodeFrame(DecodeFrame* frame) {
   if (!frame) {
     LOGE(SOURCE) << "OnDecodeFrame: frame is null";
     return nullptr;
@@ -305,7 +305,7 @@ std::shared_ptr<FrameInfo> VideoHandlerImpl::OnDecodeFrame(DecodeFrame* frame) {
   return data;
 }
 
-void VideoHandlerImpl::OnEndFrame() {
+void PullHandlerImpl::OnEndFrame() {
   std::shared_ptr<FrameInfo> data = this->CreateFrameInfo(true);
   if (!data) {
     LOGE(SOURCE) << "OnEndFrame: failed to create FrameInfo.";
@@ -315,7 +315,7 @@ void VideoHandlerImpl::OnEndFrame() {
   LOGI(SOURCE) << "OnEndFrame: send end frame.";
 }
 
-int VideoHandlerImplCPU::codec_init() {
+int PullHandlerImplCPU::codec_init() {
   int ret = 0;
   AVStream* video_stream = ifmt_ctx_->streams[video_index_];
 
@@ -345,7 +345,7 @@ int VideoHandlerImplCPU::codec_init() {
   return 0;
 }
 
-int VideoHandlerImplCPU::decode_write() {
+int PullHandlerImplCPU::decode_write() {
   int ret = 0;
   AVFrame *p_frame = nullptr;
 
@@ -417,7 +417,7 @@ int VideoHandlerImplCPU::decode_write() {
   return ret;
 }
 
-std::shared_ptr<FrameInfo> VideoHandlerImplCPU::ProcessFrame(AVFrame *p_frame, int &ret) {
+std::shared_ptr<FrameInfo> PullHandlerImplCPU::ProcessFrame(AVFrame *p_frame, int &ret) {
   s_frame_ = p_frame;
 
   if (!s_frame_) {

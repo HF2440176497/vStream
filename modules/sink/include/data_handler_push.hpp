@@ -38,6 +38,8 @@ static constexpr AVPixelFormat kSwsPixFmt     = AV_PIX_FMT_YUV420P;
 static constexpr const char* kDefaultEncoder = nullptr;
 #endif
 
+static constexpr int max_error_len = 1024;
+
 namespace cnstream {
 
 struct StreamContext {
@@ -122,6 +124,8 @@ class PushHandlerImpl {
 
   StreamContext ctx_;
   std::recursive_mutex stream_mtx_;
+  int64_t last_pts_ = -1;
+  int64_t pts_counter_ = 0;
 
   AVPixelFormat src_pix_fmt_ = AV_PIX_FMT_RGB24;
   int sws_src_width_  = 0;
@@ -132,6 +136,7 @@ class PushHandlerImpl {
 
   std::chrono::steady_clock::time_point push_start_time_;
   std::chrono::steady_clock::time_point last_push_time_;
+  std::chrono::steady_clock::time_point next_frame_time_;
   bool first_frame_ = true;
 
   std::unique_ptr<MarkRender> render_;

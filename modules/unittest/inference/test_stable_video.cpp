@@ -11,7 +11,7 @@
 #include "cnstream_frame_va.hpp"
 
 #include "data_source.hpp"
-#include "data_handler_video.hpp"
+#include "data_handler_pull.hpp"
 #include "cnstream_pipeline.hpp"
 
 #include "data_sink.hpp"
@@ -27,9 +27,9 @@
 
 namespace cnstream {
 
-static const std::string             key_source_module_name = "source";
-static const std::string             key_sink_module_name = "sink";
-static const std::string             key_inference_module_name = "inference";
+static const std::string             source_module_name = "source";
+static const std::string             sink_module_name = "sink";
+static const std::string             inference_module_name = "inference";
 
 static const std::string             stream_id_1_ = "channel-1";
 static const std::string             stream_id_2_ = "channel-2";
@@ -54,11 +54,11 @@ class StableVideo : public testing::Test {
     if (pipeline_) {
       pipeline_->Stop();
     }
-    video_handler_.reset();
+    pull_handler_.reset();
   }
 
  protected:
-  std::shared_ptr<VideoHandler> video_handler_ = nullptr;
+  std::shared_ptr<PullHandler> pull_handler_ = nullptr;
   std::shared_ptr<DataSource>   module_ = nullptr;
   std::shared_ptr<Pipeline>     pipeline_ = nullptr;
 };
@@ -68,18 +68,18 @@ TEST_F(StableVideo, Run) {
   bool force_exit = false;
   EXPECT_TRUE(pipeline_->Start());
 
-  DataSource *source = dynamic_cast<DataSource*>(pipeline_->GetModule(key_source_module_name));
+  DataSource *source = dynamic_cast<DataSource*>(pipeline_->GetModule(source_module_name));
   EXPECT_NE(source, nullptr);
 
   for (auto stream_id : stream_ids_pull_push_) {
-    auto source_handler = VideoHandler::Create(source, stream_id);
-    auto handler = std::dynamic_pointer_cast<VideoHandler>(source_handler);
+    auto source_handler = PullHandler::Create(source, stream_id);
+    auto handler = std::dynamic_pointer_cast<PullHandler>(source_handler);
     EXPECT_NE(handler, nullptr);
     EXPECT_EQ(source->AddSource(handler), 0);
     EXPECT_TRUE(handler->impl_->IsRunning());
   }
 
-  DataSink *sink = dynamic_cast<DataSink*>(pipeline_->GetModule(key_sink_module_name));
+  DataSink *sink = dynamic_cast<DataSink*>(pipeline_->GetModule(sink_module_name));
   EXPECT_NE(sink, nullptr);
 
   for (auto stream_id : stream_ids_pull_push_) {
@@ -89,7 +89,7 @@ TEST_F(StableVideo, Run) {
     EXPECT_EQ(sink->AddSink(push_handler), 0);
   }
 
-  auto inference_module = pipeline_->GetModule(key_inference_module_name);
+  auto inference_module = pipeline_->GetModule(inference_module_name);
   EXPECT_NE(inference_module, nullptr);
 
   std::this_thread::sleep_for(std::chrono::seconds(30));
@@ -102,7 +102,7 @@ TEST_F(StableVideo, Run) {
     LOGI(T_STABLE) << "Module Profile: " << module_profile;
   }
 
-  std::this_thread::sleep_for(std::chrono::seconds(30));
+  std::this_thread::sleep_for(std::chrono::seconds(90));
   if (!force_exit) {
     pipeline_->Stop();
   } else {

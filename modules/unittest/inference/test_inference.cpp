@@ -22,9 +22,9 @@
 
 namespace cnstream {
 
-static const std::string             key_source_module_name = "source";
-static const std::string             key_sink_module_name = "sink";
-static const std::string             key_inference_module_name = "inference";
+static const std::string             source_module_name = "source";
+static const std::string             sink_module_name = "sink";
+static const std::string             inference_module_name = "inference";
 
 static const std::string             stream_id_1_ = "channel-1";
 static const std::string             stream_id_2_ = "channel-2";
@@ -75,7 +75,7 @@ TEST_F(InferenceTest, RunYOLO) {
   
   ASSERT_TRUE(pipeline_->Start());
 
-  Module* module_in_pipeline = pipeline_->GetModule(key_source_module_name);
+  Module* module_in_pipeline = pipeline_->GetModule(source_module_name);
   ASSERT_NE(module_in_pipeline, nullptr);
 
   DataSource *source = dynamic_cast<DataSource*>(module_in_pipeline);

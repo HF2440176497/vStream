@@ -63,6 +63,8 @@ class QueueHandlerImpl {
 
     LOGI(SINK) << "[" << stream_id_ << "]: OnFrame timestamp=" << frame_info->timestamp;
 
+    SaveOriginalImage(frame_info);
+
     s_output_data data = ConvertFrameInfo(frame_info);
     if (data.result != 0) {
       return 0;  // 无推理结果，跳过此帧

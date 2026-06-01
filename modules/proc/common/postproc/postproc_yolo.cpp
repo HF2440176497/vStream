@@ -162,7 +162,7 @@ class Post_YOLOv8_CPU: public Postproc {
     if (model_name_.empty()) {
       model_name_ = model->get_name();
     }
-    int output_index = 0;  // output tensor index
+    int output_index = 0;
 
     const int input_w = model->get_width();
     const int input_h = model->get_height();
@@ -284,7 +284,7 @@ static float box_iou_v2(float aleft, float atop, float aright, float abottom, fl
 
 
 /**
- * @brief 首先按照类别分组，进行单向便利 优化速度
+ * @brief 首先按照类别分组，进行单向遍历
  */
 void fast_nms_class(ObjsVec& objs, int max_boxes, float threshold) {
     if (objs.empty()) return;
@@ -479,36 +479,30 @@ class Post_YOLOv8_CPU_v2: public Postproc {
       ObjsVec& global_objs = objs_holder->objs_;
       global_objs.insert(global_objs.end(), local_objs.begin(), local_objs.end());
     }
+/**
 
 #ifdef VSTREAM_UNIT_TEST
-
-    cudaDeviceSynchronize();
-
     {
       std::lock_guard<std::mutex> lock(last_save_time_mutex_);
       auto now = std::chrono::steady_clock::now();
       if (save_duration_ms_ > 0) {
         if (last_save_time_.time_since_epoch().count() == 0 ||
             std::chrono::duration_cast<std::chrono::milliseconds>(now - last_save_time_).count() >= save_duration_ms_) {
-            
             cv::Mat img = frame->GetImage().clone();
             for (auto& obj : local_objs) {
                 cv::rectangle(img, cv::Rect(obj->bbox.x, obj->bbox.y, obj->bbox.w, obj->bbox.h),
                               cv::Scalar(0, 255, 0), 2);
             }
-            
             auto sys_now = std::chrono::system_clock::now();
             auto timestamp_ms = std::chrono::duration_cast<std::chrono::milliseconds>(sys_now.time_since_epoch()).count();
             std::string filename = "save/post-" +  std::to_string(timestamp_ms) + ".jpg";
-            
             cv::imwrite(filename, img);
             last_save_time_ = now;
         }
       }
-
     }
-
 #endif
+*/
 
     return 0;
   }

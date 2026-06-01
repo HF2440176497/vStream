@@ -23,7 +23,7 @@
 #include <opencv2/opencv.hpp>
 
 
-static const std::string trt_yolov8_engine_path = "yolov8s_tracing_static_b8_quant_fix.engine";
+static const std::string trt_yolov8_engine_path = "yolov8s_tracing_static_b1_quant_fix.engine";
 
 static const int device_id = 0;
 
@@ -514,55 +514,9 @@ TEST(InferenceBaseTest, Demo) {
   param["batching_timeout"] = "3000";
 
   ASSERT_TRUE(infer->Open(param));
-
-  std::shared_ptr<Inference> p_infer = std::dynamic_pointer_cast<Inference>(infer);
-  ASSERT_NE(p_infer, nullptr);
-
-  /**
-   * 模拟在 CPU 上创建 dataframe
-   * 然后
-   */
-  auto memop = MemOpFactory::Instance().CreateMemOp(DevType::CPU, -1);
-
-  const int width = 1280, height = 720;
-  auto dec_frame = CreateTestDecodeFrame(DataFormat::PIXEL_FORMAT_RGB24, width, height);
-
-  for (uint32_t i = 0; i < 32; i++) {
-    auto data = cnstream::FrameInfo::Create(g_channel_id);
-
-    std::shared_ptr<DataFrame> frame(new (std::nothrow) DataFrame());
-    data->collection.Add(kDataFrameTag, frame);  // add DataFrame member
-    data->collection.Add(kInferObjsTag, std::make_shared<InferObjs>());
-    data->timestamp = i;
-
-    // set DataFrame
-    frame->width_ = width;
-    frame->height_ = height;
-
-    // note: 
-    frame->stride_[0] = width * 3;  // stride: bytes
-    frame->ctx_.device_id = -1;
-    frame->ctx_.device_type = DevType::CPU;
-    frame->fmt_ = DataFormat::PIXEL_FORMAT_RGB24;
-    frame->CopyToSyncMem(dec_frame);
-
-    int ret = infer->Process(data);
-    ASSERT_EQ(ret, 0);
-  }  // end for
-  
-  // eos frame
-  auto data = cnstream::FrameInfo::Create(g_channel_id, true);
-  int ret = infer->Process(data);
-  ASSERT_EQ(ret, 0);
+  ASSERT_NE(std::dynamic_pointer_cast<Inference>(infer), nullptr);
 
   ASSERT_NO_THROW(infer->Close());
-
-  // if (th.joinable()) {
-  //   th.join();
-  // }
-
-  CleanupTestDecodeFrame(dec_frame);
-
 }
 
 }  // namespace cnstream

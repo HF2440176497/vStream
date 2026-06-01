@@ -137,8 +137,8 @@ TEST_F(ConfigFileLoad, BaseInitGraph) {
   EXPECT_TRUE(graph->Init(graph_config_));
 
   // Graph 只包含 Modudle SubGraphNode
-  std::vector<std::string> expected_heads {"decoder"};
-  std::vector<std::string> expected_nodes {"decoder", "inference", "count_one"};
+  std::vector<std::string> expected_heads {"source"};
+  std::vector<std::string> expected_nodes {"source", "inference", "count_one"};
 
   // Init 过程会依赖 module_configs 因此我们首先检查
   // 应当和 pipeline.json 的配置对应

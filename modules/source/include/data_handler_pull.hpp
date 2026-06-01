@@ -30,8 +30,8 @@ extern "C" {
 
 namespace cnstream {
 
-class VideoHandlerImpl : public SourceRender {
-  friend class VideoHandler;
+class PullHandlerImpl : public SourceRender {
+  friend class PullHandler;
   
  public:
   struct MatBufRef : public IDecBufRef {
@@ -52,9 +52,9 @@ class VideoHandlerImpl : public SourceRender {
     void* uv_data_;
   };
 
-  explicit VideoHandlerImpl(DataSource *module, SourceHandler *handler)
+  explicit PullHandlerImpl(DataSource *module, SourceHandler *handler)
       : SourceRender(handler), module_(module), stream_id_(handler->GetStreamId()) {}
-  virtual ~VideoHandlerImpl() = default;
+  virtual ~PullHandlerImpl() = default;
 
   bool Open();
   void Close();
@@ -110,9 +110,9 @@ class VideoHandlerImpl : public SourceRender {
   OutputType output_type_ = OutputType::OUTPUT_CPU;
 };
 
-class VideoHandlerImplCPU : public VideoHandlerImpl {
+class PullHandlerImplCPU : public PullHandlerImpl {
  public:
-  using VideoHandlerImpl::VideoHandlerImpl;
+  using PullHandlerImpl::PullHandlerImpl;
 
  protected:
   int codec_init() override;
@@ -125,7 +125,7 @@ class VideoHandlerImplCPU : public VideoHandlerImpl {
 }  // namespace cnstream
 
 #ifdef VSTREAM_USE_CUDA
-#include "cuda/data_handler_video_cuda.hpp"
+#include "cuda/data_handler_pull_cuda.hpp"
 
 #endif
 

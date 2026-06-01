@@ -14,9 +14,9 @@ stream_id_image_push = "channel-1"
 stream_id_video_push = "channel-2"
 stream_id_send_queue = "channel-4"
 
-key_source = "source"
-key_inference = "inference"
-key_sink = "sink"
+source_module_name = "source"
+inference_module_name = "inference"
+sink_module_name = "sink"
 
 import signal
 signal.signal(signal.SIGINT, signal.SIG_DFL)
@@ -56,12 +56,12 @@ def test_image_push_pipeline():
     print("Pipeline built successfully")
 
     # 获取 DataSource 模块
-    source = pipeline.get_data_source(key_source)
-    assert source is not None, f"get_data_source('{key_source}') returned None"
+    source = pipeline.get_data_source(source_module_name)
+    assert source is not None, f"get_data_source('{source_module_name}') returned None"
     print(f"Source module type: {type(source)}")
 
-    sink = pipeline.get_data_sink(key_sink)
-    assert sink is not None, f"get_data_sink('{key_sink}') returned None"
+    sink = pipeline.get_data_sink(sink_module_name)
+    assert sink is not None, f"get_data_sink('{sink_module_name}') returned None"
     print(f"Sink module type: {type(sink)}")
 
     # 创建 ImageHandler
@@ -111,18 +111,18 @@ def test_video_push_pipeline():
     print("Pipeline built successfully")
 
     # 获取 DataSource 模块
-    source = pipeline.get_data_source(key_source)
+    source = pipeline.get_data_source(source_module_name)
     assert source is not None
     print(f"Source module type: {type(source)}")
 
-    sink = pipeline.get_data_sink(key_sink)
+    sink = pipeline.get_data_sink(sink_module_name)
     assert sink is not None
     print(f"DataSink module type: {type(sink)}")
 
-    # 创建 VideoHandler
-    video_handler = vstream.VideoHandler(source, stream_id_video_push)
-    assert video_handler is not None
-    print(f"VideoHandler created, stream_id={video_handler.get_stream_id()}")
+    # 创建 PullHandler
+    pull_handler = vstream.PullHandler(source, stream_id_video_push)
+    assert pull_handler is not None
+    print(f"PullHandler created, stream_id={pull_handler.get_stream_id()}")
 
     push_handler = vstream.PushHandler(sink, stream_id_video_push)
     assert push_handler is not None
@@ -134,9 +134,9 @@ def test_video_push_pipeline():
     assert pipeline.is_running()
 
     # 添加源流并启动流水线
-    ret = source.add_source(video_handler)
+    ret = source.add_source(pull_handler)
     assert ret == 0, f"AddSource failed, ret={ret}"
-    print("VideoHandler added to source module")
+    print("PullHandler added to source module")
 
     ret = sink.add_sink(push_handler)
     assert ret == 0, f"AddSink failed, ret={ret}"

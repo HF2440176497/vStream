@@ -66,16 +66,16 @@ void DataHandlerWrapper(const py::module &m) {
       .def("stop", &ImageHandler::Stop)
       .def("close", &ImageHandler::Close);
 
-  py::class_<VideoHandler, std::shared_ptr<VideoHandler>, SourceHandler>(m, "VideoHandler")
+  py::class_<PullHandler, std::shared_ptr<PullHandler>, SourceHandler>(m, "PullHandler")
       .def(py::init([](DataSource *module, const std::string &stream_id) {
-        auto video_handler = VideoHandler::Create(module, stream_id);
-        if (!video_handler)
-          return std::shared_ptr<VideoHandler>();
-        return std::dynamic_pointer_cast<VideoHandler>(video_handler);
+        auto pull_handler = PullHandler::Create(module, stream_id);
+        if (!pull_handler)
+          return std::shared_ptr<PullHandler>();
+        return std::dynamic_pointer_cast<PullHandler>(pull_handler);
       }), py::arg("module"), py::arg("stream_id"))
-      .def("open", &VideoHandler::Open)
-      .def("stop", &VideoHandler::Stop)
-      .def("close", &VideoHandler::Close);
+      .def("open", &PullHandler::Open)
+      .def("stop", &PullHandler::Stop)
+      .def("close", &PullHandler::Close);
 
 
   py::class_<SendFrame>(m, "SendFrame")

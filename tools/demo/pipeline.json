@@ -3,7 +3,7 @@
     "enable_profile": false
   },
 
-  "decoder": {
+  "source": {
     "class_name": "cnstream::DataSource",
     "parallelism": 0,
     "max_input_queue_size": 0,

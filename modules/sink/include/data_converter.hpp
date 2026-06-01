@@ -44,6 +44,26 @@ inline s_obj_in ConvertInferObject(const std::shared_ptr<InferObject>& src) {
 }
 
 /**
+ * @brief 在 FrameInfo 的 collection 中保存原始图像到 kCustomImagesTag。
+ *
+ * 应在任何可能修改 DataFrame 原始数据的操作（如标框渲染）之前调用。
+ * 通过 DataFrame::GetImage() 获取 deep copy，确保原图独立于后续修改。
+ * PushHandler 和 QueueHandler 均需在 Process 入口处调用。
+ */
+inline void SaveOriginalImage(const std::shared_ptr<FrameInfo>& frame_info) {
+  if (!frame_info->collection.HasValue(kDataFrameTag)) return;
+  auto frame = frame_info->collection.Get<DataFramePtr>(kDataFrameTag);
+  if (!frame) return;
+
+  if (!frame_info->collection.HasValue(kCustomImagesTag)) {
+    frame_info->collection.AddIfNotExists(kCustomImagesTag,
+        std::make_shared<std::map<std::string, cv::Mat>>());
+  }
+  auto custom_images = frame_info->collection.Get<CustomImagesPtr>(kCustomImagesTag);
+  (*custom_images)[output_constants::key_original_image] = frame->GetImage();
+}
+
+/**
  * @brief FrameInfo → s_output_data
  *
  * 从 FrameInfo 的 collection 中提取图像、推理结果等信息，

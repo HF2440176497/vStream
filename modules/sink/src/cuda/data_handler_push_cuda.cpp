@@ -216,21 +216,6 @@ bool PushHandlerImplCUDA::SendFrameToCuda(const DataFramePtr& frame, AVPixelForm
 
   CHECK_CUDA_RUNTIME(cudaStreamSynchronize(sink_stream_));
 
-#ifdef VSTREAM_UNIT_TEST
-  {
-    static int dump_count = 0;
-    if (dump_count < 3) {
-      dump_count++;
-      uint8_t* mutable_cpu_data = static_cast<uint8_t*>(frame->data_[0]->GetMutableCpuData());
-      cv::Mat img(src_height, src_width, CV_8UC3, mutable_cpu_data, src_stride);
-
-      cv::Mat bgr_mat;
-      cv::cvtColor(img, bgr_mat, cv::COLOR_RGB2BGR);
-      cv::imwrite("/tmp/" + stream_id_ + "-" + std::to_string(dump_count) + ".png", bgr_mat);
-    }
-  }
-#endif
-
   ctx_.hw_frame->pts = ComputePts();
   return EncodeFrame(ctx_.hw_frame);
 }

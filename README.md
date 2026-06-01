@@ -241,7 +241,7 @@ EventBus 提供模块间和模块-Pipeline 间的异步消息通信，用于传�
     "max_input_queue_size": 20,
     "custom_params": {
       "object_infer": "false",
-      "model_path": "yolov8s_tracing_static_b8_pre.engine",
+      "model_path": "yolov8s_tracing_static_b1_pre.engine",
       "device_type": "cuda",
       "device_id": "0",
       "input_ordered_index": "0",
@@ -336,8 +336,8 @@ int main() {
       return -1;
     }
     pipeline.Start();
-    DataSource *source = dynamic_cast<DataSource*>(pipeline_->GetModule("decoder"));
-    auto source_handler_ptr = ImageHandler::Create(source，stream_id);
+    DataSource *source = dynamic_cast<DataSource*>(pipeline_->GetModule("source"));
+    auto source_handler_ptr = ImageHandler::Create(source, stream_id);
     auto handler = std::dynamic_pointer_cast<ImageHandler>(source_handler_ptr);
     source->AddSource(handler)；
 

@@ -9,15 +9,18 @@
 static std::string test_pipeline_json = "pipeline_inference.json";
 static std::string inference_name = "inference";
 
+static std::string source_name = "source";
+static std::string sink_name = "sink";
+
+
 TEST(JSON, ReadFile) {
     std::string json_str = readFile(test_pipeline_json.c_str());
     EXPECT_FALSE(json_str.empty()) << "Read json file failed";
     nlohmann::json doc = nlohmann::json::parse(json_str);
 
-    EXPECT_TRUE(doc.contains("profiler_config")) << "Json file has no profiler_config field";
-    EXPECT_TRUE(doc.contains("decoder")) << "Json file has no decoder field";
-    EXPECT_FALSE(doc.contains("sort_h"));
-    EXPECT_FALSE(doc.contains("sink"));
+    EXPECT_TRUE(doc.contains(kProfilerConfigName)) << "Json file has no profiler_config field";
+    EXPECT_TRUE(doc.contains(source_name)) << "Json file has no source field";
+    EXPECT_FALSE(doc.contains(sink_name));
 }
 
 /**

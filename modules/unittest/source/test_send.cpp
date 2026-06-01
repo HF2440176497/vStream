@@ -20,9 +20,9 @@
 
 namespace cnstream {
 
-static const std::string             key_source_module_name = "source";
-static const std::string             key_inference_module_name = "inference";
-static const std::string             key_sink_module_name = "sink";
+static const std::string             source_module_name = "source";
+static const std::string             inference_module_name = "inference";
+static const std::string             sink_module_name = "sink";
 
 static const std::string             stream_id_1_ = "channel-1";
 static const std::string             stream_id_2_ = "channel-2";
@@ -65,7 +65,7 @@ class SourceSend : public testing::Test {
 TEST_F(SourceSend, TestSend) {
   EXPECT_TRUE(pipeline_->Start());
 
-  Module* source_module = pipeline_->GetModule(key_source_module_name);
+  Module* source_module = pipeline_->GetModule(source_module_name);
   EXPECT_NE(source_module, nullptr);
 
   DataSource *source = dynamic_cast<DataSource*>(source_module);
@@ -79,7 +79,7 @@ TEST_F(SourceSend, TestSend) {
     EXPECT_EQ(source->AddSource(send_handler_), 0);
   }
   
-  Module* sink_module = pipeline_->GetModule(key_sink_module_name);
+  Module* sink_module = pipeline_->GetModule(sink_module_name);
   EXPECT_NE(sink_module, nullptr);
 
   DataSink *sink = dynamic_cast<DataSink*>(sink_module);
@@ -124,7 +124,7 @@ TEST_F(SourceSend, TestSend) {
     }
   });
 
-  auto inference_module = pipeline_->GetModule(key_inference_module_name);
+  auto inference_module = pipeline_->GetModule(inference_module_name);
   EXPECT_NE(inference_module, nullptr);
 
   std::this_thread::sleep_for(std::chrono::seconds(10));

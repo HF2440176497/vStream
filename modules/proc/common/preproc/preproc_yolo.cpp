@@ -81,13 +81,6 @@ int Execute(const std::vector<float*>& cpu_outputs, ModelLoader* model,
     for (int c = 0; c < 3; c++) {
         memcpy(cpu_output + c * input_h * input_w, channels[c].ptr<float>(), input_h * input_w * sizeof(float));
     }
-
-#ifdef VSTREAM_UNIT_TEST
-    if (!has_save_frame_mat_) {
-        save_float_image_chw_cpu(cpu_output, input_h, input_w, save_file_, ChannelsArrange::RGB, true);
-        has_save_frame_mat_ = true;
-    }
-#endif
     return 0;
 }
 
@@ -168,26 +161,7 @@ class Pre_YOLO_CPU_v2: public Preproc {
             }
         }
     });
-#ifdef VSTREAM_UNIT_TEST
-    auto now = std::chrono::steady_clock::now();
-
-    if (save_duration_ms_ > 0) {
-      if (last_save_time_.time_since_epoch().count() == 0 ||
-          std::chrono::duration_cast<std::chrono::milliseconds>(now - last_save_time_).count() >= save_duration_ms_) {
-          
-          cv::Mat img = frame->GetImage().clone();
-
-          auto sys_now = std::chrono::system_clock::now();
-          auto timestamp_ms = std::chrono::duration_cast<std::chrono::milliseconds>(sys_now.time_since_epoch()).count();
-          std::string filename = "save/pre-" +  std::to_string(timestamp_ms) + ".jpg";
-          
-          cv::imwrite(filename, img);
-          last_save_time_ = now;
-      }
-    }
-#endif
     return 0;
-
   }
 
  private:

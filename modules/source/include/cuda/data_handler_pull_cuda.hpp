@@ -5,14 +5,14 @@
 
 #include "cuda/cuda_check.hpp"
 
-#include "data_handler_video.hpp"
+#include "data_handler_pull.hpp"
 
 namespace cnstream {
 
-class VideoHandlerImplCUDA : public VideoHandlerImpl {
+class PullHandlerImplCUDA : public PullHandlerImpl {
  public:
-  using VideoHandlerImpl::VideoHandlerImpl;
-  ~VideoHandlerImplCUDA() {
+  using PullHandlerImpl::PullHandlerImpl;
+  ~PullHandlerImplCUDA() {
     if (src_stream_) {
       cudaStreamDestroy(static_cast<cudaStream_t>(src_stream_));
       src_stream_ = nullptr;

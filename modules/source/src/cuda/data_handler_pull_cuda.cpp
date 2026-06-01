@@ -1,6 +1,6 @@
 
 #include "data_source.hpp"
-#include "cuda/data_handler_video_cuda.hpp"
+#include "cuda/data_handler_pull_cuda.hpp"
 
 #include "data_source_param.hpp"
 #include "cnstream_source.hpp"
@@ -13,7 +13,7 @@ namespace cnstream {
 
 static enum AVPixelFormat hw_pix_fmt;
 
-bool VideoHandlerImplCUDA::support_hwdevice() {
+bool PullHandlerImplCUDA::support_hwdevice() {
   enum AVHWDeviceType type = av_hwdevice_find_type_by_name(type_name_.c_str());
   if (type == AV_HWDEVICE_TYPE_NONE) {
     LOGE(SOURCE) << "Device type: " << type_name_ << " is not supported.";
@@ -23,7 +23,7 @@ bool VideoHandlerImplCUDA::support_hwdevice() {
   return true;
 }
 
-enum AVPixelFormat VideoHandlerImplCUDA::get_hw_format(AVCodecContext *ctx, const enum AVPixelFormat *pix_fmts) {
+enum AVPixelFormat PullHandlerImplCUDA::get_hw_format(AVCodecContext *ctx, const enum AVPixelFormat *pix_fmts) {
   const enum AVPixelFormat *p;
   for (p = pix_fmts; *p != -1; p++) {
     if (*p == hw_pix_fmt) {
@@ -34,7 +34,7 @@ enum AVPixelFormat VideoHandlerImplCUDA::get_hw_format(AVCodecContext *ctx, cons
   return AV_PIX_FMT_NONE;
 }
 
-int VideoHandlerImplCUDA::init_hwdevice_conf() {
+int PullHandlerImplCUDA::init_hwdevice_conf() {
   for (int i = 0;; i++) {
     const AVCodecHWConfig *config = avcodec_get_hw_config(codec_, i);
     if (!config) {
@@ -54,7 +54,7 @@ int VideoHandlerImplCUDA::init_hwdevice_conf() {
   return -1;
 }
 
-int VideoHandlerImplCUDA::hw_decoder_init() {
+int PullHandlerImplCUDA::hw_decoder_init() {
   int err = 0;
   if (device_id_ < 0) {
     LOGE(SOURCE) << "Invalid device ID";
@@ -69,7 +69,7 @@ int VideoHandlerImplCUDA::hw_decoder_init() {
   return err;
 }
 
-int VideoHandlerImplCUDA::codec_init() {
+int PullHandlerImplCUDA::codec_init() {
   int ret = 0;
   AVStream* video_stream = ifmt_ctx_->streams[video_index_];
 
@@ -83,7 +83,7 @@ int VideoHandlerImplCUDA::codec_init() {
 
   auto it = codeid_name_table.find(video_stream->codecpar->codec_id);
   if (it == codeid_name_table.end()) {
-    LOGE(SOURCE) << "Codec name not found, fallback to CPU decoder";
+    LOGE(SOURCE) << "Codec name not found, fallback to CPU decode";
     this->codec_ = const_cast<AVCodec*>(avcodec_find_decoder(video_stream->codecpar->codec_id));
   } else {
     this->codec_ = const_cast<AVCodec*>(avcodec_find_decoder_by_name(it->second.c_str()));
@@ -128,18 +128,18 @@ int VideoHandlerImplCUDA::codec_init() {
   return 0;
 }
 
-bool VideoHandlerImplCUDA::SupportHWDevice() {
+bool PullHandlerImplCUDA::SupportHWDevice() {
   return support_hwdevice();
 }
 
-void VideoHandlerImplCUDA::ConfigureOutputType() {
+void PullHandlerImplCUDA::ConfigureOutputType() {
   if (output_type_ == OutputType::OUTPUT_CPU) {
     LOGW(SOURCE) << "VSTREAM_USE_CUDA ON: force output type to CUDA";
     output_type_ = OutputType::OUTPUT_CUDA;
   }
 }
 
-int VideoHandlerImplCUDA::decode_write() {
+int PullHandlerImplCUDA::decode_write() {
   int ret = 0;
   AVFrame *p_frame = nullptr;
   AVFrame *sw_frame = nullptr;
@@ -245,7 +245,7 @@ int VideoHandlerImplCUDA::decode_write() {
 /**
  * 解码帧回传到 CPU 内存
  */
-std::shared_ptr<FrameInfo> VideoHandlerImplCUDA::ProcessFrameCPU(AVFrame *p_frame, AVFrame *sw_frame, int &ret) {
+std::shared_ptr<FrameInfo> PullHandlerImplCUDA::ProcessFrameCPU(AVFrame *p_frame, AVFrame *sw_frame, int &ret) {
   if (!p_frame) {
     LOGE(SOURCE) << "p_frame is null";
     return nullptr;
@@ -316,7 +316,7 @@ std::shared_ptr<FrameInfo> VideoHandlerImplCUDA::ProcessFrameCPU(AVFrame *p_fram
   return OnDecodeFrame(&frame);
 }
 
-std::shared_ptr<FrameInfo> VideoHandlerImplCUDA::ProcessFrameCUDA(AVFrame *p_frame, int &ret) {
+std::shared_ptr<FrameInfo> PullHandlerImplCUDA::ProcessFrameCUDA(AVFrame *p_frame, int &ret) {
   if (!p_frame) {
     LOGE(SOURCE) << "p_frame is null";
     return nullptr;

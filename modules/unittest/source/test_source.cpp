@@ -7,7 +7,7 @@
 
 #include "data_source.hpp"
 #include "data_handler_image.hpp"
-#include "data_handler_video.hpp"
+#include "data_handler_pull.hpp"
 
 #include "data_sink.hpp"
 
@@ -22,8 +22,8 @@
 
 namespace cnstream {
 
-static const std::string             key_source_module_name = "source";
-static const std::string             key_sink_module_name = "sink";
+static const std::string             source_module_name = "source";
+static const std::string             sink_module_name = "sink";
 
 static const std::string             stream_id_1_ = "channel-1";
 static const std::string             stream_id_2_ = "channel-2";
@@ -84,11 +84,11 @@ class SourceVideo : public testing::Test {
     if (pipeline_) {
       pipeline_->Stop();
     }
-    video_handler_.reset();
+    pull_handler_.reset();
   }
 
  protected:
-  std::shared_ptr<VideoHandler> video_handler_ = nullptr;
+  std::shared_ptr<PullHandler> pull_handler_ = nullptr;
   std::shared_ptr<PushHandler>  push_handler_ = nullptr;
   std::shared_ptr<DataSource>   module_ = nullptr;
   std::shared_ptr<Pipeline>     pipeline_ = nullptr;
@@ -138,7 +138,7 @@ TEST_F(SourceBase, Init) {
 TEST_F(SourceBase, Run) {
   // 提取 pipeline 中的 DataSource 模块
   EXPECT_NE(pipeline_, nullptr);
-  Module* module_in_pipeline = pipeline_->GetModule("decoder");
+  Module* module_in_pipeline = pipeline_->GetModule(source_module_name);
   EXPECT_NE(module_in_pipeline, nullptr);
 
   DataSource *source = dynamic_cast<DataSource*>(module_in_pipeline);
@@ -177,7 +177,7 @@ TEST_F(SourceBase, Run) {
  * 测试多个流，每个流处理各自的图像
  */
 TEST_F(SourceBase, MutilStream) {
-  Module* module_in_pipeline = pipeline_->GetModule("decoder");
+  Module* module_in_pipeline = pipeline_->GetModule(source_module_name);
   DataSource *source = dynamic_cast<DataSource*>(module_in_pipeline);
 
   std::unordered_map<std::string, std::shared_ptr<ImageHandler>> handlers;
@@ -235,25 +235,25 @@ TEST_F(SourceBase, MutilStream) {
 }
 
 /**
- * 单独使用一个 pipeline 测试 video_handler
+ * 单独使用一个 pipeline 测试 pull_handler
  */
 TEST_F(SourceVideo, Run) {
   EXPECT_NE(pipeline_, nullptr);
   EXPECT_TRUE(pipeline_->Start());
 
-  Module* module_in_pipeline = pipeline_->GetModule("decoder");
+  Module* module_in_pipeline = pipeline_->GetModule(source_module_name);
   EXPECT_NE(module_in_pipeline, nullptr);
 
   DataSource *source = dynamic_cast<DataSource*>(module_in_pipeline);
   EXPECT_NE(source, nullptr);
 
   for (auto stream_id : stream_ids_pull_push_) {
-    std::shared_ptr<SourceHandler> source_handler_ptr = VideoHandler::Create(source, stream_id);
-    video_handler_ = std::dynamic_pointer_cast<VideoHandler>(source_handler_ptr);
-    EXPECT_NE(video_handler_, nullptr);
-    EXPECT_EQ(source->AddSource(video_handler_), 0);
+    std::shared_ptr<SourceHandler> source_handler_ptr = PullHandler::Create(source, stream_id);
+    pull_handler_ = std::dynamic_pointer_cast<PullHandler>(source_handler_ptr);
+    EXPECT_NE(pull_handler_, nullptr);
+    EXPECT_EQ(source->AddSource(pull_handler_), 0);
   }
-  Module* sink_module = pipeline_->GetModule(key_sink_module_name);
+  Module* sink_module = pipeline_->GetModule(sink_module_name);
   EXPECT_NE(sink_module, nullptr);
 
   DataSink *sink = dynamic_cast<DataSink*>(sink_module);
@@ -268,19 +268,18 @@ TEST_F(SourceVideo, Run) {
   
   auto stream_id = stream_ids_pull_push_[0];
   
-  LOGI(T_SOURCE) << "Handler stream_url_ = " << video_handler_->impl_->stream_url_ << std::endl;
-  LOGI(T_SOURCE) << "Handler frame_rate_ = " << video_handler_->impl_->frame_rate_ << std::endl;
+  LOGI(T_SOURCE) << "Handler stream_url_ = " << pull_handler_->impl_->stream_url_ << std::endl;
+  LOGI(T_SOURCE) << "Handler frame_rate_ = " << pull_handler_->impl_->frame_rate_ << std::endl;
   
-  if (video_handler_->impl_->IsRunning()) {
+  if (pull_handler_->impl_->IsRunning()) {
     std::this_thread::sleep_for(std::chrono::seconds(2));
   }
 
-  LOGI(T_SOURCE) << "Handler stream idx: " << video_handler_->GetStreamIndex();
-  EXPECT_NE(video_handler_->GetStreamIndex(), INVALID_STREAM_IDX);  // == data->stream_idx_
-  EXPECT_TRUE(pipeline_->IsRunning());
+  LOGI(T_SOURCE) << "Handler stream idx: " << pull_handler_->GetStreamIndex();
+  EXPECT_NE(pull_handler_->GetStreamIndex(), INVALID_STREAM_IDX);  // == data->stream_idx_
   
-  video_handler_->Stop();
-  video_handler_->Close();
+  pull_handler_->Stop();
+  pull_handler_->Close();
   
   PrintStreamEos();
   std::this_thread::sleep_for(std::chrono::seconds(2));

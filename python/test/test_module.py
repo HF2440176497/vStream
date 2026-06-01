@@ -17,8 +17,8 @@ import cv2
 
 import vstream
 
-key_source = "source"
-key_sink = "sink"
+source_module_name = "source"
+sink_module_name = "sink"
 
 stream_id = "channel-4"
 
@@ -123,13 +123,13 @@ def test_python_module():
     print("Pipeline built successfully")
 
     # 获取模块
-    source = pipeline.get_data_source(key_source)
+    source = pipeline.get_data_source(source_module_name)
     assert source is not None
 
     send_handler = vstream.SendHandler(source, stream_id)
     assert send_handler is not None
 
-    sink = pipeline.get_data_sink(key_sink)
+    sink = pipeline.get_data_sink(sink_module_name)
     assert sink is not None
 
     queue_handler = vstream.QueueHandler(sink, stream_id)
