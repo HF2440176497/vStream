@@ -12,11 +12,11 @@ class PushHandlerImplCUDA : public PushHandlerImpl {
  protected:
   bool InitDeviceCtx() override;
   void CleanDeviceCtx() override;
-  bool SendDataFrame(const DataFramePtr& frame, AVPixelFormat src_pix_fmt) override;
+  bool SendDataFrame(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts) override;
 
  private:
-  bool SendFrameCuda(const DataFramePtr& frame, AVPixelFormat src_pix_fmt);
-  bool SendFrameToCuda(const DataFramePtr& frame, AVPixelFormat src_pix_fmt);
+  bool SendFrameCuda(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts);
+  bool SendFrameToCuda(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts);
 
   cudaStream_t sink_stream_ = nullptr;
 };

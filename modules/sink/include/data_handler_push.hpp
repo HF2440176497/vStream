@@ -17,6 +17,7 @@
 #include "data_sink.hpp"
 #include "mark_render.hpp"
 #include "memop.hpp"
+#include "util/cnstream_queue.hpp"
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -37,8 +38,6 @@ static constexpr AVPixelFormat kEncoderPixFmt = AV_PIX_FMT_YUV420P;
 static constexpr AVPixelFormat kSwsPixFmt     = AV_PIX_FMT_YUV420P;
 static constexpr const char* kDefaultEncoder = nullptr;
 #endif
-
-static constexpr int max_error_len = 1024;
 
 namespace cnstream {
 
@@ -68,6 +67,15 @@ static const std::unordered_map<DataFormat, AVPixelFormat> kAvFmtMap = {
   {DataFormat::PIXEL_FORMAT_RGB24, AV_PIX_FMT_RGB24},
   {DataFormat::PIXEL_FORMAT_BGR24, AV_PIX_FMT_BGR24},
 };
+
+struct EncoderTask {
+  DataFramePtr  frame;
+  AVPixelFormat src_fmt = AV_PIX_FMT_RGB24;
+  int64_t       pts = 0;
+  bool          is_eos = false;
+};
+
+static constexpr uint32_t kEncodeQueueSize = 30;
 
 class PushHandlerImpl {
   friend class PushHandler;
@@ -100,12 +108,17 @@ class PushHandlerImpl {
   virtual bool InitDeviceCtx() { return true; }
   bool InitSwsFrame();
   virtual void CleanDeviceCtx() {}
-  virtual bool SendDataFrame(const DataFramePtr& frame, AVPixelFormat src_pix_fmt) = 0;
-  bool SendFrame(const DataFramePtr& frame, AVPixelFormat src_pix_fmt);
+  virtual bool SendDataFrame(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts) = 0;
+  bool SendFrame(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts);
   void EnsureSwsContext(AVPixelFormat src_pix_fmt, int src_width, int src_height);
-  bool SendFrameCpuFallback(const DataFramePtr& frame, AVPixelFormat src_pix_fmt);
+  bool SendFrameCpuFallback(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts);
   bool EncodeFrame(AVFrame* frame);
   void ClearStream();
+  // void FlushEncoder();
+  bool FlushEncoder();
+  bool DrainPackets();
+
+  void EncodeWorkerLoop();
   int64_t ComputePts();
   bool ControlFps();
 
@@ -125,7 +138,7 @@ class PushHandlerImpl {
   StreamContext ctx_;
   std::recursive_mutex stream_mtx_;
   int64_t last_pts_ = -1;
-  int64_t pts_counter_ = 0;
+  int64_t pts_count_ = 0;
 
   AVPixelFormat src_pix_fmt_ = AV_PIX_FMT_RGB24;
   int sws_src_width_  = 0;
@@ -146,6 +159,9 @@ class PushHandlerImpl {
   static constexpr int kFpsStatInterval = 100;
   std::chrono::steady_clock::time_point fps_stat_start_time_;
   uint64_t fps_stat_frame_count_ = 0;
+
+  ThreadSafeQueue<EncoderTask> encode_queue_{kEncodeQueueSize};
+  std::thread encode_thread_;
 };
 
 class PushHandlerImplCPU : public PushHandlerImpl {
@@ -153,7 +169,7 @@ class PushHandlerImplCPU : public PushHandlerImpl {
   using PushHandlerImpl::PushHandlerImpl;
 
  protected:
-  bool SendDataFrame(const DataFramePtr& frame, AVPixelFormat src_pix_fmt) override;
+  bool SendDataFrame(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts) override;
 };
 
 }  // namespace cnstream

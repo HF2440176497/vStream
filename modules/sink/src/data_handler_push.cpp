@@ -3,6 +3,7 @@
 #include "data_converter.hpp"
 
 #include <opencv2/opencv.hpp>
+#include <cmath>
 
 namespace cnstream {
 
@@ -29,17 +30,29 @@ bool PushHandlerImpl::Open() {
   }
 
   running_.store(true);
+  encode_thread_ = std::thread(&PushHandlerImpl::EncodeWorkerLoop, this);
   return true;
 }
 
 void PushHandlerImpl::Stop() {
   LOGI(SINK) << "[" << stream_id_ << "]: PushHandlerImpl Stop";
   running_.store(false);
+  encode_queue_.Stop();
+  if (encode_thread_.joinable()) {
+    encode_thread_.join();
+  }
 }
 
 void PushHandlerImpl::Close() {
   LOGI(SINK) << "[" << stream_id_ << "]: PushHandlerImpl Close";
+  EncoderTask eos;
+  eos.is_eos = true;
+  encode_queue_.Push(eos);
   running_.store(false);
+  encode_queue_.Stop();
+  if (encode_thread_.joinable()) {
+    encode_thread_.join();
+  }
   ClearStream();
 }
 
@@ -87,19 +100,17 @@ int PushHandlerImpl::Process(const std::shared_ptr<FrameInfo> data) {
     }
   }
 
-  std::lock_guard<std::recursive_mutex> lk(stream_mtx_);
-  if (IsRunning()) {
-    if (!stream_initialized_) {
-      if (!InitStream()) {
-        LOGE(SINK) << "[" << stream_id_ << "]: InitStream failed";
-        return -1;
-      }
-    }
-    if (!SendDataFrame(frame, it->second)) {
-      LOGE(SINK) << "[" << stream_id_ << "]: SendDataFrame failed";
-      return -1;
-    }
+  EncoderTask task;
+  task.frame   = frame;
+  task.src_fmt = it->second;
+  task.pts     = ComputePts();
+  task.is_eos  = false;
+
+  if (!encode_queue_.Push(task)) {
+    LOGW(SINK) << "[" << stream_id_ << "]: encode queue full, dropping frame";
+    return 0;
   }
+  pts_count_++;
   return 0;
 }
 
@@ -151,7 +162,14 @@ bool PushHandlerImpl::InitStream() {
   if (ctx_.fmt_ctx->oformat->flags & AVFMT_GLOBALHEADER) {
     ctx_.codec_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
   }
-  ret = avcodec_open2(ctx_.codec_ctx, codec, nullptr);
+  auto fps_str = std::to_string(fps_);
+  AVDictionary* opts = nullptr;
+  av_dict_set(&opts, "keyint", fps_str.c_str(), 0);
+  av_dict_set(&opts, "min-keyint", fps_str.c_str(), 0);
+  av_dict_set(&opts, "scenecut", "0", 0);  // 关闭场景切换检测，避免生成额外关键帧
+
+  ret = avcodec_open2(ctx_.codec_ctx, codec, &opts);
+  av_dict_free(&opts);
   if (ret < 0) {
     LOGE(SINK) << "[" << stream_id_ << "]: avcodec_open2 failed";
     return false;
@@ -215,7 +233,7 @@ bool PushHandlerImpl::InitSwsFrame() {
   return true;
 }
 
-bool PushHandlerImpl::SendFrame(const DataFramePtr& frame, AVPixelFormat src_pix_fmt) {
+bool PushHandlerImpl::SendFrame(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts) {
   const int src_width  = frame->GetWidth();
   const int src_height = frame->GetHeight();
   EnsureSwsContext(src_pix_fmt, src_width, src_height);
@@ -234,7 +252,7 @@ bool PushHandlerImpl::SendFrame(const DataFramePtr& frame, AVPixelFormat src_pix
             0, src_height,
             ctx_.sws_frame->data, ctx_.sws_frame->linesize);
 
-  ctx_.sws_frame->pts = ComputePts();
+  ctx_.sws_frame->pts = pts;
 
   AVFrame* enc_frame = ctx_.sws_frame;
   if (!enc_frame) return false;
@@ -256,7 +274,7 @@ void PushHandlerImpl::EnsureSwsContext(AVPixelFormat src_pix_fmt, int src_width,
   sws_src_height_ = src_height;
 }
 
-bool PushHandlerImpl::SendFrameCpuFallback(const DataFramePtr& frame, AVPixelFormat src_pix_fmt) {
+bool PushHandlerImpl::SendFrameCpuFallback(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts) {
   auto src_data = static_cast<const uint8_t*>(frame->data_[0]->GetCpuData());
   int src_stride = frame->GetStride(0);
 
@@ -271,102 +289,107 @@ bool PushHandlerImpl::SendFrameCpuFallback(const DataFramePtr& frame, AVPixelFor
             0, frame->GetHeight(),
             ctx_.sws_frame->data, ctx_.sws_frame->linesize);
 
-  ctx_.sws_frame->pts = ComputePts();
+  ctx_.sws_frame->pts = pts;
   AVFrame* enc_frame = ctx_.sws_frame;
   if (!enc_frame) return false;
   return EncodeFrame(enc_frame);
 }
 
-// bool PushHandlerImpl::EncodeFrame(AVFrame* frame) {
-//   int ret;
-//   while ((ret = avcodec_send_frame(ctx_.codec_ctx, frame)) == AVERROR(EAGAIN)) {
-//     AVPacket* drain_pkt = av_packet_alloc();
-//     ret = avcodec_receive_packet(ctx_.codec_ctx, drain_pkt);
-//     if (ret == 0) {
-//       av_packet_rescale_ts(drain_pkt, ctx_.codec_ctx->time_base, ctx_.stream->time_base);
-//       drain_pkt->stream_index = ctx_.stream->index;
-//       int write_ret = av_interleaved_write_frame(ctx_.fmt_ctx, drain_pkt);
-//       if (write_ret < 0) {
-//         char errbuf[max_error_len];
-//         av_strerror(write_ret, errbuf, sizeof(errbuf));
-//         LOGE(SINK) << "[" << stream_id_ << "]: av_interleaved_write_frame error during drain: " << errbuf;
-//         av_packet_free(&drain_pkt);
-//         return false;
-//       }
-//     }
-//     av_packet_free(&drain_pkt);
-//     if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-//       ret = 0;
-//       break;
-//     }
-//     if (ret < 0) {
-//       LOGE(SINK) << "[" << stream_id_ << "]: avcodec_receive_packet error during drain";
-//       return false;
-//     }
-//   }
-//   if (ret < 0) {
-//     LOGE(SINK) << "[" << stream_id_ << "]: avcodec_send_frame error: " << ret;
-//     return false;
-//   }
-//   AVPacket* pkt = av_packet_alloc();
-//   while (IsRunning()) {
-//     ret = avcodec_receive_packet(ctx_.codec_ctx, pkt);
-//     if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-//       break;
-//     }
-//     if (ret < 0) {
-//       LOGE(SINK) << "[" << stream_id_ << "]: avcodec_receive_packet error: " << ret;
-//       av_packet_free(&pkt);
-//       return false;
-//     }
-//     av_packet_rescale_ts(pkt, ctx_.codec_ctx->time_base, ctx_.stream->time_base);
-//     pkt->stream_index = ctx_.stream->index;
-//     ret = av_interleaved_write_frame(ctx_.fmt_ctx, pkt);
-//     if (ret < 0) {
-//       char errbuf[max_error_len];
-//       av_strerror(ret, errbuf, sizeof(errbuf));
-//       std::string error_msg(errbuf);
-//       LOGE(SINK) << "[" << stream_id_ << "]: av_interleaved_write_frame error: " << error_msg;
-//       av_packet_free(&pkt);
-//       return false;
-//     }
-//   }
-//   av_packet_free(&pkt);
-//   return true;
-// }
-
-
 bool PushHandlerImpl::EncodeFrame(AVFrame* frame) {
-  int ret = avcodec_send_frame(ctx_.codec_ctx, frame);
-  if (ret < 0 && ret != AVERROR(EAGAIN)) {
-      LOGE(SINK) << "send_frame error: " << ret;
+  int ret;
+  while ((ret = avcodec_send_frame(ctx_.codec_ctx, frame)) == AVERROR(EAGAIN)) {
+    if (!DrainPackets()) {
       return false;
+    }
   }
+  if (ret < 0) {
+    LOGE(SINK) << "[" << stream_id_ << "] avcodec_send_frame error: " << ret;
+    return false;
+  }
+  return DrainPackets();
+}
+
+bool PushHandlerImpl::DrainPackets() {
   while (IsRunning()) {
     AVPacket* pkt = av_packet_alloc();
-    ret = avcodec_receive_packet(ctx_.codec_ctx, pkt);
+    int ret = avcodec_receive_packet(ctx_.codec_ctx, pkt);
     if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-        av_packet_free(&pkt);
-        break;
+      av_packet_free(&pkt);
+      break;
     }
     if (ret < 0) {
-        LOGE(SINK) << "receive_packet error: " << ret;
-        av_packet_free(&pkt);
-        return false;
+      LOGE(SINK) << "[" << stream_id_ << "] avcodec_receive_packet error: " << ret;
+      av_packet_free(&pkt);
+      return false;
     }
     av_packet_rescale_ts(pkt, ctx_.codec_ctx->time_base, ctx_.stream->time_base);
     pkt->stream_index = ctx_.stream->index;
-    ret = av_interleaved_write_frame(ctx_.fmt_ctx, pkt);
+    pkt->duration = av_rescale_q(pkt->duration, ctx_.codec_ctx->time_base, ctx_.stream->time_base);
+
+    int write_ret = av_interleaved_write_frame(ctx_.fmt_ctx, pkt);
     av_packet_free(&pkt);
-    if (ret < 0) {
-      char errbuf[max_error_len];
-      av_strerror(ret, errbuf, sizeof(errbuf));
-      std::string error_msg(errbuf);
-      LOGE(SINK) << "[" << stream_id_ << "]: av_interleaved_write_frame error: " << error_msg;
+
+    if (write_ret < 0) {
+      char errbuf[AV_ERROR_MAX_STRING_SIZE];
+      av_strerror(write_ret, errbuf, sizeof(errbuf));
+      LOGE(SINK) << "[" << stream_id_ << "] av_interleaved_write_frame error: " << errbuf;
       return false;
     }
   }
   return true;
+}
+
+bool PushHandlerImpl::FlushEncoder() {
+  int ret = avcodec_send_frame(ctx_.codec_ctx, nullptr);
+  if (ret < 0 && ret != AVERROR_EOF) {
+    LOGE(SINK) << "[" << stream_id_ << "] FlushEncoder send_frame error: " << ret;
+    return false;
+  }
+  return DrainPackets();
+}
+
+// void PushHandlerImpl::FlushEncoder() {
+//   std::lock_guard<std::recursive_mutex> lk(stream_mtx_);
+//   if (!ctx_.codec_ctx || !ctx_.stream) return;
+//   int ret = avcodec_send_frame(ctx_.codec_ctx, nullptr);
+//   if (ret < 0 && ret != AVERROR_EOF) {
+//     LOGE(SINK) << "[" << stream_id_ << "]: flush send_frame failed";
+//     return;
+//   }
+//   AVPacket* pkt = av_packet_alloc();
+//   while (avcodec_receive_packet(ctx_.codec_ctx, pkt) == 0) {
+//     av_packet_rescale_ts(pkt, ctx_.codec_ctx->time_base, ctx_.stream->time_base);
+//     pkt->stream_index = ctx_.stream->index;
+//     av_interleaved_write_frame(ctx_.fmt_ctx, pkt);
+//     av_packet_free(&pkt);
+//   }
+//   av_packet_free(&pkt);
+// }
+
+void PushHandlerImpl::EncodeWorkerLoop() {
+  LOGI(SINK) << "[" << stream_id_ << "]: EncodeWorkerLoop started";
+  EncoderTask task;
+  while (IsRunning()) {
+    if (!encode_queue_.WaitAndTryPop(task, std::chrono::milliseconds(100))) {
+      if (!IsRunning()) break;
+      continue;
+    }
+    if (task.is_eos) {
+      FlushEncoder();
+      break;
+    }
+    std::lock_guard<std::recursive_mutex> lk(stream_mtx_);
+    if (!stream_initialized_) {
+      if (!InitStream()) {
+        LOGE(SINK) << "[" << stream_id_ << "]: InitStream failed in worker";
+        continue;
+      }
+    }
+    if (!SendDataFrame(task.frame, task.src_fmt, task.pts)) {
+      LOGE(SINK) << "[" << stream_id_ << "]: SendDataFrame failed in worker";
+    }
+  }
+  LOGI(SINK) << "[" << stream_id_ << "]: EncodeWorkerLoop exited";
 }
 
 void PushHandlerImpl::ClearStream() {
@@ -403,9 +426,10 @@ int64_t PushHandlerImpl::ComputePts() {
   auto now = std::chrono::steady_clock::now();
   auto elapsed_us = std::chrono::duration_cast<std::chrono::microseconds>(
       now - push_start_time_).count();
-  // int64_t pts = elapsed_us * static_cast<int64_t>(fps_) / 1000000;
-  int64_t pts = av_rescale_q(elapsed_us, {1, 1000000}, ctx_.codec_ctx->time_base);
+  // int64_t pts = av_rescale_q(elapsed_us, {1, 1000000}, {1, fps_});
+  int64_t pts = std::llround(static_cast<double>(elapsed_us) * fps_ / 1000000.0);
   if (pts <= last_pts_) {
+    LOGW(SINK) << "[" << stream_id_ << "]: pts <= last_pts_ " << pts << " <= " << last_pts_;
     pts = last_pts_ + 1;
   }
   last_pts_ = pts;
@@ -450,40 +474,40 @@ int64_t PushHandlerImpl::ComputePts() {
 // }
 
 bool PushHandlerImpl::ControlFps() {
-    auto now = std::chrono::steady_clock::now();
-    if (first_frame_) {
-        push_start_time_ = now;
-        next_frame_time_ = now;
-        last_push_time_ = now;
-        fps_stat_start_time_ = now;
-        first_frame_ = false;
-        fps_stat_frame_count_ = 1;
-        return true;
-    }
-    auto frame_interval = std::chrono::microseconds(1000000 / fps_);
-    if (now < next_frame_time_) {
-        return false;
-    }
-    next_frame_time_ = std::max(now, next_frame_time_) + frame_interval;
-    last_push_time_ = now;
-    fps_stat_frame_count_++;
-    if (fps_stat_frame_count_ >= kFpsStatInterval) {
-        auto stat_elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-            now - fps_stat_start_time_).count();
-        if (stat_elapsed_ms > 0) {
-            double actual_fps = fps_stat_frame_count_ * 1000.0 / stat_elapsed_ms;
-            LOGI(SINK) << "Actual FPS = " << actual_fps;
-        }
-        fps_stat_frame_count_ = 0;
-        fps_stat_start_time_ = now;
-    }
-    return true;
+  auto now = std::chrono::steady_clock::now();
+  if (first_frame_) {
+      push_start_time_ = now;
+      next_frame_time_ = now;
+      last_push_time_ = now;
+      fps_stat_start_time_ = now;
+      first_frame_ = false;
+      fps_stat_frame_count_ = 1;
+      return true;
+  }
+  auto frame_interval = std::chrono::microseconds(1000000 / fps_);
+  if (now < next_frame_time_) {
+      return false;
+  }
+  next_frame_time_ = std::max(now, next_frame_time_) + frame_interval;
+  last_push_time_ = now;
+  fps_stat_frame_count_++;
+  if (fps_stat_frame_count_ >= kFpsStatInterval) {
+      auto stat_elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+          now - fps_stat_start_time_).count();
+      if (stat_elapsed_ms > 0) {
+          double actual_fps = fps_stat_frame_count_ * 1000.0 / stat_elapsed_ms;
+          LOGI(SINK) << "Actual FPS = " << actual_fps;
+      }
+      fps_stat_frame_count_ = 0;
+      fps_stat_start_time_ = now;
+  }
+  return true;
 }
 
-bool PushHandlerImplCPU::SendDataFrame(const DataFramePtr& frame, AVPixelFormat src_pix_fmt) {
+bool PushHandlerImplCPU::SendDataFrame(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts) {
   auto dev_type = frame->GetCtx().device_type;
   if (dev_type == DevType::CPU) {
-    return SendFrame(frame, src_pix_fmt);
+    return SendFrame(frame, src_pix_fmt, pts);
   }
   LOGE(SINK) << "[" << stream_id_ << "]: unknown device type " << DevType2Str(dev_type);
   return true;

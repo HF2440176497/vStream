@@ -102,7 +102,7 @@ TEST_F(StableVideo, Run) {
     LOGI(T_STABLE) << "Module Profile: " << module_profile;
   }
 
-  std::this_thread::sleep_for(std::chrono::seconds(90));
+  std::this_thread::sleep_for(std::chrono::seconds(180));
   if (!force_exit) {
     pipeline_->Stop();
   } else {

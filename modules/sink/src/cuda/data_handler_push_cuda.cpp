@@ -68,7 +68,7 @@ void PushHandlerImplCUDA::CleanDeviceCtx() {
   if (sink_stream_)       { CHECK_CUDA_RUNTIME(cudaStreamDestroy(sink_stream_)); sink_stream_ = nullptr; }
 }
 
-bool PushHandlerImplCUDA::SendDataFrame(const DataFramePtr& frame, AVPixelFormat src_pix_fmt) {
+bool PushHandlerImplCUDA::SendDataFrame(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts) {
   auto dev_type = frame->GetCtx().device_type;
   if (dev_type == DevType::CUDA) {
     int actual_device = frame->GetCtx().device_id;
@@ -82,15 +82,15 @@ bool PushHandlerImplCUDA::SendDataFrame(const DataFramePtr& frame, AVPixelFormat
       }
       hw_ctx_initialized_.store(true);
     }
-    return SendFrameCuda(frame, src_pix_fmt);
+    return SendFrameCuda(frame, src_pix_fmt, pts);
   } else if (dev_type == DevType::CPU) {
-    return SendFrameToCuda(frame, src_pix_fmt);
+    return SendFrameToCuda(frame, src_pix_fmt, pts);
   } else {
-    return SendFrame(frame, src_pix_fmt);
+    return SendFrame(frame, src_pix_fmt, pts);
   }
 }
 
-bool PushHandlerImplCUDA::SendFrameCuda(const DataFramePtr& frame, AVPixelFormat src_pix_fmt) {
+bool PushHandlerImplCUDA::SendFrameCuda(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts) {
   const int src_width  = frame->GetWidth();
   const int src_height = frame->GetHeight();
   const int src_stride = frame->GetStride(0);
@@ -109,7 +109,7 @@ bool PushHandlerImplCUDA::SendFrameCuda(const DataFramePtr& frame, AVPixelFormat
     src_fmt = DataFormat::PIXEL_FORMAT_BGR24;
   } else {
     LOGW(SINK) << "[" << stream_id_ << "]: unsupported GPU src format, fallback to CPU";
-    return SendFrameCpuFallback(frame, src_pix_fmt);
+    return SendFrameCpuFallback(frame, src_pix_fmt, pts);
   }
 
   const void* cuda_data = frame->data_[0]->GetDevData();
@@ -140,16 +140,16 @@ bool PushHandlerImplCUDA::SendFrameCuda(const DataFramePtr& frame, AVPixelFormat
 
   if (ret != 0) {
     LOGW(SINK) << "[" << stream_id_ << "]: GPU RGB to NV12 conversion failed, fallback to CPU";
-    return SendFrameCpuFallback(frame, src_pix_fmt);
+    return SendFrameCpuFallback(frame, src_pix_fmt, pts);
   }
 
   CHECK_CUDA_RUNTIME(cudaStreamSynchronize(sink_stream_));
 
-  ctx_.hw_frame->pts = ComputePts();
+  ctx_.hw_frame->pts = pts;
   return EncodeFrame(ctx_.hw_frame);
 }
 
-bool PushHandlerImplCUDA::SendFrameToCuda(const DataFramePtr& frame, AVPixelFormat src_pix_fmt) {
+bool PushHandlerImplCUDA::SendFrameToCuda(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts) {
   if (!hw_ctx_initialized_.load()) {
     hw_ctx_initialized_.store(true);
   }
@@ -171,7 +171,7 @@ bool PushHandlerImplCUDA::SendFrameToCuda(const DataFramePtr& frame, AVPixelForm
     src_fmt = DataFormat::PIXEL_FORMAT_BGR24;
   } else {
     LOGW(SINK) << "[" << stream_id_ << "]: unsupported CPU src format for CUDA path, fallback";
-    return SendFrameCpuFallback(frame, src_pix_fmt);
+    return SendFrameCpuFallback(frame, src_pix_fmt, pts);
   }
 
   const uint8_t* cpu_data = static_cast<const uint8_t*>(frame->data_[0]->GetCpuData());
@@ -211,12 +211,12 @@ bool PushHandlerImplCUDA::SendFrameToCuda(const DataFramePtr& frame, AVPixelForm
 
   if (ret != 0) {
     LOGW(SINK) << "[" << stream_id_ << "]: CPU RGB to NV12 conversion failed, fallback to CPU";
-    return SendFrameCpuFallback(frame, src_pix_fmt);
+    return SendFrameCpuFallback(frame, src_pix_fmt, pts);
   }
 
   CHECK_CUDA_RUNTIME(cudaStreamSynchronize(sink_stream_));
 
-  ctx_.hw_frame->pts = ComputePts();
+  ctx_.hw_frame->pts = pts;
   return EncodeFrame(ctx_.hw_frame);
 }
 
