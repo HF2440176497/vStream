@@ -76,7 +76,7 @@ bool PushHandlerImplCUDA::SendDataFrame(const DataFramePtr& frame, AVPixelFormat
       if (actual_device >= 0 && actual_device != device_id_) {
         LOGI(SINK) << "Reinitializing stream for device " << actual_device;
         if (!ReinitStream(actual_device)) {
-            return false;
+          return false;
         }
         device_id_ = actual_device;
       }
@@ -109,7 +109,7 @@ bool PushHandlerImplCUDA::SendFrameCuda(const DataFramePtr& frame, AVPixelFormat
     src_fmt = DataFormat::PIXEL_FORMAT_BGR24;
   } else {
     LOGW(SINK) << "[" << stream_id_ << "]: unsupported GPU src format, fallback to CPU";
-    return SendFrameCpuFallback(frame, src_pix_fmt, pts);
+    return SendFrameFb(frame, src_pix_fmt, pts);
   }
 
   const void* cuda_data = frame->data_[0]->GetDevData();
@@ -140,7 +140,7 @@ bool PushHandlerImplCUDA::SendFrameCuda(const DataFramePtr& frame, AVPixelFormat
 
   if (ret != 0) {
     LOGW(SINK) << "[" << stream_id_ << "]: GPU RGB to NV12 conversion failed, fallback to CPU";
-    return SendFrameCpuFallback(frame, src_pix_fmt, pts);
+    return SendFrameFb(frame, src_pix_fmt, pts);
   }
 
   CHECK_CUDA_RUNTIME(cudaStreamSynchronize(sink_stream_));
@@ -171,7 +171,7 @@ bool PushHandlerImplCUDA::SendFrameToCuda(const DataFramePtr& frame, AVPixelForm
     src_fmt = DataFormat::PIXEL_FORMAT_BGR24;
   } else {
     LOGW(SINK) << "[" << stream_id_ << "]: unsupported CPU src format for CUDA path, fallback";
-    return SendFrameCpuFallback(frame, src_pix_fmt, pts);
+    return SendFrameFb(frame, src_pix_fmt, pts);
   }
 
   const uint8_t* cpu_data = static_cast<const uint8_t*>(frame->data_[0]->GetCpuData());
@@ -211,7 +211,7 @@ bool PushHandlerImplCUDA::SendFrameToCuda(const DataFramePtr& frame, AVPixelForm
 
   if (ret != 0) {
     LOGW(SINK) << "[" << stream_id_ << "]: CPU RGB to NV12 conversion failed, fallback to CPU";
-    return SendFrameCpuFallback(frame, src_pix_fmt, pts);
+    return SendFrameFb(frame, src_pix_fmt, pts);
   }
 
   CHECK_CUDA_RUNTIME(cudaStreamSynchronize(sink_stream_));

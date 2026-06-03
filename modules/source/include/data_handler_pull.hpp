@@ -93,19 +93,17 @@ class PullHandlerImpl : public SourceRender {
   DataSource *module_;
   std::string stream_id_;
 
-  AVFormatContext   *ifmt_ctx_      = nullptr;
-  AVDictionary      *ifmt_opts_     = nullptr;
-  int                video_index_   = -1;
+  AVFormatContext    *ifmt_ctx_      = nullptr;
+  AVDictionary       *ifmt_opts_     = nullptr;
+  int                 video_index_   = -1;
 
-  AVFrame           *s_frame_       = nullptr;
-  AVBufferRef       *hw_device_ctx_ = nullptr;
-  enum AVHWDeviceType device_type_  = AV_HWDEVICE_TYPE_NONE;
+  AVBufferRef        *hw_device_ctx_ = nullptr;
+  enum AVHWDeviceType device_type_   = AV_HWDEVICE_TYPE_NONE;
   
   AVCodec           *codec_        = nullptr;
   AVCodecContext    *codec_ctx_    = nullptr;
   AVCodecParameters *codecpar_     = nullptr;
   AVPacket           pkt_;
-  struct SwsContext *sws_ctx_      = nullptr;
 
   OutputType output_type_ = OutputType::OUTPUT_CPU;
 };

@@ -75,7 +75,7 @@ struct EncoderTask {
   bool          is_eos = false;
 };
 
-static constexpr uint32_t kEncodeQueueSize = 30;
+static constexpr uint32_t kEncodeQueueSize = 20;
 
 class PushHandlerImpl {
   friend class PushHandler;
@@ -111,7 +111,7 @@ class PushHandlerImpl {
   virtual bool SendDataFrame(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts) = 0;
   bool SendFrame(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts);
   void EnsureSwsContext(AVPixelFormat src_pix_fmt, int src_width, int src_height);
-  bool SendFrameCpuFallback(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts);
+  bool SendFrameFb(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts);
   bool EncodeFrame(AVFrame* frame);
   void ClearStream();
   // void FlushEncoder();

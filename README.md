@@ -4,6 +4,38 @@
 ![CUDA](https://img.shields.io/badge/CUDA-Optional-76B900?logo=nvidia)
 ![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python)
 ![CMake](https://img.shields.io/badge/CMake-%3E%3D3.13-064F8C?logo=cmake)
+![C++17](https://img.shields.io/badge/C%2B%2B-17-00599C?logo=c%2B%2B)
+
+---
+
+## 目录
+
+- [特性](#特性)
+- [依赖](#依赖)
+  - [系统依赖](#系统依赖)
+  - [已集成的第三方库](#已集成的第三方库)
+- [编译](#编译)
+  - [0. 安装系统依赖](#0-安装系统依赖)
+  - [1. 使用 build.sh 脚本（推荐）](#1-使用-buildsh-脚本推荐)
+  - [2. 手动 CMake 构建](#2-手动-cmake-构建)
+  - [3. CMake 构建选项](#3-cmake-构建选项)
+  - [4. 运行单元测试](#4-运行单元测试)
+- [项目结构](#项目结构)
+- [核心概念](#核心概念)
+  - [Pipeline（流水线）](#pipeline流水线)
+  - [Module（模块）](#module模块)
+  - [FrameInfo（数据载体）](#frameinfo数据载体)
+  - [Connector（连接器）](#connector连接器)
+  - [EventBus（事件总线）](#eventbus事件总线)
+- [使用](#使用)
+  - [1. JSON 配置流水线](#1-json-配置流水线)
+  - [2. C++ 示例](#2-c-示例)
+  - [3. Python 示例](#3-python-示例)
+- [工具](#工具)
+- [适配模型](#适配模型)
+- [开发计划](#开发计划)
+- [参考](#参考)
+
 ---
 
 ## 特性
@@ -39,9 +71,9 @@
 ### 系统依赖
 
 | 依赖 | 说明 |
-|:---|:---|
+|:---|:---:|
 | CMake | >= 3.13 |
-| GCC / Clang | 支持 C++17 |
+| GCC | 支持 C++17 |
 | FFmpeg | 视频编解码 |
 | OpenCV | 图像处理 |
 | Python 3.12 | Python API（可选） |
@@ -139,7 +171,7 @@ make -j$(nproc)
 | `VSTREAM_BUILD_LIBYUV` | 构建 libyuv | `ON` |
 | `VSTREAM_BUILD_PYBIND11` | 构建 pybind11 | `ON` |
 
-> **注意**：`Release` 模式下会自动为 GCC/Clang 启用 `-O2 -DNDEBUG` 优化，CUDA 编译器同样启用 `-O2 -DNDEBUG`。
+> **注意**：`Release` 模式下会自动为 GCC 启用 `-O2 -DNDEBUG` 优化，CUDA 编译器同样启用 `-O2 -DNDEBUG`。
 
 ### 4. 运行单元测试
 
@@ -163,13 +195,13 @@ vStream/
 │   │   └── src/            # 源文件
 │   └── unittest/           # 框架单元测试
 ├── modules/                # 功能模块
-│   ├── inference/          # 推理模块（TensorRT + CUDA 后端）
-│   ├── source/             # 数据源模块（图片、视频、流式推送）
+│   ├── inference/          # 推理模块
+│   ├── source/             # 数据源模块（图片、视频、推送）
 │   ├── sink/               # 数据输出模块（推送、队列）
 │   ├── proc/common/        # 通用前后处理（YOLO、ResNet、STDC）
 │   ├── util/               # 工具库（CUDA 内存、仿射变换、过滤器）
 │   └── unittest/           # 模块单元测试
-├── python/                 # Python API（pybind11 绑定）
+├── python/                 # Python API
 │   ├── src/                # C++ 绑定源码
 │   ├── test/               # Python 测试脚本
 │   └── doc/                # 文档
@@ -178,7 +210,7 @@ vStream/
 │       ├── cuda/           # CUDA 格式转换示例
 │       ├── ffmpeg/         # FFmpeg 编码示例
 │       └── trt/            # TensorRT 模型转换工具
-├── cmake/                  # CMake 模块（FindFFmpeg、FindOpenCV 等）
+├── cmake/                  # CMake 模块
 ├── 3rdparty/               # 第三方库源码
 ├── build.sh                # 一键构建脚本
 ├── CMakeLists.txt          # 顶层 CMake 配置
@@ -198,7 +230,7 @@ Pipeline 是框架的核心，负责管理模块的生命周期和数据流转�
 模块是基本处理单元。内置模块类型：
 
 | 模块 | 说明 |
-|:---|:---|
+|:---|:---:|
 | `DataSource` | 数据源模块，支持图片/视频输入和流式推送 |
 | `Inference` | 推理模块，支持批量推理、前后处理管线 |
 | `SinkModule` | 数据输出模块，支持推流和队列两种输出方式 |
@@ -463,7 +495,7 @@ class MyPythonModule(vstream.Module):
 ## 工具
 
 | 工具 | 路径 | 说明 |
-|:---|:---|:---|
+|:---|:---:|:---|
 | JSON 解析示例 | `tools/demo/json_parse_demo.cpp` | 演示 JSON 配置解析 |
 | libyuv 转换示例 | `tools/demo/libyuv_demo.cpp` | 演示 libyuv 图像格式转换 |
 | CUDA 格式转换 | `tools/demo/cuda/` | CUDA kernel / NPP 格式转换示例 |
@@ -486,7 +518,7 @@ class MyPythonModule(vstream.Module):
 ### 前后处理
 
 | 处理类型 | 模型 |
-|:---|:---|
+|:---:|:---|
 | 预处理 | YOLOv5/v8、ResNet |
 | 后处理 | YOLOv5/v8、ResNet|
 

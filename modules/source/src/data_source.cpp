@@ -130,7 +130,7 @@ bool DataSource::LoadStreamConf(const std::string& config_file) {
       //   "param2" : "value2",
       // }
       if (!stream_value.is_object()) {
-        LOGW(SOURCE) << "LoadStreamConf: stream [" << stream_id << "] value is not an object, skip";
+        LOGW(SOURCE) << "[" << stream_id << "] LoadStreamConf: stream value is not an object, skip";
         continue;
       }
       ModuleParamSet params;
@@ -144,10 +144,10 @@ bool DataSource::LoadStreamConf(const std::string& config_file) {
         params[pit.key()] = val;
       }
       stream_configs_[stream_id] = std::move(params);
-      LOGI(SOURCE) << "Loaded config for stream [" << stream_id << "]";
+      LOGI(SOURCE) << "[" << stream_id << "]: Loaded config for stream [" << stream_id << "]";
     }
   } catch (const nlohmann::json::exception& e) {
-    LOGE(SOURCE) << "LoadStreamConf: JSON parse error: " << e.what();
+    LOGE(SOURCE) << "LoadStreamConf: JSON parse failed: " << e.what();
     return false;
   }
   // 检查 config_file 中设置的参数是否合法
@@ -214,7 +214,7 @@ ModuleParamSet DataSource::GetStreamParams(const std::string& stream_id) const {
   if (it != stream_configs_.end()) {
     return it->second;
   }
-  LOGW(SOURCE) << "Stream [" << stream_id << "] not found in config file";
+  LOGW(SOURCE) << "[" << stream_id << "] Stream params not found in config file";
   return {};
 }
 

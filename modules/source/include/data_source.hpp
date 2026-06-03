@@ -148,7 +148,7 @@ class PullHandler : public SourceHandler {
   bool SetHandlerParams(const ModuleParamSet& params) override;
 
  private:
-  explicit PullHandler(DataSource *module, const std::string &stream_id);
+  explicit PullHandler(DataSource *module, const std::string &stream_id, DecoderType decoder_type);
 
 #ifdef VSTREAM_UNIT_TEST
  public:

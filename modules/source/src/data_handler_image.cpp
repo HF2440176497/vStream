@@ -75,15 +75,15 @@ bool ImageHandler::CheckHandlerParams(const ModuleParamSet& params) {
     }
   }
   if (check_params->find(key_file_path) == check_params->end()) {
-    LOGE(SOURCE) << "file_path is required";
+    LOGE(SOURCE) << "[" << stream_id_ << "]: file_path is required";
     return false;
   }
   if (!std::filesystem::exists(check_params->at(key_file_path))) {
-    LOGE(SOURCE) << "file not found: " << check_params->at(key_file_path);
+    LOGE(SOURCE) << "[" << stream_id_ << "]: file not found: " << check_params->at(key_file_path);
     return false;
   }
   if (check_params->find(key_frame_rate) == check_params->end()) {
-    LOGE(SOURCE) << "frame_rate is required";
+    LOGE(SOURCE) << "[" << stream_id_ << "]: frame_rate is required";
     return false;
   }
   return true;
@@ -115,16 +115,16 @@ bool ImageHandlerImpl::Open() {
   LOGI(SOURCE) << "Open image: " << image_path_ << ", frame_rate: " << frame_rate_;
 
   if (image_path_.empty() || !std::filesystem::exists(image_path_)) {
-    LOGE(SOURCE) << "Image path not found: " << image_path_;
+    LOGE(SOURCE) << "[" << stream_id_ << "]: Image path not found: " << image_path_;
     return false;
   }
   image_ = cv::imread(image_path_);
   if (image_.empty()) {
-    LOGE(SOURCE) << "Failed to load image: " << image_path_;
+    LOGE(SOURCE) << "[" << stream_id_ << "]: Failed to load image: " << image_path_;
     return false;
   }
   if (image_.type() != CV_8UC3 || image_.elemSize() != 3) {
-    LOGE(SOURCE) << "Image format is not BGR24!";
+    LOGE(SOURCE) << "[" << stream_id_ << "]: Image format is not BGR24!";
     return false;
   }
   running_.store(true);
@@ -151,7 +151,7 @@ void ImageHandlerImpl::Close() {
  */
 void ImageHandlerImpl::Loop() {
   if (image_.empty()) {
-    LOGE(SOURCE) << "ImageHandlerImpl: Failed to load image: " << image_path_;
+    LOGE(SOURCE) << "[" << stream_id_ << "]: Failed to load image: " << image_path_;
     return;
   }
   FrController controller(frame_rate_);
@@ -169,7 +169,7 @@ void ImageHandlerImpl::Loop() {
 
     uint8_t* buffer = new (std::nothrow) uint8_t[data_size];
     if (!buffer) {
-      LOGE(SOURCE) << "ImageHandlerImpl: Failed to allocate memory for image data";
+      LOGE(SOURCE) << "[" << stream_id_ << "]: ImageHandlerImpl: Failed to allocate memory for image data";
       return;
     }
     for (int i = 0; i < image_.rows; ++i) {
@@ -203,12 +203,12 @@ void ImageHandlerImpl::Loop() {
  */
 std::shared_ptr<FrameInfo> ImageHandlerImpl::OnDecodeFrame(DecodeFrame* frame) {
   if (!frame) {
-    LOGE(SOURCE) << "[ImageHandlerImpl] OnDecodeFrame function frame is nullptr.";
+    LOGE(SOURCE) << "[" << stream_id_ << "]: ImageHandlerImpl OnDecodeFrame frame is nullptr.";
     return nullptr;
   }
   std::shared_ptr<FrameInfo> data = CreateFrameInfo();
   if (!data) {
-    LOGE(SOURCE) << "[ImageHandlerImpl] OnDecodeFrame function, failed to create FrameInfo.";
+    LOGE(SOURCE) << "[" << stream_id_ << "]: ImageHandlerImpl OnDecodeFrame failed to create FrameInfo.";
     return nullptr;
   }
   data->timestamp = frame->pts;
@@ -219,7 +219,7 @@ std::shared_ptr<FrameInfo> ImageHandlerImpl::OnDecodeFrame(DecodeFrame* frame) {
   }
   int ret = SourceRender::Process(data, frame, frame_id_++);
   if (ret < 0) {
-    LOGE(SOURCE) << "[" << stream_id_ << "]: SetupDataFrame function, failed to setup data frame.";
+    LOGE(SOURCE) << "[" << stream_id_ << "]: SetupDataFrame failed to setup data frame.";
     return nullptr;
   }
   return data;
@@ -231,11 +231,11 @@ std::shared_ptr<FrameInfo> ImageHandlerImpl::OnDecodeFrame(DecodeFrame* frame) {
 void ImageHandlerImpl::OnEndFrame() {
   std::shared_ptr<FrameInfo> data = CreateFrameInfo(true);
   if (!data) {
-    LOGW(SOURCE) << "[ImageHandlerImpl] OnEndFrame function, failed to create FrameInfo.";
+    LOGW(SOURCE) << "[" << stream_id_ << "]: ImageHandlerImpl OnEndFrame failed to create FrameInfo.";
     return;
   }
   SendFrameInfo(data);
-  LOGI(SOURCE) << "[ImageHandlerImpl] OnEndFrame function, send end frame.";
+  LOGI(SOURCE) << "[" << stream_id_ << "]: ImageHandlerImpl OnEndFrame send end frame.";
 }
 
 

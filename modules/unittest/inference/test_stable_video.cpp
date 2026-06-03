@@ -92,7 +92,7 @@ TEST_F(StableVideo, Run) {
   auto inference_module = pipeline_->GetModule(inference_module_name);
   EXPECT_NE(inference_module, nullptr);
 
-  std::this_thread::sleep_for(std::chrono::seconds(30));
+  std::this_thread::sleep_for(std::chrono::seconds(90));
 
   auto profiler = inference_module->GetProfiler();
   if (profiler) {
@@ -102,7 +102,7 @@ TEST_F(StableVideo, Run) {
     LOGI(T_STABLE) << "Module Profile: " << module_profile;
   }
 
-  std::this_thread::sleep_for(std::chrono::seconds(180));
+  std::this_thread::sleep_for(std::chrono::seconds(90));
   if (!force_exit) {
     pipeline_->Stop();
   } else {

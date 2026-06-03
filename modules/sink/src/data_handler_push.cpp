@@ -88,7 +88,7 @@ int PushHandlerImpl::Process(const std::shared_ptr<FrameInfo> data) {
     return -1;
   }
 
-  SaveOriginalImage(data);
+  SaveOriFrame(data);
 
   if (mark_render_ && data->collection.HasValue(cnstream::kInferObjsTag)) {
     if (!render_) {
@@ -274,7 +274,7 @@ void PushHandlerImpl::EnsureSwsContext(AVPixelFormat src_pix_fmt, int src_width,
   sws_src_height_ = src_height;
 }
 
-bool PushHandlerImpl::SendFrameCpuFallback(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts) {
+bool PushHandlerImpl::SendFrameFb(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts) {
   auto src_data = static_cast<const uint8_t*>(frame->data_[0]->GetCpuData());
   int src_stride = frame->GetStride(0);
 
@@ -406,7 +406,7 @@ void PushHandlerImpl::ClearStream() {
   }
   if (pkt) av_packet_free(&pkt);
   if (ctx_.header_written) {
-      av_write_trailer(ctx_.fmt_ctx);
+    av_write_trailer(ctx_.fmt_ctx);
   }
   CleanDeviceCtx();
   if (ctx_.sws_frame) av_frame_free(&ctx_.sws_frame);

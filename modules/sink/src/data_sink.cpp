@@ -71,7 +71,7 @@ bool DataSink::LoadStreamConf(const std::string& config_file_path) {
       const std::string& stream_id = it.key();
       const nlohmann::json& stream_value = it.value();
       if (!stream_value.is_object()) {
-        LOGW(SINK) << "LoadStreamConf: stream [" << stream_id << "] value is not an object, skip";
+        LOGW(SINK) << "[" << stream_id << "] LoadStreamConf: stream value is not an object";
         continue;
       }
       ModuleParamSet params;

@@ -38,13 +38,13 @@ int PullHandlerImplCUDA::init_hwdevice_conf() {
   for (int i = 0;; i++) {
     const AVCodecHWConfig *config = avcodec_get_hw_config(codec_, i);
     if (!config) {
-      LOGE(SOURCE) << "Decoder " << codec_->name << " does not support device type "
+      LOGE(SOURCE) << "[" << stream_id_ << "]: " << codec_->name << " does not support device type "
                    << av_hwdevice_get_type_name(device_type_);
       return -1;
     }
     if (config->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX && config->device_type == device_type_) {
       if (config->pix_fmt != AV_PIX_FMT_CUDA) {
-        LOGE(SOURCE) << "Decoder " << codec_->name << " AV_PIX_FMT_CUDA pix_fmt not supported";
+        LOGE(SOURCE) << "[" << stream_id_ << "]: " << codec_->name << " AV_PIX_FMT_CUDA pix_fmt not supported";
         return -1;
       }
       hw_pix_fmt = config->pix_fmt;
@@ -57,12 +57,12 @@ int PullHandlerImplCUDA::init_hwdevice_conf() {
 int PullHandlerImplCUDA::hw_decoder_init() {
   int err = 0;
   if (device_id_ < 0) {
-    LOGE(SOURCE) << "Invalid device ID";
+    LOGE(SOURCE) << "[" << stream_id_ << "]: Invalid device ID";
     return -1;
   }
   std::string device_str = std::to_string(device_id_);
   if ((err = av_hwdevice_ctx_create(&hw_device_ctx_, device_type_, device_str.c_str(), NULL, 0)) < 0) {
-    LOGE(SOURCE) << "Failed to create specified HW device: " << err;
+    LOGE(SOURCE) << "[" << stream_id_ << "]: Failed to create specified HW device: " << err;
     return err;
   }
   this->codec_ctx_->hw_device_ctx = av_buffer_ref(hw_device_ctx_);
@@ -83,28 +83,27 @@ int PullHandlerImplCUDA::codec_init() {
 
   auto it = codeid_name_table.find(video_stream->codecpar->codec_id);
   if (it == codeid_name_table.end()) {
-    LOGE(SOURCE) << "Codec name not found, fallback to CPU decode";
-    this->codec_ = const_cast<AVCodec*>(avcodec_find_decoder(video_stream->codecpar->codec_id));
-  } else {
-    this->codec_ = const_cast<AVCodec*>(avcodec_find_decoder_by_name(it->second.c_str()));
+    LOGE(SOURCE) << "[" << stream_id_ << "]: Codec name not found, fallback to CPU decode";
+    return -1;
   }
-  if (!this->codec_) {
-    LOGE(SOURCE) << "Codec not found";
+  codec_ = const_cast<AVCodec*>(avcodec_find_decoder_by_name(it->second.c_str()));
+  if (!codec_) {
+    LOGE(SOURCE) << "[" << stream_id_ << "]: Codec not found";
     return -1;
   }
   if ((ret = init_hwdevice_conf()) != 0) {
-    LOGE(SOURCE) << "init_hwdevice_conf error";
+    LOGE(SOURCE) << "[" << stream_id_ << "]: init_hwdevice_conf error";
     return ret;
   }
 
   codec_ctx_ = avcodec_alloc_context3(codec_);
   if (!codec_ctx_) {
-    LOGE(SOURCE) << "avcodec_alloc_context error";
+    LOGE(SOURCE) << "[" << stream_id_ << "]: avcodec_alloc_context error";
     return -1;
   }
 
   if ((ret = avcodec_parameters_to_context(codec_ctx_, video_stream->codecpar)) < 0) {
-    LOGE(SOURCE) << "avcodec_parameters_to_context error: " << ret;
+    LOGE(SOURCE) << "[" << stream_id_ << "]: avcodec_parameters_to_context error: " << ret;
     return ret;
   }
 
@@ -112,12 +111,12 @@ int PullHandlerImplCUDA::codec_init() {
 
   codec_ctx_->get_format = get_hw_format;
   if ((ret = hw_decoder_init()) < 0) {
-    LOGE(SOURCE) << "hw_decoder_init error";
+    LOGE(SOURCE) << "[" << stream_id_ << "]: hw_decoder_init error";
     return ret;
   }
 
   if ((ret = avcodec_open2(codec_ctx_, codec_, NULL)) < 0) {
-    LOGE(SOURCE) << "Failed to open codec: " << ret;
+    LOGE(SOURCE) << "[" << stream_id_ << "]: Failed to open codec: " << ret;
     return ret;
   }
 
@@ -147,7 +146,7 @@ int PullHandlerImplCUDA::decode_write() {
   while ((ret = avcodec_send_packet(codec_ctx_, &pkt_)) == AVERROR(EAGAIN)) {
     AVFrame* drain_frame = av_frame_alloc();
     if (!drain_frame) {
-      LOGE(SOURCE) << "av_frame_alloc alloc drain_frame failed";
+      LOGE(SOURCE) << "[" << stream_id_ << "]: av_frame_alloc alloc drain_frame failed";
       return -1;
     }
     ret = avcodec_receive_frame(codec_ctx_, drain_frame);
@@ -172,26 +171,26 @@ int PullHandlerImplCUDA::decode_write() {
       break;
     }
     if (ret < 0) {
-      LOGE(SOURCE) << "avcodec_receive_frame error during drain: " << ret;
+      LOGE(SOURCE) << "[" << stream_id_ << "]: avcodec_receive_frame error during drain: " << ret;
       return ret;
     }
   }
 
   if (ret < 0) {
-    LOGE(SOURCE) << "avcodec_send_packet error: " << ret;
+    LOGE(SOURCE) << "[" << stream_id_ << "]: avcodec_send_packet error: " << ret;
     return ret;
   }
 
   while (running_.load()) {
     if (!(p_frame = av_frame_alloc())) {
-      LOGE(SOURCE) << "av_frame_alloc error";
+      LOGE(SOURCE) << "[" << stream_id_ << "]: av_frame_alloc error";
       ret = -1;
       break;
     }
 
     if (output_type_ == OutputType::OUTPUT_CPU) {
       if (!(sw_frame = av_frame_alloc())) {
-        LOGE(SOURCE) << "av_frame_alloc alloc sw_frame failed";
+        LOGE(SOURCE) << "[" << stream_id_ << "]: av_frame_alloc alloc sw_frame failed";
         av_frame_free(&p_frame);
         ret = -1;
         break;
@@ -204,7 +203,7 @@ int PullHandlerImplCUDA::decode_write() {
       av_frame_free(&sw_frame);
       return 0;
     } else if (ret < 0) {
-      LOGE(SOURCE) << "Error during decoding: " << ret;
+      LOGE(SOURCE) << "[" << stream_id_ << "]: Error during decoding: " << ret;
       break;
     }
 
@@ -215,7 +214,7 @@ int PullHandlerImplCUDA::decode_write() {
     } else if (output_type_ == OutputType::OUTPUT_CUDA) {
       data = ProcessFrameCUDA(p_frame, ret);
     } else {
-      LOGF(SOURCE) << "unsupported output type: " << static_cast<int>(output_type_);
+      LOGF(SOURCE) << "[" << stream_id_ << "]: Unsupported output type: " << static_cast<int>(output_type_);
       ret = -1;
       break;
     }
@@ -247,46 +246,45 @@ int PullHandlerImplCUDA::decode_write() {
  */
 std::shared_ptr<FrameInfo> PullHandlerImplCUDA::ProcessFrameCPU(AVFrame *p_frame, AVFrame *sw_frame, int &ret) {
   if (!p_frame) {
-    LOGE(SOURCE) << "p_frame is null";
+    LOGE(SOURCE) << "[" << stream_id_ << "]: p_frame is null";
     return nullptr;
   }
   if (p_frame->format == hw_pix_fmt) {
     if ((ret = av_hwframe_transfer_data(sw_frame, p_frame, 0)) < 0) {
-      LOGE(SOURCE) << "Error transferring the data to system memory: " << ret;
+      LOGE(SOURCE) << "[" << stream_id_ << "]: Error transferring the data: " << ret;
       return nullptr;
     }
-    s_frame_ = sw_frame;
   } else {
-    LOGE(SOURCE) << "p_frame format not supported: " << p_frame->format;
+    LOGE(SOURCE) << "[" << stream_id_ << "]: p_frame format not supported: " << p_frame->format;
     return nullptr;
   }
 
-  if (!s_frame_) {
-    LOGE(SOURCE) << "s_frame_ is null";
+  if (!sw_frame) {
+    LOGE(SOURCE) << "[" << stream_id_ << "]: sw_frame is null";
     return nullptr;
   }
 
   DataFormat nv_fmt = DataFormat::INVALID;
-  if (s_frame_->format == AV_PIX_FMT_NV12) {
+  if (sw_frame->format == AV_PIX_FMT_NV12) {
     nv_fmt = DataFormat::PIXEL_FORMAT_YUV420_NV12;
-  } else if (s_frame_->format == AV_PIX_FMT_NV21) {
+  } else if (sw_frame->format == AV_PIX_FMT_NV21) {
     nv_fmt = DataFormat::PIXEL_FORMAT_YUV420_NV21;
   } else {
-    LOGE(SOURCE) << "s_frame_ format not supported: " << s_frame_->format;
+    LOGE(SOURCE) << "[" << stream_id_ << "]: sw_frame format not supported: " << sw_frame->format;
     ret = -1;
     return nullptr;
   }
 
-  DecodeFrame frame(s_frame_->height, s_frame_->width, nv_fmt);
+  DecodeFrame frame(sw_frame->height, sw_frame->width, nv_fmt);
   frame.device_type = DevType::CPU;
   frame.device_id = -1;
   frame.planeNum = 2;
-  frame.pts = s_frame_->pts;
+  frame.pts = sw_frame->pts;
 
-  int width = s_frame_->width;
-  int height = s_frame_->height;
-  int src_y_stride = s_frame_->linesize[0];
-  int src_uv_stride = s_frame_->linesize[1];
+  int width = sw_frame->width;
+  int height = sw_frame->height;
+  int src_y_stride = sw_frame->linesize[0];
+  int src_uv_stride = sw_frame->linesize[1];
   size_t y_size = static_cast<size_t>(width) * height;
   size_t uv_size = static_cast<size_t>(width) * height / 2;
 
@@ -301,10 +299,10 @@ std::shared_ptr<FrameInfo> PullHandlerImplCUDA::ProcessFrameCPU(AVFrame *p_frame
   }
 
   for (int i = 0; i < height; ++i) {
-    memcpy(y_buffer + i * width, s_frame_->data[0] + i * src_y_stride, width);
+    memcpy(y_buffer + i * width, sw_frame->data[0] + i * src_y_stride, width);
   }
   for (int i = 0; i < height / 2; ++i) {
-    memcpy(uv_buffer + i * width, s_frame_->data[1] + i * src_uv_stride, width);
+    memcpy(uv_buffer + i * width, sw_frame->data[1] + i * src_uv_stride, width);
   }
 
   frame.plane[0] = y_buffer;
@@ -318,11 +316,11 @@ std::shared_ptr<FrameInfo> PullHandlerImplCUDA::ProcessFrameCPU(AVFrame *p_frame
 
 std::shared_ptr<FrameInfo> PullHandlerImplCUDA::ProcessFrameCUDA(AVFrame *p_frame, int &ret) {
   if (!p_frame) {
-    LOGE(SOURCE) << "p_frame is null";
+    LOGE(SOURCE) << "[" << stream_id_ << "]: p_frame is null";
     return nullptr;
   }
   if (p_frame->format != AV_PIX_FMT_CUDA) {
-    LOGE(SOURCE) << "p_frame format not supported: " << p_frame->format;
+    LOGE(SOURCE) << "[" << stream_id_ << "]: p_frame format not supported: " << p_frame->format;
     ret = -1;
     return nullptr;
   }

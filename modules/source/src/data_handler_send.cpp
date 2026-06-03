@@ -202,11 +202,11 @@ std::shared_ptr<FrameInfo> SendHandlerImpl::OnDecodeFrame(DecodeFrame* frame) {
 void SendHandlerImpl::OnEndFrame() {
   std::shared_ptr<FrameInfo> data = this->CreateFrameInfo(true);
   if (!data) {
-    LOGW(SOURCE) << "[SendHandlerImpl] OnEndFrame function, failed to create FrameInfo.";
+    LOGW(SOURCE) << "[" << stream_id_ << "]: SendHandlerImpl OnEndFrame function, failed to create FrameInfo.";
     return;
   }
   SendFrameInfo(data);
-  LOGI(SOURCE) << "[SendHandlerImpl] OnEndFrame function, send end frame.";
+  LOGI(SOURCE) << "[" << stream_id_ << "]: [SendHandlerImpl] OnEndFrame function, send end frame.";
 }
 
 }  // namespace cnstream

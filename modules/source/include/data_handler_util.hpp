@@ -22,7 +22,7 @@ class SourceRender {
   std::shared_ptr<FrameInfo> CreateFrameInfo(bool eos = false) {
     std::shared_ptr<FrameInfo> data;
     if (handler_ == nullptr) {
-      LOGF(SOURCE) << "CreateFrameInfo: handler_ is nullptr";
+      LOGF(SOURCE) << "[" << handler_->GetStreamId() << "]: CreateFrameInfo: handler_ is nullptr";
       return nullptr;
     }
     while (true) {

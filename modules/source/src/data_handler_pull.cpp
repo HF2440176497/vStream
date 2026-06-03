@@ -16,19 +16,49 @@ extern "C" {
 
 namespace cnstream {
 
+static DecoderType ResolveDecoderType(DataSource *module, const std::string &stream_id) {
+#ifdef VSTREAM_USE_CUDA
+  DecoderType fallback = DecoderType::DECODER_CUDA;
+#else
+  DecoderType fallback = DecoderType::DECODER_CPU;
+#endif
+
+  if (!module) return fallback;
+
+  ModuleParamSet module_params = module->GetSourceParam().param_set_;
+  ModuleParamSet stream_params = module->GetStreamParams(stream_id);
+  const ModuleParamSet* candidates = !stream_params.empty() ? &stream_params : &module_params;
+
+  auto it = candidates->find(key_decoder_type);
+  if (it == candidates->end()) return fallback;
+  auto mit = param_decoder_map.find(it->second);
+  if (mit == param_decoder_map.end()) {
+    LOGW(SOURCE) << "[" << stream_id << "]: unknown decoder_type '" << it->second
+                 << "', fallback to default";
+    return fallback;
+  }
+  return mit->second;
+}
+
 std::shared_ptr<SourceHandler> PullHandler::Create(DataSource *module, const std::string &stream_id) {
   if (!module) {
     LOGE(SOURCE) << "[" << stream_id << "]: module_ null";
     return nullptr;
   }
-  return std::shared_ptr<PullHandler>(new PullHandler(module, stream_id));
+  DecoderType decoder_type = ResolveDecoderType(module, stream_id);
+  return std::shared_ptr<PullHandler>(new PullHandler(module, stream_id, decoder_type));
 }
 
-PullHandler::PullHandler(DataSource *module, const std::string &stream_id)
+PullHandler::PullHandler(DataSource *module, const std::string &stream_id, DecoderType decoder_type)
     : SourceHandler(module, stream_id) {
 #ifdef VSTREAM_USE_CUDA
-  impl_ = new PullHandlerImplCUDA(module, this);
+  if (decoder_type == DecoderType::DECODER_CUDA) {
+    impl_ = new PullHandlerImplCUDA(module, this);
+  } else {
+    impl_ = new PullHandlerImplCPU(module, this);
+  }
 #else
+  (void)decoder_type;
   impl_ = new PullHandlerImplCPU(module, this);
 #endif
 }
@@ -83,7 +113,7 @@ bool PullHandler::CheckHandlerParams(const ModuleParamSet& params) {
     }
   }
   if (check_params->find(key_input_url) == check_params->end()) {
-    LOGE(SOURCE) << "[PullHandler] stream_url is required";
+    LOGE(SOURCE) << "[" << stream_id_ << "]: stream_url is required";
     return false;
   }
   return true;
@@ -114,13 +144,13 @@ int PullHandlerImpl::input_format_init() {
   int ret = 0;
   ret = avformat_network_init();
   if (ret != 0) {
-    LOGE(SOURCE) << "avformat_network_init failed: " << ret;
+    LOGE(SOURCE) << "[" << stream_id_ << "]: avformat_network_init failed: " << ret;
     return ret;
   }
 
   ifmt_ctx_ = avformat_alloc_context();
   if (!ifmt_ctx_) {
-    LOGE(SOURCE) << "avformat_alloc_context error";
+    LOGE(SOURCE) << "[" << stream_id_ << "]: avformat_alloc_context error";
     return -1;
   }
   ifmt_ctx_->interrupt_callback.callback = interrupt_cb;
@@ -135,13 +165,13 @@ int PullHandlerImpl::input_format_init() {
   ret = avformat_open_input(&ifmt_ctx_, stream_url_.c_str(), NULL, &opts);
   av_dict_free(&opts);
   if (ret != 0) {
-    LOGE(SOURCE) << "avformat_open_input error: " << ret;
+    LOGE(SOURCE) << "[" << stream_id_ << "]: avformat_open_input error: " << ret;
     return ret;
   }
   // ifmt_ctx_->max_analyze_duration = 20 * AV_TIME_BASE;
   ret = avformat_find_stream_info(ifmt_ctx_, nullptr);
   if (ret < 0) {
-    LOGE(SOURCE) << "avformat_find_stream_info error: " << ret;
+    LOGE(SOURCE) << "[" << stream_id_ << "]: avformat_find_stream_info error: " << ret;
     return ret;
   }
 
@@ -154,7 +184,7 @@ int PullHandlerImpl::input_format_init() {
   }
 
   if (video_index_ < 0) {
-    LOGE(SOURCE) << "Failed to find video stream";
+    LOGE(SOURCE) << "[" << stream_id_ << "]: Failed to find video stream";
     return -1;
   }
 
@@ -162,11 +192,7 @@ int PullHandlerImpl::input_format_init() {
 }
 
 void PullHandlerImpl::clean_up() {
-  av_frame_free(&s_frame_);
-  if (sws_ctx_) {
-    sws_freeContext(sws_ctx_);
-    sws_ctx_ = nullptr;
-  }
+  av_packet_unref(&pkt_);
   if (codec_ctx_) {
     avcodec_free_context(&codec_ctx_);
     codec_ctx_ = nullptr;
@@ -184,7 +210,7 @@ void PullHandlerImpl::clean_up() {
 
 bool PullHandlerImpl::Open() {
   if (!module_) {
-    LOGE(SOURCE) << "Video: module_ is null";
+    LOGE(SOURCE) << "[" << stream_id_ << "]: module_ is null";
     return false;
   }
   if (param_set_.find(key_device_id) != param_set_.end()) {
@@ -200,12 +226,12 @@ bool PullHandlerImpl::Open() {
   if (param_set_.find(key_interval) != param_set_.end()) {
     interval_ = std::stoi(param_set_.at(key_interval));
   }
-  LOGI(SOURCE) << "Video: device_id=" << device_id_
+  LOGI(SOURCE) << "[" << stream_id_ << "]: device_id=" << device_id_
                << ", output=" << static_cast<int>(output_type_);
 
   stream_url_ = param_set_.at(key_input_url);
   if (stream_url_.empty()) {
-    LOGE(SOURCE) << "Video: url is empty";
+    LOGE(SOURCE) << "[" << stream_id_ << "]: url is empty";
     return false;
   }
   if (param_set_.find(key_frame_rate) != param_set_.end()) {
@@ -235,21 +261,21 @@ void PullHandlerImpl::Close() {
 
 void PullHandlerImpl::Loop() {
   if (!SupportHWDevice()) {
-    LOGE(SOURCE) << "Video: hardware device not supported";
+    LOGE(SOURCE) << "[" << stream_id_ << "]: hardware device not supported";
     OnEndFrame();
     running_.store(false);
     return;
   }
 
   if (input_format_init() < 0) {
-    LOGE(SOURCE) << "input_format_init failed";
+    LOGE(SOURCE) << "[" << stream_id_ << "]: input_format_init failed";
     OnEndFrame();
     running_.store(false);
     return;
   }
 
   if (codec_init() < 0) {
-    LOGE(SOURCE) << "codec_init failed";
+    LOGE(SOURCE) << "[" << stream_id_ << "]: codec_init failed";
     OnEndFrame();
     running_.store(false);
     return;
@@ -261,7 +287,7 @@ void PullHandlerImpl::Loop() {
   while (running_.load()) {
     int ret = av_read_frame(ifmt_ctx_, &pkt_);
     if (ret < 0) {
-      LOGE(SOURCE) << "av_read_frame error";
+      LOGE(SOURCE) << "[" << stream_id_ << "]: av_read_frame failed: " << ret;
       break;
     }
     if (pkt_.stream_index != video_index_) {
@@ -270,7 +296,7 @@ void PullHandlerImpl::Loop() {
     }
     ret = decode_write();
     if (ret < 0) {
-      LOGE(SOURCE) << "decode_write error";
+      LOGE(SOURCE) << "[" << stream_id_ << "]: decode_write failed: " << ret;
       break;
     }
     av_packet_unref(&pkt_);
@@ -283,12 +309,12 @@ void PullHandlerImpl::Loop() {
 
 std::shared_ptr<FrameInfo> PullHandlerImpl::OnDecodeFrame(DecodeFrame* frame) {
   if (!frame) {
-    LOGE(SOURCE) << "OnDecodeFrame: frame is null";
+    LOGE(SOURCE) << "[" << stream_id_ << "]: OnDecodeFrame: frame is null";
     return nullptr;
   }
   std::shared_ptr<FrameInfo> data = this->CreateFrameInfo();
   if (!data) {
-    LOGE(SOURCE) << "OnDecodeFrame: failed to create FrameInfo.";
+    LOGE(SOURCE) << "[" << stream_id_ << "]: OnDecodeFrame: failed to create FrameInfo.";
     return nullptr;
   }
   data->timestamp = frame->pts;
@@ -299,7 +325,7 @@ std::shared_ptr<FrameInfo> PullHandlerImpl::OnDecodeFrame(DecodeFrame* frame) {
   }
   int ret = SourceRender::Process(data, frame, frame_id_++, src_stream_);
   if (ret < 0) {
-    LOGE(SOURCE) << "OnDecodeFrame: failed to setup data frame.";
+    LOGE(SOURCE) << "[" << stream_id_ << "]: OnDecodeFrame: failed to setup data frame.";
     return nullptr;
   }
   return data;
@@ -308,11 +334,11 @@ std::shared_ptr<FrameInfo> PullHandlerImpl::OnDecodeFrame(DecodeFrame* frame) {
 void PullHandlerImpl::OnEndFrame() {
   std::shared_ptr<FrameInfo> data = this->CreateFrameInfo(true);
   if (!data) {
-    LOGE(SOURCE) << "OnEndFrame: failed to create FrameInfo.";
+    LOGE(SOURCE) << "[" << stream_id_ << "]: OnEndFrame: failed to create FrameInfo.";
     return;
   }
   SendFrameInfo(data);
-  LOGI(SOURCE) << "OnEndFrame: send end frame.";
+  LOGI(SOURCE) << "[" << stream_id_ << "]: OnEndFrame: send end frame.";
 }
 
 int PullHandlerImplCPU::codec_init() {
@@ -321,7 +347,7 @@ int PullHandlerImplCPU::codec_init() {
 
   codec_ = const_cast<AVCodec*>(avcodec_find_decoder(video_stream->codecpar->codec_id));
   if (!codec_) {
-    LOGE(SOURCE) << "Codec not found";
+    LOGE(SOURCE) << "[" << stream_id_ << "]: Codec not found";
     return -1;
   }
 
@@ -339,7 +365,7 @@ int PullHandlerImplCPU::codec_init() {
   codec_ctx_->pkt_timebase = video_stream->time_base;
 
   if ((ret = avcodec_open2(codec_ctx_, codec_, NULL)) < 0) {
-    LOGE(SOURCE) << "Failed to open codec: " << ret;
+    LOGE(SOURCE) << "[" << stream_id_ << "]: Failed to open codec: " << ret;
     return ret;
   }
   return 0;
@@ -352,7 +378,7 @@ int PullHandlerImplCPU::decode_write() {
   while ((ret = avcodec_send_packet(codec_ctx_, &pkt_)) == AVERROR(EAGAIN)) {
     AVFrame* drain_frame = av_frame_alloc();
     if (!drain_frame) {
-      LOGE(SOURCE) << "av_frame_alloc alloc drain_frame failed";
+      LOGE(SOURCE) << "[" << stream_id_ << "]: av_frame_alloc alloc drain_frame failed";
       return -1;
     }
     ret = avcodec_receive_frame(codec_ctx_, drain_frame);
@@ -369,19 +395,19 @@ int PullHandlerImplCPU::decode_write() {
       break;
     }
     if (ret < 0) {
-      LOGE(SOURCE) << "avcodec_receive_frame error during drain: " << ret;
+      LOGE(SOURCE) << "[" << stream_id_ << "]: avcodec_receive_frame error during drain: " << ret;
       return ret;
     }
   }
 
   if (ret < 0) {
-    LOGE(SOURCE) << "avcodec_send_packet error: " << ret;
+    LOGE(SOURCE) << "[" << stream_id_ << "]: avcodec_send_packet error: " << ret;
     return ret;
   }
 
   while (running_.load()) {
     if (!(p_frame = av_frame_alloc())) {
-      LOGE(SOURCE) << "av_frame_alloc error";
+      LOGE(SOURCE) << "[" << stream_id_ << "]: av_frame_alloc error";
       ret = -1;
       break;
     }
@@ -391,7 +417,7 @@ int PullHandlerImplCPU::decode_write() {
       av_frame_free(&p_frame);
       return 0;
     } else if (ret < 0) {
-      LOGE(SOURCE) << "Error during decoding: " << ret;
+      LOGE(SOURCE) << "[" << stream_id_ << "]: Error error during decoding: " << ret;
       break;
     }
 
@@ -418,33 +444,31 @@ int PullHandlerImplCPU::decode_write() {
 }
 
 std::shared_ptr<FrameInfo> PullHandlerImplCPU::ProcessFrame(AVFrame *p_frame, int &ret) {
-  s_frame_ = p_frame;
-
-  if (!s_frame_) {
-    LOGE(SOURCE) << "Video: s_frame_ is null";
+  if (!p_frame) {
+    LOGE(SOURCE) << "ProcessFrame: p_frame is null";
     return nullptr;
   }
 
   DataFormat nv_fmt = DataFormat::INVALID;
-  if (s_frame_->format == AV_PIX_FMT_NV12) {
+  if (p_frame->format == AV_PIX_FMT_NV12) {
     nv_fmt = DataFormat::PIXEL_FORMAT_YUV420_NV12;
-  } else if (s_frame_->format == AV_PIX_FMT_NV21) {
+  } else if (p_frame->format == AV_PIX_FMT_NV21) {
     nv_fmt = DataFormat::PIXEL_FORMAT_YUV420_NV21;
   } else {
-    LOGE(SOURCE) << "Video: s_frame_ format not supported: " << s_frame_->format;
+    LOGE(SOURCE) << "ProcessFrame: p_frame format not supported: " << p_frame->format;
     ret = -1;
     return nullptr;
   }
 
-  DecodeFrame frame(s_frame_->height, s_frame_->width, nv_fmt);
+  DecodeFrame frame(p_frame->height, p_frame->width, nv_fmt);
   frame.device_type = DevType::CPU;
   frame.planeNum = 2;
-  frame.pts = s_frame_->pts;
+  frame.pts = p_frame->pts;
 
-  int width = s_frame_->width;
-  int height = s_frame_->height;
-  int src_y_stride = s_frame_->linesize[0];
-  int src_uv_stride = s_frame_->linesize[1];
+  int width = p_frame->width;
+  int height = p_frame->height;
+  int src_y_stride = p_frame->linesize[0];
+  int src_uv_stride = p_frame->linesize[1];
   size_t y_size = static_cast<size_t>(width) * height;
   size_t uv_size = static_cast<size_t>(width) * height / 2;
 
@@ -459,10 +483,10 @@ std::shared_ptr<FrameInfo> PullHandlerImplCPU::ProcessFrame(AVFrame *p_frame, in
   }
 
   for (int i = 0; i < height; ++i) {
-    memcpy(y_buffer + i * width, s_frame_->data[0] + i * src_y_stride, width);
+    memcpy(y_buffer + i * width, p_frame->data[0] + i * src_y_stride, width);
   }
   for (int i = 0; i < height / 2; ++i) {
-    memcpy(uv_buffer + i * width, s_frame_->data[1] + i * src_uv_stride, width);
+    memcpy(uv_buffer + i * width, p_frame->data[1] + i * src_uv_stride, width);
   }
 
   frame.plane[0] = y_buffer;

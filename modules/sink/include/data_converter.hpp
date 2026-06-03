@@ -50,7 +50,7 @@ inline s_obj_in ConvertInferObject(const std::shared_ptr<InferObject>& src) {
  * 通过 DataFrame::GetImage() 获取 deep copy，确保原图独立于后续修改。
  * PushHandler 和 QueueHandler 均需在 Process 入口处调用。
  */
-inline void SaveOriginalImage(const std::shared_ptr<FrameInfo>& frame_info) {
+inline void SaveOriFrame(const std::shared_ptr<FrameInfo>& frame_info) {
   if (!frame_info->collection.HasValue(kDataFrameTag)) return;
   auto frame = frame_info->collection.Get<DataFramePtr>(kDataFrameTag);
   if (!frame) return;

@@ -226,6 +226,7 @@ inline const std::unordered_map<std::string, DecoderType> param_decoder_map = {
 inline const std::string key_device_id = "device_id";
 inline const std::string key_interval = "interval";
 inline const std::string key_output_type = "output_type";
+inline const std::string key_decoder_type = "decoder_type";
 inline const std::string key_only_key_frame = "only_key_frame";
 
 inline const std::string key_source_config_file = "config_file";
