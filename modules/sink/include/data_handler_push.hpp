@@ -77,13 +77,13 @@ struct EncoderTask {
 
 static constexpr uint32_t kEncodeQueueSize = 20;
 
-class PushHandlerImpl {
+class PushHandlerIm {
   friend class PushHandler;
 
  public:
-  explicit PushHandlerImpl(DataSink *module, SinkHandler *handler)
+  explicit PushHandlerIm(DataSink *module, SinkHandler *handler)
       : module_(module), stream_id_(handler->GetStreamId()) {}
-  virtual ~PushHandlerImpl() { Close(); }
+  virtual ~PushHandlerIm() { Close(); }
 
   static std::optional<int> GetIntParam(const ModuleParamSet& m, const std::string& key) {
     auto it = m.find(key);
@@ -164,9 +164,9 @@ class PushHandlerImpl {
   std::thread encode_thread_;
 };
 
-class PushHandlerImplCPU : public PushHandlerImpl {
+class PushHandlerImCPU : public PushHandlerIm {
  public:
-  using PushHandlerImpl::PushHandlerImpl;
+  using PushHandlerIm::PushHandlerIm;
 
  protected:
   bool SendDataFrame(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts) override;

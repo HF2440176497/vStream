@@ -7,8 +7,8 @@
 
 namespace cnstream {
 
-bool PushHandlerImpl::Open() {
-  LOGI(SINK) << "[" << stream_id_ << "]: PushHandlerImpl Open";
+bool PushHandlerIm::Open() {
+  LOGI(SINK) << "[" << stream_id_ << "]: PushHandlerIm Open";
 
   if (param_set_.find(key_output_url) == param_set_.end()) {
     LOGE(SINK) << "[" << stream_id_ << "]: output_url not set";
@@ -30,12 +30,12 @@ bool PushHandlerImpl::Open() {
   }
 
   running_.store(true);
-  encode_thread_ = std::thread(&PushHandlerImpl::EncodeWorkerLoop, this);
+  encode_thread_ = std::thread(&PushHandlerIm::EncodeWorkerLoop, this);
   return true;
 }
 
-void PushHandlerImpl::Stop() {
-  LOGI(SINK) << "[" << stream_id_ << "]: PushHandlerImpl Stop";
+void PushHandlerIm::Stop() {
+  LOGI(SINK) << "[" << stream_id_ << "]: PushHandlerIm Stop";
   running_.store(false);
   encode_queue_.Stop();
   if (encode_thread_.joinable()) {
@@ -43,8 +43,8 @@ void PushHandlerImpl::Stop() {
   }
 }
 
-void PushHandlerImpl::Close() {
-  LOGI(SINK) << "[" << stream_id_ << "]: PushHandlerImpl Close";
+void PushHandlerIm::Close() {
+  LOGI(SINK) << "[" << stream_id_ << "]: PushHandlerIm Close";
   EncoderTask eos;
   eos.is_eos = true;
   encode_queue_.Push(eos);
@@ -56,7 +56,7 @@ void PushHandlerImpl::Close() {
   ClearStream();
 }
 
-int PushHandlerImpl::Process(const std::shared_ptr<FrameInfo> data) {
+int PushHandlerIm::Process(const std::shared_ptr<FrameInfo> data) {
   if (!IsRunning()) {
     LOGW(SINK) << "[" << stream_id_ << "]: PushHandler not running, skip frame";
     return -1;
@@ -114,7 +114,7 @@ int PushHandlerImpl::Process(const std::shared_ptr<FrameInfo> data) {
   return 0;
 }
 
-bool PushHandlerImpl::InitStream() {
+bool PushHandlerIm::InitStream() {
   AVOutputFormat* fmt = const_cast<AVOutputFormat*>(
       av_guess_format(GetFormatFromUrl(output_url_).c_str(), nullptr, nullptr));
   if (!fmt) {
@@ -202,7 +202,7 @@ bool PushHandlerImpl::InitStream() {
   return true;
 }
 
-const AVCodec* PushHandlerImpl::FindEncoder() {
+const AVCodec* PushHandlerIm::FindEncoder() {
   if (!codec_name_.empty()) {
     return avcodec_find_encoder_by_name(codec_name_.c_str());
   }
@@ -213,14 +213,14 @@ const AVCodec* PushHandlerImpl::FindEncoder() {
 #endif
 }
 
-bool PushHandlerImpl::ReinitStream(int device_id) {
+bool PushHandlerIm::ReinitStream(int device_id) {
   std::lock_guard<std::recursive_mutex> lk(stream_mtx_);
   ClearStream();
   device_id_ = device_id;
   return InitStream();
 }
 
-bool PushHandlerImpl::InitSwsFrame() {
+bool PushHandlerIm::InitSwsFrame() {
   ctx_.sws_frame = av_frame_alloc();
   ctx_.sws_frame->format = kSwsPixFmt;
   ctx_.sws_frame->width  = width_;
@@ -233,7 +233,7 @@ bool PushHandlerImpl::InitSwsFrame() {
   return true;
 }
 
-bool PushHandlerImpl::SendFrame(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts) {
+bool PushHandlerIm::SendFrame(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts) {
   const int src_width  = frame->GetWidth();
   const int src_height = frame->GetHeight();
   EnsureSwsContext(src_pix_fmt, src_width, src_height);
@@ -259,7 +259,7 @@ bool PushHandlerImpl::SendFrame(const DataFramePtr& frame, AVPixelFormat src_pix
   return EncodeFrame(enc_frame);
 }
 
-void PushHandlerImpl::EnsureSwsContext(AVPixelFormat src_pix_fmt, int src_width, int src_height) {
+void PushHandlerIm::EnsureSwsContext(AVPixelFormat src_pix_fmt, int src_width, int src_height) {
   if (ctx_.sws_ctx && src_pix_fmt_ == src_pix_fmt
       && sws_src_width_ == src_width && sws_src_height_ == src_height) {
     return;
@@ -274,7 +274,7 @@ void PushHandlerImpl::EnsureSwsContext(AVPixelFormat src_pix_fmt, int src_width,
   sws_src_height_ = src_height;
 }
 
-bool PushHandlerImpl::SendFrameFb(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts) {
+bool PushHandlerIm::SendFrameFb(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts) {
   auto src_data = static_cast<const uint8_t*>(frame->data_[0]->GetCpuData());
   int src_stride = frame->GetStride(0);
 
@@ -295,7 +295,7 @@ bool PushHandlerImpl::SendFrameFb(const DataFramePtr& frame, AVPixelFormat src_p
   return EncodeFrame(enc_frame);
 }
 
-bool PushHandlerImpl::EncodeFrame(AVFrame* frame) {
+bool PushHandlerIm::EncodeFrame(AVFrame* frame) {
   int ret;
   while ((ret = avcodec_send_frame(ctx_.codec_ctx, frame)) == AVERROR(EAGAIN)) {
     if (!DrainPackets()) {
@@ -309,7 +309,7 @@ bool PushHandlerImpl::EncodeFrame(AVFrame* frame) {
   return DrainPackets();
 }
 
-bool PushHandlerImpl::DrainPackets() {
+bool PushHandlerIm::DrainPackets() {
   while (IsRunning()) {
     AVPacket* pkt = av_packet_alloc();
     int ret = avcodec_receive_packet(ctx_.codec_ctx, pkt);
@@ -339,7 +339,7 @@ bool PushHandlerImpl::DrainPackets() {
   return true;
 }
 
-bool PushHandlerImpl::FlushEncoder() {
+bool PushHandlerIm::FlushEncoder() {
   int ret = avcodec_send_frame(ctx_.codec_ctx, nullptr);
   if (ret < 0 && ret != AVERROR_EOF) {
     LOGE(SINK) << "[" << stream_id_ << "] FlushEncoder send_frame error: " << ret;
@@ -348,7 +348,7 @@ bool PushHandlerImpl::FlushEncoder() {
   return DrainPackets();
 }
 
-// void PushHandlerImpl::FlushEncoder() {
+// void PushHandlerIm::FlushEncoder() {
 //   std::lock_guard<std::recursive_mutex> lk(stream_mtx_);
 //   if (!ctx_.codec_ctx || !ctx_.stream) return;
 //   int ret = avcodec_send_frame(ctx_.codec_ctx, nullptr);
@@ -366,7 +366,7 @@ bool PushHandlerImpl::FlushEncoder() {
 //   av_packet_free(&pkt);
 // }
 
-void PushHandlerImpl::EncodeWorkerLoop() {
+void PushHandlerIm::EncodeWorkerLoop() {
   LOGI(SINK) << "[" << stream_id_ << "]: EncodeWorkerLoop started";
   EncoderTask task;
   while (IsRunning()) {
@@ -392,7 +392,7 @@ void PushHandlerImpl::EncodeWorkerLoop() {
   LOGI(SINK) << "[" << stream_id_ << "]: EncodeWorkerLoop exited";
 }
 
-void PushHandlerImpl::ClearStream() {
+void PushHandlerIm::ClearStream() {
   AVPacket* pkt = nullptr;
   std::lock_guard<std::recursive_mutex> lk(stream_mtx_);
   if (ctx_.codec_ctx && ctx_.stream) {
@@ -422,7 +422,7 @@ void PushHandlerImpl::ClearStream() {
   LOGI(SINK) << "[" << stream_id_ << "]: Stream clean done";
 }
 
-int64_t PushHandlerImpl::ComputePts() {
+int64_t PushHandlerIm::ComputePts() {
   auto now = std::chrono::steady_clock::now();
   auto elapsed_us = std::chrono::duration_cast<std::chrono::microseconds>(
       now - push_start_time_).count();
@@ -437,7 +437,7 @@ int64_t PushHandlerImpl::ComputePts() {
 }
 
 // 存在的问题：last_push_time_ 取 now 时，时间间隔可能不均匀
-// bool PushHandlerImpl::ControlFps() {
+// bool PushHandlerIm::ControlFps() {
 //   auto now = std::chrono::steady_clock::now();
 //   if (first_frame_) {
 //     push_start_time_ = now;
@@ -473,7 +473,7 @@ int64_t PushHandlerImpl::ComputePts() {
 //   return true;
 // }
 
-bool PushHandlerImpl::ControlFps() {
+bool PushHandlerIm::ControlFps() {
   auto now = std::chrono::steady_clock::now();
   if (first_frame_) {
       push_start_time_ = now;
@@ -504,7 +504,7 @@ bool PushHandlerImpl::ControlFps() {
   return true;
 }
 
-bool PushHandlerImplCPU::SendDataFrame(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts) {
+bool PushHandlerImCPU::SendDataFrame(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts) {
   auto dev_type = frame->GetCtx().device_type;
   if (dev_type == DevType::CPU) {
     return SendFrame(frame, src_pix_fmt, pts);
@@ -524,9 +524,9 @@ std::shared_ptr<SinkHandler> PushHandler::Create(DataSink *module, const std::st
 PushHandler::PushHandler(DataSink *module, const std::string &stream_id)
     : SinkHandler(module, stream_id) {
 #ifdef VSTREAM_USE_CUDA
-  impl_ = new PushHandlerImplCUDA(module, this);
+  impl_ = new PushHandlerImCUDA(module, this);
 #else
-  impl_ = new PushHandlerImplCPU(module, this);
+  impl_ = new PushHandlerImCPU(module, this);
 #endif
 }
 

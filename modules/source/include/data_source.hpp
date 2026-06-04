@@ -132,7 +132,7 @@ class ImageHandler : public SourceHandler {
   ImageHandlerImpl* impl_ = nullptr;
 };  // class ImageHandler
 
-class PullHandlerImpl;
+class PullHandlerIm;
 
 class PullHandler : public SourceHandler {
  public:
@@ -155,7 +155,7 @@ class PullHandler : public SourceHandler {
 #else
  private:
 #endif
-  PullHandlerImpl* impl_ = nullptr;
+  PullHandlerIm* impl_ = nullptr;
 };  // class PullHandler
 
 class SendHandlerImpl;

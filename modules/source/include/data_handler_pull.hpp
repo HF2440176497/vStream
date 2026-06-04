@@ -30,7 +30,7 @@ extern "C" {
 
 namespace cnstream {
 
-class PullHandlerImpl : public SourceRender {
+class PullHandlerIm : public SourceRender {
   friend class PullHandler;
   
  public:
@@ -52,9 +52,9 @@ class PullHandlerImpl : public SourceRender {
     void* uv_data_;
   };
 
-  explicit PullHandlerImpl(DataSource *module, SourceHandler *handler)
+  explicit PullHandlerIm(DataSource *module, SourceHandler *handler)
       : SourceRender(handler), module_(module), stream_id_(handler->GetStreamId()) {}
-  virtual ~PullHandlerImpl() = default;
+  virtual ~PullHandlerIm() = default;
 
   bool Open();
   void Close();
@@ -108,9 +108,9 @@ class PullHandlerImpl : public SourceRender {
   OutputType output_type_ = OutputType::OUTPUT_CPU;
 };
 
-class PullHandlerImplCPU : public PullHandlerImpl {
+class PullHandlerImCPU : public PullHandlerIm {
  public:
-  using PullHandlerImpl::PullHandlerImpl;
+  using PullHandlerIm::PullHandlerIm;
 
  protected:
   int codec_init() override;

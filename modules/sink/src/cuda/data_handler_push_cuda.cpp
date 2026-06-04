@@ -17,7 +17,7 @@
 
 namespace cnstream {
 
-bool PushHandlerImplCUDA::InitDeviceCtx() {
+bool PushHandlerImCUDA::InitDeviceCtx() {
   int ret = av_hwdevice_ctx_create(&ctx_.hw_device_ctx, AV_HWDEVICE_TYPE_CUDA,
                                    std::to_string(device_id_).c_str(), nullptr, 0);
   if (ret < 0) {
@@ -61,14 +61,14 @@ bool PushHandlerImplCUDA::InitDeviceCtx() {
   return true;
 }
 
-void PushHandlerImplCUDA::CleanDeviceCtx() {
+void PushHandlerImCUDA::CleanDeviceCtx() {
   if (ctx_.hw_frame)      { av_frame_free(&ctx_.hw_frame); }
   if (ctx_.hw_frames_ctx) { av_buffer_unref(&ctx_.hw_frames_ctx); }
   if (ctx_.hw_device_ctx) { av_buffer_unref(&ctx_.hw_device_ctx); }
   if (sink_stream_)       { CHECK_CUDA_RUNTIME(cudaStreamDestroy(sink_stream_)); sink_stream_ = nullptr; }
 }
 
-bool PushHandlerImplCUDA::SendDataFrame(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts) {
+bool PushHandlerImCUDA::SendDataFrame(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts) {
   auto dev_type = frame->GetCtx().device_type;
   if (dev_type == DevType::CUDA) {
     int actual_device = frame->GetCtx().device_id;
@@ -90,7 +90,7 @@ bool PushHandlerImplCUDA::SendDataFrame(const DataFramePtr& frame, AVPixelFormat
   }
 }
 
-bool PushHandlerImplCUDA::SendFrameCuda(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts) {
+bool PushHandlerImCUDA::SendFrameCuda(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts) {
   const int src_width  = frame->GetWidth();
   const int src_height = frame->GetHeight();
   const int src_stride = frame->GetStride(0);
@@ -149,7 +149,7 @@ bool PushHandlerImplCUDA::SendFrameCuda(const DataFramePtr& frame, AVPixelFormat
   return EncodeFrame(ctx_.hw_frame);
 }
 
-bool PushHandlerImplCUDA::SendFrameToCuda(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts) {
+bool PushHandlerImCUDA::SendFrameToCuda(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts) {
   if (!hw_ctx_initialized_.load()) {
     hw_ctx_initialized_.store(true);
   }

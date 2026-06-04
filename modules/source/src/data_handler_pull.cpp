@@ -53,13 +53,13 @@ PullHandler::PullHandler(DataSource *module, const std::string &stream_id, Decod
     : SourceHandler(module, stream_id) {
 #ifdef VSTREAM_USE_CUDA
   if (decoder_type == DecoderType::DECODER_CUDA) {
-    impl_ = new PullHandlerImplCUDA(module, this);
+    impl_ = new PullHandlerImCUDA(module, this);
   } else {
-    impl_ = new PullHandlerImplCPU(module, this);
+    impl_ = new PullHandlerImCPU(module, this);
   }
 #else
   (void)decoder_type;
-  impl_ = new PullHandlerImplCPU(module, this);
+  impl_ = new PullHandlerImCPU(module, this);
 #endif
 }
 
@@ -136,11 +136,11 @@ bool PullHandler::SetHandlerParams(const ModuleParamSet& params) {
 }
 
 static int interrupt_cb(void *ctx) {
-    auto *self = static_cast<PullHandlerImpl*>(ctx);
+    auto *self = static_cast<PullHandlerIm*>(ctx);
     return !self->IsRunning() ? 1 : 0;
 }
 
-int PullHandlerImpl::input_format_init() {
+int PullHandlerIm::input_format_init() {
   int ret = 0;
   ret = avformat_network_init();
   if (ret != 0) {
@@ -191,7 +191,7 @@ int PullHandlerImpl::input_format_init() {
   return 0;
 }
 
-void PullHandlerImpl::clean_up() {
+void PullHandlerIm::clean_up() {
   av_packet_unref(&pkt_);
   if (codec_ctx_) {
     avcodec_free_context(&codec_ctx_);
@@ -208,7 +208,7 @@ void PullHandlerImpl::clean_up() {
   avformat_network_deinit();
 }
 
-bool PullHandlerImpl::Open() {
+bool PullHandlerIm::Open() {
   if (!module_) {
     LOGE(SOURCE) << "[" << stream_id_ << "]: module_ is null";
     return false;
@@ -241,17 +241,17 @@ bool PullHandlerImpl::Open() {
   ConfigureOutputType();
 
   running_.store(true);
-  thread_ = std::thread(&PullHandlerImpl::Loop, this);
+  thread_ = std::thread(&PullHandlerIm::Loop, this);
   return true;
 }
 
-void PullHandlerImpl::Stop() {
+void PullHandlerIm::Stop() {
   if (running_.load()) {
     running_.store(false);
   }
 }
 
-void PullHandlerImpl::Close() {
+void PullHandlerIm::Close() {
   Stop();
   if (thread_.joinable()) {
     thread_.join();
@@ -259,7 +259,7 @@ void PullHandlerImpl::Close() {
   clean_up();
 }
 
-void PullHandlerImpl::Loop() {
+void PullHandlerIm::Loop() {
   if (!SupportHWDevice()) {
     LOGE(SOURCE) << "[" << stream_id_ << "]: hardware device not supported";
     OnEndFrame();
@@ -307,7 +307,7 @@ void PullHandlerImpl::Loop() {
   OnEndFrame();
 }
 
-std::shared_ptr<FrameInfo> PullHandlerImpl::OnDecodeFrame(DecodeFrame* frame) {
+std::shared_ptr<FrameInfo> PullHandlerIm::OnDecodeFrame(DecodeFrame* frame) {
   if (!frame) {
     LOGE(SOURCE) << "[" << stream_id_ << "]: OnDecodeFrame: frame is null";
     return nullptr;
@@ -331,7 +331,7 @@ std::shared_ptr<FrameInfo> PullHandlerImpl::OnDecodeFrame(DecodeFrame* frame) {
   return data;
 }
 
-void PullHandlerImpl::OnEndFrame() {
+void PullHandlerIm::OnEndFrame() {
   std::shared_ptr<FrameInfo> data = this->CreateFrameInfo(true);
   if (!data) {
     LOGE(SOURCE) << "[" << stream_id_ << "]: OnEndFrame: failed to create FrameInfo.";
@@ -341,7 +341,7 @@ void PullHandlerImpl::OnEndFrame() {
   LOGI(SOURCE) << "[" << stream_id_ << "]: OnEndFrame: send end frame.";
 }
 
-int PullHandlerImplCPU::codec_init() {
+int PullHandlerImCPU::codec_init() {
   int ret = 0;
   AVStream* video_stream = ifmt_ctx_->streams[video_index_];
 
@@ -371,7 +371,7 @@ int PullHandlerImplCPU::codec_init() {
   return 0;
 }
 
-int PullHandlerImplCPU::decode_write() {
+int PullHandlerImCPU::decode_write() {
   int ret = 0;
   AVFrame *p_frame = nullptr;
 
@@ -443,7 +443,7 @@ int PullHandlerImplCPU::decode_write() {
   return ret;
 }
 
-std::shared_ptr<FrameInfo> PullHandlerImplCPU::ProcessFrame(AVFrame *p_frame, int &ret) {
+std::shared_ptr<FrameInfo> PullHandlerImCPU::ProcessFrame(AVFrame *p_frame, int &ret) {
   if (!p_frame) {
     LOGE(SOURCE) << "ProcessFrame: p_frame is null";
     return nullptr;

@@ -63,7 +63,7 @@ class DataSink : public SinkModule, public ModuleCreator<DataSink> {
 REGISTER_MODULE(DataSink);
 
 
-class PushHandlerImpl;
+class PushHandlerIm;
 
 class PushHandler : public SinkHandler {
  public:
@@ -87,7 +87,7 @@ class PushHandler : public SinkHandler {
 #else
  private:
 #endif
-  PushHandlerImpl* impl_ = nullptr;
+  PushHandlerIm* impl_ = nullptr;
 };  // class PushHandler
 
 

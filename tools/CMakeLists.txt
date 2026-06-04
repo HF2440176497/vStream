@@ -84,10 +84,8 @@ if(HAVE_FRAMEWORK_TARGET AND HAVE_MODULES_TARGET)
   list(APPEND VSTREAM_TOOLS_DEPENDENCIES vstream_core vstream_va)
 endif()
 
-# ---[ Options
-option(VSTREAM_BUILD_DEMO "build demo executable file" ON)
 
-if(VSTREAM_BUILD_DEMO)
-  add_subdirectory(demo)
+if(VSTREAM_)
+  add_subdirectory(trt)
 endif()
 

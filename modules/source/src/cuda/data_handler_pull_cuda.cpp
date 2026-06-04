@@ -13,7 +13,7 @@ namespace cnstream {
 
 static enum AVPixelFormat hw_pix_fmt;
 
-bool PullHandlerImplCUDA::support_hwdevice() {
+bool PullHandlerImCUDA::support_hwdevice() {
   enum AVHWDeviceType type = av_hwdevice_find_type_by_name(type_name_.c_str());
   if (type == AV_HWDEVICE_TYPE_NONE) {
     LOGE(SOURCE) << "Device type: " << type_name_ << " is not supported.";
@@ -23,7 +23,7 @@ bool PullHandlerImplCUDA::support_hwdevice() {
   return true;
 }
 
-enum AVPixelFormat PullHandlerImplCUDA::get_hw_format(AVCodecContext *ctx, const enum AVPixelFormat *pix_fmts) {
+enum AVPixelFormat PullHandlerImCUDA::get_hw_format(AVCodecContext *ctx, const enum AVPixelFormat *pix_fmts) {
   const enum AVPixelFormat *p;
   for (p = pix_fmts; *p != -1; p++) {
     if (*p == hw_pix_fmt) {
@@ -34,7 +34,7 @@ enum AVPixelFormat PullHandlerImplCUDA::get_hw_format(AVCodecContext *ctx, const
   return AV_PIX_FMT_NONE;
 }
 
-int PullHandlerImplCUDA::init_hwdevice_conf() {
+int PullHandlerImCUDA::init_hwdevice_conf() {
   for (int i = 0;; i++) {
     const AVCodecHWConfig *config = avcodec_get_hw_config(codec_, i);
     if (!config) {
@@ -54,7 +54,7 @@ int PullHandlerImplCUDA::init_hwdevice_conf() {
   return -1;
 }
 
-int PullHandlerImplCUDA::hw_decoder_init() {
+int PullHandlerImCUDA::hw_decoder_init() {
   int err = 0;
   if (device_id_ < 0) {
     LOGE(SOURCE) << "[" << stream_id_ << "]: Invalid device ID";
@@ -69,7 +69,7 @@ int PullHandlerImplCUDA::hw_decoder_init() {
   return err;
 }
 
-int PullHandlerImplCUDA::codec_init() {
+int PullHandlerImCUDA::codec_init() {
   int ret = 0;
   AVStream* video_stream = ifmt_ctx_->streams[video_index_];
 
@@ -127,18 +127,18 @@ int PullHandlerImplCUDA::codec_init() {
   return 0;
 }
 
-bool PullHandlerImplCUDA::SupportHWDevice() {
+bool PullHandlerImCUDA::SupportHWDevice() {
   return support_hwdevice();
 }
 
-void PullHandlerImplCUDA::ConfigureOutputType() {
+void PullHandlerImCUDA::ConfigureOutputType() {
   if (output_type_ == OutputType::OUTPUT_CPU) {
     LOGW(SOURCE) << "VSTREAM_USE_CUDA ON: force output type to CUDA";
     output_type_ = OutputType::OUTPUT_CUDA;
   }
 }
 
-int PullHandlerImplCUDA::decode_write() {
+int PullHandlerImCUDA::decode_write() {
   int ret = 0;
   AVFrame *p_frame = nullptr;
   AVFrame *sw_frame = nullptr;
@@ -244,7 +244,7 @@ int PullHandlerImplCUDA::decode_write() {
 /**
  * 解码帧回传到 CPU 内存
  */
-std::shared_ptr<FrameInfo> PullHandlerImplCUDA::ProcessFrameCPU(AVFrame *p_frame, AVFrame *sw_frame, int &ret) {
+std::shared_ptr<FrameInfo> PullHandlerImCUDA::ProcessFrameCPU(AVFrame *p_frame, AVFrame *sw_frame, int &ret) {
   if (!p_frame) {
     LOGE(SOURCE) << "[" << stream_id_ << "]: p_frame is null";
     return nullptr;
@@ -314,7 +314,7 @@ std::shared_ptr<FrameInfo> PullHandlerImplCUDA::ProcessFrameCPU(AVFrame *p_frame
   return OnDecodeFrame(&frame);
 }
 
-std::shared_ptr<FrameInfo> PullHandlerImplCUDA::ProcessFrameCUDA(AVFrame *p_frame, int &ret) {
+std::shared_ptr<FrameInfo> PullHandlerImCUDA::ProcessFrameCUDA(AVFrame *p_frame, int &ret) {
   if (!p_frame) {
     LOGE(SOURCE) << "[" << stream_id_ << "]: p_frame is null";
     return nullptr;

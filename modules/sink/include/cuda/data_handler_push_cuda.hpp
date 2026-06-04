@@ -5,9 +5,9 @@
 
 namespace cnstream {
 
-class PushHandlerImplCUDA : public PushHandlerImpl {
+class PushHandlerImCUDA : public PushHandlerIm {
  public:
-  using PushHandlerImpl::PushHandlerImpl;
+  using PushHandlerIm::PushHandlerIm;
 
  protected:
   bool InitDeviceCtx() override;

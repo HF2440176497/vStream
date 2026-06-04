@@ -9,10 +9,10 @@
 
 namespace cnstream {
 
-class PullHandlerImplCUDA : public PullHandlerImpl {
+class PullHandlerImCUDA : public PullHandlerIm {
  public:
-  using PullHandlerImpl::PullHandlerImpl;
-  ~PullHandlerImplCUDA() {
+  using PullHandlerIm::PullHandlerIm;
+  ~PullHandlerImCUDA() {
     if (src_stream_) {
       cudaStreamDestroy(static_cast<cudaStream_t>(src_stream_));
       src_stream_ = nullptr;
