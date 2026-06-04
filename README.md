@@ -210,10 +210,7 @@ vStream/
 │   ├── test/               # Python 测试脚本
 │   └── doc/                # 文档
 ├── tools/
-│   └── demo/               # 工具与示例
-│       ├── cuda/           # CUDA 格式转换示例
-│       ├── ffmpeg/         # FFmpeg 编码示例
-│       └── trt/            # TensorRT 模型转换工具
+│   └── trt/                # TensorRT 模型转换工具
 ├── cmake/                  # CMake 模块
 ├── 3rdparty/               # 第三方库源码
 ├── build.sh                # 一键构建脚本
@@ -372,12 +369,17 @@ int main() {
       return -1;
     }
     pipeline.Start();
-    DataSource *source = dynamic_cast<DataSource*>(pipeline_->GetModule("source"));
+
+    std::string stream_id = "channel-1";
+    std::string source_module_name = "source";
+    std::string sink_module_name = "sink";
+
+    DataSource *source = dynamic_cast<DataSource*>(pipeline_->GetModule(source_module_name));
     auto source_handler_ptr = ImageHandler::Create(source, stream_id);
     auto handler = std::dynamic_pointer_cast<ImageHandler>(source_handler_ptr);
     source->AddSource(handler)；
 
-    DataSink *sink = dynamic_cast<DataSink*>(pipeline_->GetModule("sink"));
+    DataSink *sink = dynamic_cast<DataSink*>(pipeline_->GetModule(sink_module_name));
     auto sink_handler = PushHandler::Create(sink, stream_id);
     auto push_handler = std::dynamic_pointer_cast<PushHandler>(sink_handler);
     sink->AddSink(push_handler)；
@@ -500,12 +502,7 @@ class MyPythonModule(vstream.Module):
 
 | 工具 | 路径 | 说明 |
 |:---|:---:|:---|
-| JSON 解析示例 | `tools/demo/json_parse_demo.cpp` | 演示 JSON 配置解析 |
-| libyuv 转换示例 | `tools/demo/libyuv_demo.cpp` | 演示 libyuv 图像格式转换 |
-| CUDA 格式转换 | `tools/demo/cuda/` | CUDA kernel / NPP 格式转换示例 |
-| FFmpeg 编码 | `tools/demo/ffmpeg/` | 软编码 / NVENC 硬件编码示例 |
 | TRT 模型转换 | `tools/demo/trt/` | ONNX → TensorRT Engine 模型转换工具 |
-| 流水线配置示例 | `tools/demo/pipeline.json` | 完整的多级推理流水线配置 |
 
 ---
 
