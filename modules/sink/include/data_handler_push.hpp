@@ -32,11 +32,17 @@ extern "C" {
 #ifdef VSTREAM_USE_CUDA
 static constexpr AVPixelFormat kEncoderPixFmt = AV_PIX_FMT_CUDA;
 static constexpr AVPixelFormat kSwsPixFmt     = AV_PIX_FMT_NV12;
-static constexpr const char* kDefaultEncoder = "h264_nvenc";
+static std::string kDefaultEncoder = "h264_nvenc";
+
+#ifdef VSTREAM_USE_RKMPP
+static constexpr AVPixelFormat kEncoderPixFmt = ;
+static constexpr AVPixelFormat kSwsPixFmt     = AV_PIX_FMT_NV12;
+static std::string kDefaultEncoder = "h264_rkmpp";
+
 #else
 static constexpr AVPixelFormat kEncoderPixFmt = AV_PIX_FMT_YUV420P;
 static constexpr AVPixelFormat kSwsPixFmt     = AV_PIX_FMT_YUV420P;
-static constexpr const char* kDefaultEncoder = nullptr;
+static std::string kDefaultEncoder;
 #endif
 
 namespace cnstream {
@@ -49,10 +55,17 @@ struct StreamContext {
   AVFrame*         sws_frame = nullptr;
   uint64_t         frame_idx = 0;
   bool             header_written = false;
+  
 #ifdef VSTREAM_USE_CUDA
   AVBufferRef*     hw_device_ctx = nullptr;
   AVBufferRef*     hw_frames_ctx = nullptr;
   AVFrame*         hw_frame      = nullptr;
+
+#elif VSTREAM_USE_RKMPP
+  AVBufferRef*     hw_device_ctx = nullptr;
+  AVBufferRef*     hw_frames_ctx = nullptr;
+  AVFrame*         hw_frame      = nullptr;
+
 #endif
 };
 

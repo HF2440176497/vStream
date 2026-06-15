@@ -124,7 +124,6 @@ inline int FormatPlanes(DataFormat fmt) {
 enum class OutputType {
   OUTPUT_CPU,  /*!< CPU is the used storage type. */
   OUTPUT_CUDA,  /*!< CUDA is the used storage type. */
-  OUTPUT_NPU   /*!< NPU is the used storage type. */
 };
 
 /*!
@@ -134,7 +133,7 @@ enum class OutputType {
 enum class DecoderType {
   DECODER_CPU,  /*!< CPU decoder is used. */
   DECODER_CUDA,  /*!< CUDA decoder is used. */
-  DECODER_NPU   /*!< NPU decoder is used. */
+  DECODER_RKMPP   /*!< RKKMPP decoder is used. */
 };
 
 class IDecBufRef {
@@ -213,14 +212,13 @@ inline int GetStride_8U_C3(int width, int alignment = 4) {
 
 inline const std::unordered_map<std::string, OutputType> param_output_map = {
   {"cpu", OutputType::OUTPUT_CPU},
-  {"cuda", OutputType::OUTPUT_CUDA},
-  {"npu", OutputType::OUTPUT_NPU}
+  {"cuda", OutputType::OUTPUT_CUDA}
 };
 
 inline const std::unordered_map<std::string, DecoderType> param_decoder_map = {
   {"cpu", DecoderType::DECODER_CPU},
   {"cuda", DecoderType::DECODER_CUDA},
-  {"npu", DecoderType::DECODER_NPU}
+  {"rkmpp", DecoderType::DECODER_RKMPP}
 };
 
 inline const std::string key_device_id = "device_id";

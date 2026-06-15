@@ -62,7 +62,7 @@ static IOResValue allocate_input_iovalue(ModelLoader* model, std::shared_ptr<Mem
 
   for (int idx = 0; idx < input_num; ++idx) {
     auto shape = model->InputShape(idx);
-    auto data_type = model->InputDataType(idx);  // 已确保为 FLOAT32
+    auto data_type = model->InputDataType(idx);
     size_t data_size = shape.DataCount() * data_type_size(data_type);
     size_t batch_offset = (shape.DataCount() / shape.N()) * data_type_size(data_type);
 
@@ -91,7 +91,7 @@ static IOResValue allocate_output_iovalue(ModelLoader* model, std::shared_ptr<Me
 
   for (int idx = 0; idx < output_num; ++idx) {
     auto shape = model->OutputShape(idx);
-    auto data_type = model->OutputDataType(idx);  // 已确保为 FLOAT32
+    auto data_type = model->OutputDataType(idx);
     size_t data_size = shape.DataCount() * data_type_size(data_type);
     size_t batch_offset = (shape.DataCount() / shape.N()) * data_type_size(data_type);
 

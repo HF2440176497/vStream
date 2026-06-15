@@ -1,10 +1,7 @@
 #ifndef MODULES_SOURCE_HANDLER_VIDEO_CUDA_HPP_
 #define MODULES_SOURCE_HANDLER_VIDEO_CUDA_HPP_
 
-#ifdef VSTREAM_USE_CUDA
-
 #include "cuda/cuda_check.hpp"
-
 #include "data_handler_pull.hpp"
 
 namespace cnstream {
@@ -38,6 +35,5 @@ class PullHandlerImCUDA : public PullHandlerIm {
 
 }  // namespace cnstream
 
-#endif  // VSTREAM_USE_CUDA
 
 #endif

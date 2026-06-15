@@ -19,6 +19,8 @@ namespace cnstream {
 static DecoderType ResolveDecoderType(DataSource *module, const std::string &stream_id) {
 #ifdef VSTREAM_USE_CUDA
   DecoderType fallback = DecoderType::DECODER_CUDA;
+#ifdef VSTREAM_USE_RKMPP
+  DecoderType fallback = DecoderType::DECODER_RKMPP;
 #else
   DecoderType fallback = DecoderType::DECODER_CPU;
 #endif

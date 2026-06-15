@@ -37,13 +37,12 @@ void DataHandlerWrapper(const py::module &m) {
 
   py::enum_<OutputType>(m, "OutputType")
       .value("output_cpu", OutputType::OUTPUT_CPU)
-      .value("output_cuda", OutputType::OUTPUT_CUDA)
-      .value("output_npu", OutputType::OUTPUT_NPU);
+      .value("output_cuda", OutputType::OUTPUT_CUDA);
 
   py::enum_<DecoderType>(m, "DecoderType")
       .value("decoder_cpu", DecoderType::DECODER_CPU)
       .value("decoder_cuda", DecoderType::DECODER_CUDA)
-      .value("decoder_npu", DecoderType::DECODER_NPU);
+      .value("decoder_rkmpp", DecoderType::DECODER_RKMPP);
 
   py::class_<DataSourceParam>(m, "DataSourceParam")
       .def(py::init());

@@ -206,11 +206,10 @@ const AVCodec* PushHandlerIm::FindEncoder() {
   if (!codec_name_.empty()) {
     return avcodec_find_encoder_by_name(codec_name_.c_str());
   }
-#ifdef VSTREAM_USE_CUDA
-  return avcodec_find_encoder_by_name(kDefaultEncoder);
-#else
-  return avcodec_find_encoder(AV_CODEC_ID_H264);
-#endif
+  if (kDefaultEncoder.empty()) {
+    return avcodec_find_encoder(AV_CODEC_ID_H264);
+  }
+  return avcodec_find_encoder_by_name(kDefaultEncoder.c_str());
 }
 
 bool PushHandlerIm::ReinitStream(int device_id) {
