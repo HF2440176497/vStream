@@ -19,8 +19,8 @@ namespace cnstream {
 static DecoderType ResolveDecoderType(DataSource *module, const std::string &stream_id) {
 #ifdef VSTREAM_USE_CUDA
   DecoderType fallback = DecoderType::DECODER_CUDA;
-#ifdef VSTREAM_USE_RKMPP
-  DecoderType fallback = DecoderType::DECODER_RKMPP;
+#elif defined(VSTREAM_USE_ROCKCHIP)
+  DecoderType fallback = DecoderType::DECODER_ROCKCHIP;
 #else
   DecoderType fallback = DecoderType::DECODER_CPU;
 #endif
@@ -53,6 +53,12 @@ std::shared_ptr<SourceHandler> PullHandler::Create(DataSource *module, const std
 
 PullHandler::PullHandler(DataSource *module, const std::string &stream_id, DecoderType decoder_type)
     : SourceHandler(module, stream_id) {
+#ifdef VSTREAM_USE_ROCKCHIP
+  if (decoder_type == DecoderType::DECODER_RKMPP) {
+    impl_ = new PullHandlerImRK(module, this);
+    return;
+  }
+#endif
 #ifdef VSTREAM_USE_CUDA
   if (decoder_type == DecoderType::DECODER_CUDA) {
     impl_ = new PullHandlerImCUDA(module, this);
@@ -373,77 +379,67 @@ int PullHandlerImCPU::codec_init() {
   return 0;
 }
 
+
 int PullHandlerImCPU::decode_write() {
-  int ret = 0;
-  AVFrame *p_frame = nullptr;
-
-  while ((ret = avcodec_send_packet(codec_ctx_, &pkt_)) == AVERROR(EAGAIN)) {
-    AVFrame* drain_frame = av_frame_alloc();
-    if (!drain_frame) {
-      LOGE(SOURCE) << "[" << stream_id_ << "]: av_frame_alloc alloc drain_frame failed";
-      return -1;
-    }
-    ret = avcodec_receive_frame(codec_ctx_, drain_frame);
-    if (ret == 0) {
-      std::shared_ptr<FrameInfo> data = nullptr;
-      data = ProcessFrame(drain_frame, ret);
-      if (ret == 0 && data && module_ && handler_) {
-        handler_->SendData(data);
+  int ret = avcodec_send_packet(codec_ctx_, &pkt_);
+  if (ret == AVERROR(EAGAIN)) {
+    // 清空解码器输出缓冲区
+    AVFrame *drain_frame = nullptr;
+    while (running_.load()) {
+      drain_frame = av_frame_alloc();
+      if (!drain_frame) return -1;
+      ret = avcodec_receive_frame(codec_ctx_, drain_frame);
+      if (ret == 0) {
+        // 处理帧（注意：这里是清空过程中产生的帧，可能是之前输入的输出）
+        auto data = ProcessFrame(drain_frame, ret);
+        if (data && module_ && handler_) {
+            handler_->SendData(data);
+        }
+        av_frame_free(&drain_frame);
+      } else if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+        av_frame_free(&drain_frame);
+        break;
+      } else {
+        av_frame_free(&drain_frame);
+        return ret;
       }
-    }
-    av_frame_free(&drain_frame);
-    if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-      ret = 0;
-      break;
-    }
-    if (ret < 0) {
-      LOGE(SOURCE) << "[" << stream_id_ << "]: avcodec_receive_frame error during drain: " << ret;
-      return ret;
-    }
+    }  // while
+    // 重新尝试发送当前包
+    ret = avcodec_send_packet(codec_ctx_, &pkt_);
   }
-
-  if (ret < 0) {
-    LOGE(SOURCE) << "[" << stream_id_ << "]: avcodec_send_packet error: " << ret;
+  if (ret < 0 && ret != AVERROR_EOF) {
+    LOGE(SOURCE) << "send_packet error: " << ret;
     return ret;
   }
 
   while (running_.load()) {
-    if (!(p_frame = av_frame_alloc())) {
-      LOGE(SOURCE) << "[" << stream_id_ << "]: av_frame_alloc error";
-      ret = -1;
-      break;
-    }
-
+    AVFrame *p_frame = av_frame_alloc();
+    if (!p_frame) return -1;
     ret = avcodec_receive_frame(codec_ctx_, p_frame);
     if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
       av_frame_free(&p_frame);
       return 0;
     } else if (ret < 0) {
-      LOGE(SOURCE) << "[" << stream_id_ << "]: Error error during decoding: " << ret;
-      break;
+      av_frame_free(&p_frame);
+      LOGE(SOURCE) << "receive_frame error: " << ret;
+      return ret;
     }
-
-    std::shared_ptr<FrameInfo> data = nullptr;
-    data = ProcessFrame(p_frame, ret);
-
+    auto data = ProcessFrame(p_frame, ret);
+    av_frame_free(&p_frame);
     if (!data || ret != 0) {
-      LOGE(SOURCE) << "[" << stream_id_ << "]: ProcessFrame failed, ret = " << ret;
-      ret = -1;
-      break;
+      LOGE(SOURCE) << "ProcessFrame failed";
+      return -1;
     }
     if (!module_ || !handler_) {
-      LOGE(SOURCE) << "[" << stream_id_ << "]: module_ or handler_ is null";
-      ret = -1;
-      break;
+      LOGE(SOURCE) << "module_ or handler_ is null";
+      return -1;
     }
-
     handler_->SendData(data);
-    av_frame_free(&p_frame);
   }
-
   av_frame_free(&p_frame);
-  return ret;
+  return 0;
 }
+
 
 std::shared_ptr<FrameInfo> PullHandlerImCPU::ProcessFrame(AVFrame *p_frame, int &ret) {
   if (!p_frame) {

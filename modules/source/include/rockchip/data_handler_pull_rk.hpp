@@ -1,20 +1,19 @@
-#ifndef MODULES_SOURCE_HANDLER_PULL_CUDA_HPP_
-#define MODULES_SOURCE_HANDLER_PULL_CUDA_HPP_
+#ifndef MODULES_SOURCE_HANDLER_PULL_RK_HPP_
+#define MODULES_SOURCE_HANDLER_PULL_RK_HPP_
 
-#include "cuda/cuda_check.hpp"
 #include "data_handler_pull.hpp"
 
 namespace cnstream {
 
-class PullHandlerImCUDA : public PullHandlerIm {
+class PullHandlerImRK : public PullHandlerIm {
  public:
   using PullHandlerIm::PullHandlerIm;
-  ~PullHandlerImCUDA() override = default;
+  ~PullHandlerImRK() override = default;
 
  protected:
   int codec_init() override;
   int decode_write() override;
-  void clean_up() override;  // 释放 src_stream_ 后再走基类
+  void clean_up() override;
   bool SupportHWDevice() override;
   void ConfigureOutputType() override;
 
@@ -23,12 +22,12 @@ class PullHandlerImCUDA : public PullHandlerIm {
   int init_hwdevice_conf();
   int hw_decoder_init();
   static enum AVPixelFormat get_hw_format(AVCodecContext *ctx, const enum AVPixelFormat *pix_fmts);
-  std::shared_ptr<FrameInfo> ProcessFrameCUDA(AVFrame *p_frame, int &ret);
+  std::shared_ptr<FrameInfo> ProcessFrameRKMPP(AVFrame *p_frame, int &ret);
 
-  std::string type_name_ = "cuda";
+  std::string type_name_ = "rkmpp";
+  AVFrame *sw_frame_ = nullptr;  // hw(DRM_PRIME) -> sw(NV12) 中转帧
 };
 
 }  // namespace cnstream
 
-
-#endif
+#endif  // MODULES_SOURCE_HANDLER_PULL_RK_HPP_

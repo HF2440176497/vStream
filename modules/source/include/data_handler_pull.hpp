@@ -67,13 +67,14 @@ class PullHandlerIm : public SourceRender {
 
  protected:
   virtual int codec_init() = 0;
+  virtual void clean_up();
+
   virtual int decode_write() = 0;
   virtual bool SupportHWDevice() { return true; }
   virtual void ConfigureOutputType() {}
 
   int input_format_init();
-  void clean_up();
-
+  
  public:
   bool IsRunning() const { return running_; }
 
@@ -124,7 +125,8 @@ class PullHandlerImCPU : public PullHandlerIm {
 
 #ifdef VSTREAM_USE_CUDA
 #include "cuda/data_handler_pull_cuda.hpp"
-
+#elif defined(VSTREAM_USE_ROCKCHIP)
+#include "rockchip/data_handler_pull_rk.hpp"
 #endif
 
 #endif

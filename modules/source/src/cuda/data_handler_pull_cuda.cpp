@@ -134,186 +134,82 @@ bool PullHandlerImCUDA::SupportHWDevice() {
 void PullHandlerImCUDA::ConfigureOutputType() {
   if (output_type_ == OutputType::OUTPUT_CPU) {
     LOGW(SOURCE) << "VSTREAM_USE_CUDA ON: force output type to CUDA";
-    output_type_ = OutputType::OUTPUT_CUDA;
   }
+  output_type_ = OutputType::OUTPUT_CUDA;
 }
 
+
 int PullHandlerImCUDA::decode_write() {
-  int ret = 0;
-  AVFrame *p_frame = nullptr;
-  AVFrame *sw_frame = nullptr;
-
-  while ((ret = avcodec_send_packet(codec_ctx_, &pkt_)) == AVERROR(EAGAIN)) {
-    AVFrame* drain_frame = av_frame_alloc();
-    if (!drain_frame) {
-      LOGE(SOURCE) << "[" << stream_id_ << "]: av_frame_alloc alloc drain_frame failed";
-      return -1;
-    }
-    ret = avcodec_receive_frame(codec_ctx_, drain_frame);
-    if (ret == 0) {
-      std::shared_ptr<FrameInfo> data = nullptr;
-      if (output_type_ == OutputType::OUTPUT_CPU) {
-        AVFrame* sw_drain = av_frame_alloc();
-        if (sw_drain) {
-          data = ProcessFrameCPU(drain_frame, sw_drain, ret);
-          av_frame_free(&sw_drain);
+  int ret = avcodec_send_packet(codec_ctx_, &pkt_);
+  if (ret == AVERROR(EAGAIN)) {
+    // 清空解码器输出缓冲区
+    AVFrame *drain_frame = nullptr;
+    while (running_.load()) {
+      drain_frame = av_frame_alloc();
+      if (!drain_frame) return -1;
+      ret = avcodec_receive_frame(codec_ctx_, drain_frame);
+      if (ret == 0) {
+        // 处理帧（注意：这里是清空过程中产生的帧，可能是之前输入的输出）
+        auto data = ProcessFrameCUDA(drain_frame, ret);
+        if (data && module_ && handler_) {
+            handler_->SendData(data);
         }
+        av_frame_free(&drain_frame);
+      } else if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+        av_frame_free(&drain_frame);
+        break;
       } else {
-        data = ProcessFrameCUDA(drain_frame, ret);
+        av_frame_free(&drain_frame);
+        return ret;
       }
-      if (ret == 0 && data && module_ && handler_) {
-        handler_->SendData(data);
-      }
-    }
-    av_frame_free(&drain_frame);
-    if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-      ret = 0;
-      break;
-    }
-    if (ret < 0) {
-      LOGE(SOURCE) << "[" << stream_id_ << "]: avcodec_receive_frame error during drain: " << ret;
-      return ret;
-    }
+    }  // while
+    // 重新尝试发送当前包
+    ret = avcodec_send_packet(codec_ctx_, &pkt_);
   }
-
-  if (ret < 0) {
-    LOGE(SOURCE) << "[" << stream_id_ << "]: avcodec_send_packet error: " << ret;
+  if (ret < 0 && ret != AVERROR_EOF) {
+    LOGE(SOURCE) << "send_packet error: " << ret;
     return ret;
   }
 
   while (running_.load()) {
-    if (!(p_frame = av_frame_alloc())) {
-      LOGE(SOURCE) << "[" << stream_id_ << "]: av_frame_alloc error";
-      ret = -1;
-      break;
-    }
-
-    if (output_type_ == OutputType::OUTPUT_CPU) {
-      if (!(sw_frame = av_frame_alloc())) {
-        LOGE(SOURCE) << "[" << stream_id_ << "]: av_frame_alloc alloc sw_frame failed";
-        av_frame_free(&p_frame);
-        ret = -1;
-        break;
-      }
-    }
-
+    AVFrame *p_frame = av_frame_alloc();
+    if (!p_frame) return -1;
     ret = avcodec_receive_frame(codec_ctx_, p_frame);
     if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
       av_frame_free(&p_frame);
-      av_frame_free(&sw_frame);
       return 0;
     } else if (ret < 0) {
-      LOGE(SOURCE) << "[" << stream_id_ << "]: Error during decoding: " << ret;
-      break;
+      av_frame_free(&p_frame);
+      LOGE(SOURCE) << "receive_frame error: " << ret;
+      return ret;
     }
-
-    std::shared_ptr<FrameInfo> data = nullptr;
-
-    if (output_type_ == OutputType::OUTPUT_CPU) {
-      data = ProcessFrameCPU(p_frame, sw_frame, ret);
-    } else if (output_type_ == OutputType::OUTPUT_CUDA) {
-      data = ProcessFrameCUDA(p_frame, ret);
-    } else {
-      LOGF(SOURCE) << "[" << stream_id_ << "]: Unsupported output type: " << static_cast<int>(output_type_);
-      ret = -1;
-      break;
-    }
-
+    auto data = ProcessFrameCUDA(p_frame, ret);
+    av_frame_free(&p_frame);
     if (!data || ret != 0) {
-      LOGE(SOURCE) << "[" << stream_id_ << "]: ProcessFrame failed, ret = " << ret;
-      ret = -1;
-      break;
+      LOGE(SOURCE) << "ProcessFrameCUDA failed";
+      return -1;
     }
     if (!module_ || !handler_) {
-      LOGE(SOURCE) << "[" << stream_id_ << "]: module_ or handler_ is null";
-      ret = -1;
-      break;
+      LOGE(SOURCE) << "module_ or handler_ is null";
+      return -1;
     }
-
     handler_->SendData(data);
-
-    av_frame_free(&p_frame);
-    av_frame_free(&sw_frame);
   }
-
   av_frame_free(&p_frame);
-  av_frame_free(&sw_frame);
-  return ret;
+  return 0;
+}
+
+void PullHandlerImCUDA::clean_up() {
+  if (src_stream_) {
+    cudaStreamDestroy(static_cast<cudaStream_t>(src_stream_));
+    src_stream_ = nullptr;
+  }
+  PullHandlerIm::clean_up();
 }
 
 /**
- * 解码帧回传到 CPU 内存
+ * 解码帧（CUDA 格式）构造为 DecodeFrame 并交付
  */
-std::shared_ptr<FrameInfo> PullHandlerImCUDA::ProcessFrameCPU(AVFrame *p_frame, AVFrame *sw_frame, int &ret) {
-  if (!p_frame) {
-    LOGE(SOURCE) << "[" << stream_id_ << "]: p_frame is null";
-    return nullptr;
-  }
-  if (p_frame->format == hw_pix_fmt) {
-    if ((ret = av_hwframe_transfer_data(sw_frame, p_frame, 0)) < 0) {
-      LOGE(SOURCE) << "[" << stream_id_ << "]: Error transferring the data: " << ret;
-      return nullptr;
-    }
-  } else {
-    LOGE(SOURCE) << "[" << stream_id_ << "]: p_frame format not supported: " << p_frame->format;
-    return nullptr;
-  }
-
-  if (!sw_frame) {
-    LOGE(SOURCE) << "[" << stream_id_ << "]: sw_frame is null";
-    return nullptr;
-  }
-
-  DataFormat nv_fmt = DataFormat::INVALID;
-  if (sw_frame->format == AV_PIX_FMT_NV12) {
-    nv_fmt = DataFormat::PIXEL_FORMAT_YUV420_NV12;
-  } else if (sw_frame->format == AV_PIX_FMT_NV21) {
-    nv_fmt = DataFormat::PIXEL_FORMAT_YUV420_NV21;
-  } else {
-    LOGE(SOURCE) << "[" << stream_id_ << "]: sw_frame format not supported: " << sw_frame->format;
-    ret = -1;
-    return nullptr;
-  }
-
-  DecodeFrame frame(sw_frame->height, sw_frame->width, nv_fmt);
-  frame.device_type = DevType::CPU;
-  frame.device_id = -1;
-  frame.planeNum = 2;
-  frame.pts = sw_frame->pts;
-
-  int width = sw_frame->width;
-  int height = sw_frame->height;
-  int src_y_stride = sw_frame->linesize[0];
-  int src_uv_stride = sw_frame->linesize[1];
-  size_t y_size = static_cast<size_t>(width) * height;
-  size_t uv_size = static_cast<size_t>(width) * height / 2;
-
-  uint8_t* y_buffer = new (std::nothrow) uint8_t[y_size];
-  uint8_t* uv_buffer = new (std::nothrow) uint8_t[uv_size];
-  if (!y_buffer || !uv_buffer) {
-    LOGE(SOURCE) << "Failed to allocate memory for frame data";
-    delete[] y_buffer;
-    delete[] uv_buffer;
-    ret = -1;
-    return nullptr;
-  }
-
-  for (int i = 0; i < height; ++i) {
-    memcpy(y_buffer + i * width, sw_frame->data[0] + i * src_y_stride, width);
-  }
-  for (int i = 0; i < height / 2; ++i) {
-    memcpy(uv_buffer + i * width, sw_frame->data[1] + i * src_uv_stride, width);
-  }
-
-  frame.plane[0] = y_buffer;
-  frame.plane[1] = uv_buffer;
-  frame.stride[0] = width;
-  frame.stride[1] = width;
-  frame.buf_ref = std::make_unique<MatBufRefNV12>(y_buffer, uv_buffer);
-
-  return OnDecodeFrame(&frame);
-}
-
 std::shared_ptr<FrameInfo> PullHandlerImCUDA::ProcessFrameCUDA(AVFrame *p_frame, int &ret) {
   if (!p_frame) {
     LOGE(SOURCE) << "[" << stream_id_ << "]: p_frame is null";

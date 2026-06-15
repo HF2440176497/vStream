@@ -23,9 +23,15 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Platform options
 option(VSTREAM_USE_CUDA "Enable NVIDIA CUDA platform support" ON)
+option(VSTREAM_USE_RKM "Enable Rockchip RKMPP platform support" OFF)
 
 if (VSTREAM_USE_CUDA)
   add_definitions(-DVSTREAM_USE_CUDA)
+  set(CMAKE_CUDA_STANDARD 17)
+endif()
+
+if (VSTREAM_USE_ROCKCHIP)
+  add_definitions(-DVSTREAM_USE_ROCKCHIP)
   set(CMAKE_CUDA_STANDARD 17)
 endif()
 

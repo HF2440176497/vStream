@@ -151,6 +151,11 @@ foreach(module ${module_list})
     list(APPEND ${module}_srcs ${${module}_cuda_srcs})
   endif()
 
+  if (VSTREAM_USE_ROCKCHIP)
+    file(GLOB ${module}_rockchip_srcs ${CMAKE_CURRENT_SOURCE_DIR}/${module}/src/rockchip/*.cpp)
+    list(APPEND ${module}_srcs ${${module}_rockchip_srcs})
+  endif()
+
   list(APPEND srcs ${${module}_srcs})
 endforeach()
 

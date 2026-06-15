@@ -67,6 +67,7 @@ enum class DevType {
   INVALID = -1,                /*!< Invalid device type. */
   CPU = 0,                     /*!< The data is allocated by CPU. */
   CUDA = 1,                    /*!< The data is allocated by CUDA. */
+  ROCKCHIP = 2,                /*!< The data is allocated by RKMPP. */
 };
 
 /**
@@ -85,6 +86,7 @@ inline std::string DevType2Str(DevType type) {
   switch (type) {
     case DevType::CPU: return "CPU";
     case DevType::CUDA: return "CUDA";
+    case DevType::ROCKCHIP: return "ROCKCHIP";
     default: return "INVALID";
   }
 }
@@ -93,7 +95,9 @@ inline std::unordered_map<std::string, DevType> device_type_map = {
   {"cpu", DevType::CPU},
   {"CPU", DevType::CPU},
   {"cuda", DevType::CUDA},
-  {"CUDA", DevType::CUDA}
+  {"CUDA", DevType::CUDA},
+  {"rockchip", DevType::ROCKCHIP},
+  {"ROCKCHIP", DevType::ROCKCHIP}
 };
 
 /**
