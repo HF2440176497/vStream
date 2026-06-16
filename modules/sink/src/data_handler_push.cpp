@@ -220,11 +220,11 @@ bool PushHandlerIm::ReinitStream(int device_id) {
 }
 
 bool PushHandlerIm::InitSwsFrame() {
-  ctx_.sws_frame = av_frame_alloc();
-  ctx_.sws_frame->format = kSwsPixFmt;
-  ctx_.sws_frame->width  = width_;
-  ctx_.sws_frame->height = height_;
-  int ret = av_frame_get_buffer(ctx_.sws_frame, 0);
+  ctx_.sw_frame = av_frame_alloc();
+  ctx_.sw_frame->format = kSwsPixFmt;
+  ctx_.sw_frame->width  = width_;
+  ctx_.sw_frame->height = height_;
+  int ret = av_frame_get_buffer(ctx_.sw_frame, 0);
   if (ret < 0) {
     LOGE(SINK) << "[" << stream_id_ << "]: av_frame_get_buffer failed";
     return false;
@@ -237,7 +237,7 @@ bool PushHandlerIm::SendFrame(const DataFramePtr& frame, AVPixelFormat src_pix_f
   const int src_height = frame->GetHeight();
   EnsureSwsContext(src_pix_fmt, src_width, src_height);
 
-  int ret = av_frame_make_writable(ctx_.sws_frame);
+  int ret = av_frame_make_writable(ctx_.sw_frame);
   if (ret < 0) {
     LOGE(SINK) << "[" << stream_id_ << "]: av_frame_make_writable failed";
     return false;
@@ -249,11 +249,11 @@ bool PushHandlerIm::SendFrame(const DataFramePtr& frame, AVPixelFormat src_pix_f
   sws_scale(ctx_.sws_ctx,
             &src_data, &src_stride,
             0, src_height,
-            ctx_.sws_frame->data, ctx_.sws_frame->linesize);
+            ctx_.sw_frame->data, ctx_.sw_frame->linesize);
 
-  ctx_.sws_frame->pts = pts;
+  ctx_.sw_frame->pts = pts;
 
-  AVFrame* enc_frame = ctx_.sws_frame;
+  AVFrame* enc_frame = ctx_.sw_frame;
   if (!enc_frame) return false;
   return EncodeFrame(enc_frame);
 }
@@ -278,7 +278,7 @@ bool PushHandlerIm::SendFrameFb(const DataFramePtr& frame, AVPixelFormat src_pix
   int src_stride = frame->GetStride(0);
 
   EnsureSwsContext(src_pix_fmt, frame->GetWidth(), frame->GetHeight());
-  int ret = av_frame_make_writable(ctx_.sws_frame);
+  int ret = av_frame_make_writable(ctx_.sw_frame);
   if (ret < 0) {
     LOGE(SINK) << "[" << stream_id_ << "]: av_frame_make_writable failed";
     return false;
@@ -286,10 +286,10 @@ bool PushHandlerIm::SendFrameFb(const DataFramePtr& frame, AVPixelFormat src_pix
   sws_scale(ctx_.sws_ctx,
             &src_data, &src_stride,
             0, frame->GetHeight(),
-            ctx_.sws_frame->data, ctx_.sws_frame->linesize);
+            ctx_.sw_frame->data, ctx_.sw_frame->linesize);
 
-  ctx_.sws_frame->pts = pts;
-  AVFrame* enc_frame = ctx_.sws_frame;
+  ctx_.sw_frame->pts = pts;
+  AVFrame* enc_frame = ctx_.sw_frame;
   if (!enc_frame) return false;
   return EncodeFrame(enc_frame);
 }
@@ -408,7 +408,7 @@ void PushHandlerIm::ClearStream() {
     av_write_trailer(ctx_.fmt_ctx);
   }
   CleanDeviceCtx();
-  if (ctx_.sws_frame) av_frame_free(&ctx_.sws_frame);
+  if (ctx_.sw_frame) av_frame_free(&ctx_.sw_frame);
   if (ctx_.sws_ctx)   sws_freeContext(ctx_.sws_ctx);
   if (ctx_.codec_ctx) avcodec_free_context(&ctx_.codec_ctx);
   if (ctx_.fmt_ctx) {
@@ -524,6 +524,8 @@ PushHandler::PushHandler(DataSink *module, const std::string &stream_id)
     : SinkHandler(module, stream_id) {
 #ifdef VSTREAM_USE_CUDA
   impl_ = new PushHandlerImCUDA(module, this);
+#elif defined(VSTREAM_USE_ROCKCHIP)
+  impl_ = new PushHandlerImRK(module, this);
 #else
   impl_ = new PushHandlerImCPU(module, this);
 #endif

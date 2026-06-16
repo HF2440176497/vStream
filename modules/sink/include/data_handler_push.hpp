@@ -34,8 +34,8 @@ static constexpr AVPixelFormat kEncoderPixFmt = AV_PIX_FMT_CUDA;
 static constexpr AVPixelFormat kSwsPixFmt     = AV_PIX_FMT_NV12;
 static std::string kDefaultEncoder = "h264_nvenc";
 
-#ifdef VSTREAM_USE_ROCKCHIP
-static constexpr AVPixelFormat kEncoderPixFmt = ;
+#elif defined(VSTREAM_USE_ROCKCHIP)
+static constexpr AVPixelFormat kEncoderPixFmt = AV_PIX_FMT_DRM_PRIME;
 static constexpr AVPixelFormat kSwsPixFmt     = AV_PIX_FMT_NV12;
 static std::string kDefaultEncoder = "h264_rkmpp";
 
@@ -52,7 +52,7 @@ struct StreamContext {
   AVCodecContext*  codec_ctx = nullptr;
   AVStream*        stream    = nullptr;
   SwsContext*      sws_ctx   = nullptr;
-  AVFrame*         sws_frame = nullptr;
+  AVFrame*         sw_frame = nullptr;
   uint64_t         frame_idx = 0;
   bool             header_written = false;
 
@@ -189,6 +189,9 @@ class PushHandlerImCPU : public PushHandlerIm {
 
 #ifdef VSTREAM_USE_CUDA
 #include "cuda/data_handler_push_cuda.hpp"
+
+#elif defined(VSTREAM_USE_ROCKCHIP)
+#include "rockchip/data_handler_push_rk.hpp"
 
 #endif
 
