@@ -88,11 +88,11 @@ std::vector<std::shared_ptr<InferTask>> H2DBatchingDoneStage::BatchingDone(const
 InferBatchingDoneStage::InferBatchingDoneStage(ModelLoader* model,
                                                uint32_t batchsize,
                                                int device_id,
-                                               std::shared_ptr<NetInputResource> net_input_res,
-                                               std::shared_ptr<NetOutputResource> net_output_res)
+                                               std::shared_ptr<IOResource> input_res,
+                                               std::shared_ptr<IOResource> output_res)
     : BatchingDoneStage(model, batchsize, device_id),
-      net_input_res_(net_input_res),
-      net_output_res_(net_output_res) {
+      input_res_(input_res),
+      output_res_(output_res) {
 }
 
 InferBatchingDoneStage::~InferBatchingDoneStage() {}
@@ -101,13 +101,13 @@ std::vector<std::shared_ptr<InferTask>> InferBatchingDoneStage::BatchingDone(con
   std::vector<InferTaskSptr> tasks;
   InferTaskSptr task;
 
-  QueuingTicket net_input_res_ticket = net_input_res_->PickUpNewTicket();
-  QueuingTicket net_output_res_ticket = net_output_res_->PickUpNewTicket();
-  task = std::make_shared<InferTask>([net_input_res_ticket, net_output_res_ticket, this, finfos]() -> int {
-    QueuingTicket nir_ticket = net_input_res_ticket;
-    QueuingTicket nor_ticket = net_output_res_ticket;
-    IOResValue net_input_value = this->net_input_res_->WaitResourceByTicket(&nir_ticket);
-    IOResValue net_output_value = this->net_output_res_->WaitResourceByTicket(&nor_ticket);
+  QueuingTicket input_res_ticket = input_res_->PickUpNewTicket();
+  QueuingTicket output_res_ticket = output_res_->PickUpNewTicket();
+  task = std::make_shared<InferTask>([input_res_ticket, output_res_ticket, this, finfos]() -> int {
+    QueuingTicket ir_ticket = input_res_ticket;
+    QueuingTicket or_ticket = output_res_ticket;
+    IOResValue input_value = this->input_res_->WaitResourceByTicket(&ir_ticket);
+    IOResValue output_value = this->output_res_->WaitResourceByTicket(&or_ticket);
 
 #ifdef VSTREAM_UNIT_TEST
     assert(finfos.size() == batchsize_);
@@ -125,7 +125,7 @@ std::vector<std::shared_ptr<InferTask>> InferBatchingDoneStage::BatchingDone(con
     if (!dump_resized_image_dir_.empty()) {
       // dump_resized_image(net_input_value, dump_resized_image_dir_);
     }
-    model_->RunSync(net_input_value.ptrs, net_output_value.ptrs);
+    model_->RunSync(input_value.ptrs, output_value.ptrs);
 
     if (profiler_) {
       for (const auto& finfo : finfos) {
@@ -133,8 +133,8 @@ std::vector<std::shared_ptr<InferTask>> InferBatchingDoneStage::BatchingDone(con
       }
     }
 
-    this->net_input_res_->DeallingDone();
-    this->net_output_res_->DeallingDone();
+    this->input_res_->DeallingDone();
+    this->output_res_->DeallingDone();
     return 0;
   });
   tasks.push_back(task);

@@ -195,7 +195,6 @@ int PullHandlerImCUDA::decode_write() {
     }
     handler_->SendData(data);
   }
-  av_frame_free(&p_frame);
   return 0;
 }
 

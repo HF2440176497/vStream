@@ -40,7 +40,8 @@ InferEngine::InferEngine(const InferOptions& options)
       batching_by_obj_(options.batching_by_obj()),
       module_name_(options.module_name()),
       error_func_(options.error_handler()),
-      profiler_(options.profiler()) {
+      profiler_(options.profiler()),
+      options_(options) {
 
   batchsize_ = model_->get_batch_size();
 
@@ -52,16 +53,6 @@ InferEngine::InferEngine(const InferOptions& options)
   thread_pool_ = std::make_shared<InferThreadPool>();
   thread_pool_->SetErrorHandleFunc(error_func_);
   thread_pool_->Init(device_id_, batchsize_ * 3 + 4);
-
-  cpu_input_res_ = std::make_shared<CpuInputResource>(model_);
-  cpu_output_res_ = std::make_shared<CpuOutputResource>(model_);
-  net_input_res_ = std::make_shared<NetInputResource>(model_);
-  net_output_res_ = std::make_shared<NetOutputResource>(model_);
-
-  cpu_input_res_->Init();
-  cpu_output_res_->Init();
-  net_input_res_->Init();
-  net_output_res_->Init();
 
   StageAssemble();
   timeout_helper_.SetTimeout(batching_timeout_);
@@ -81,67 +72,47 @@ InferEngine::~InferEngine() {
     thread_pool_->Destroy();
   }
 
-  if (cpu_input_res_) cpu_input_res_->Destroy();
-  if (cpu_output_res_) cpu_output_res_->Destroy();
-  if (net_input_res_) net_input_res_->Destroy();
-  if (net_output_res_) net_output_res_->Destroy();
+  // 通用资源句柄是实际持有者；具体资源指针可能与其别名，避免重复
+  if (input_res_) input_res_->Destroy();
+  if (output_res_ && output_res_ != input_res_) output_res_->Destroy();
+
+  if (cpu_input_res_ && cpu_input_res_ != input_res_) cpu_input_res_->Destroy();
+  if (cpu_output_res_ && cpu_output_res_ != output_res_) cpu_output_res_->Destroy();
+  if (net_input_res_ && net_input_res_ != input_res_) net_input_res_->Destroy();
+  if (net_output_res_ && net_output_res_ != output_res_) net_output_res_->Destroy();
 }
 
 /**
- * TODO: 暂时严格按照 prec - h2d - infer - d2h - postproc 顺序
- * 前处理暂时只有 CpuPreprocessing
- * 后处理 PostprocessingBatchingDoneStage 通过重载来区分是否是 CPU 的后处理
+ * 按设备类型选择 PipelineStrategy 组装流水线。
+ * - CUDA/TRT：prec -> H2D -> infer -> D2H -> postproc
+ * - CPU / host-visible：prec -> infer -> postproc（跳过 H2D/D2H）
  */
 void InferEngine::StageAssemble() {
-
-  // 目前只允许 device 上的非对象处理，对象后处理只能在 CPU 上
-  if (batching_by_obj_ && postproc_on_device_) {
-    LOGE(INFER) << "postproc_on_device is true, but not allowed for obj processing";
+  if (!model_) {
+    LOGE(INFER) << "InferEngine: model is null";
+    return;
+  }
+  auto strategy = PipelineStrategy::Create(model_->GetDeviceType());
+  if (!strategy) {
+    LOGE(INFER) << "InferEngine: no pipeline strategy for device type "
+                << DevType2Str(model_->GetDeviceType());
     return;
   }
 
-  if (batching_by_obj_) {
-    obj_batching_stage_ = std::make_shared<CpuPreprocessingObjBatchingStage>(model_, batchsize_, obj_preprocessor_,
-                                                                            cpu_input_res_);
-  } else {
-    batching_stage_ =
-        std::make_shared<CpuPreprocessingBatchingStage>(model_, batchsize_, preprocessor_, cpu_input_res_);
-  }
+  PipelineConfig config = strategy->Build(model_, options_);
 
-  auto h2d_stage = std::make_shared<H2DBatchingDoneStage>(model_, batchsize_, device_id_, cpu_input_res_, net_input_res_);
-  h2d_stage->SetProfiler(profiler_);
-  batching_done_stages_.push_back(h2d_stage);
+  batching_stage_ = config.batching_stage;
+  obj_batching_stage_ = config.obj_batching_stage;
+  batching_done_stages_ = std::move(config.batching_done_stages);
+  obj_postproc_stage_ = config.obj_postproc_stage;
 
-  auto infer_stage =
-      std::make_shared<InferBatchingDoneStage>(model_, batchsize_, device_id_, net_input_res_, net_output_res_);
-  infer_stage->SetProfiler(profiler_);
-  batching_done_stages_.push_back(infer_stage);
+  input_res_ = config.input_res;
+  output_res_ = config.output_res;
 
-  if (!postproc_on_device_) {
-    auto d2h_stage =
-      std::make_shared<D2HBatchingDoneStage>(model_, batchsize_, device_id_, net_output_res_, cpu_output_res_);
-    d2h_stage->SetProfiler(profiler_);
-    batching_done_stages_.push_back(d2h_stage);
-  }
-
-  if (batching_by_obj_) {
-    // note: 对象后处理只考虑在 CPU
-    obj_postproc_stage_ = std::make_shared<ObjPostprocessingBatchingDoneStage>(model_, batchsize_, device_id_,
-                                                                                 obj_postprocessor_, cpu_output_res_);
-  } else {
-    // TODO: device 上的后处理需要自己负责数据到 CPU 的拷贝
-    if (postproc_on_device_) {
-      auto postproc_stage =
-          std::make_shared<PostprocessingBatchingDoneStage>(model_, batchsize_, device_id_, postprocessor_, net_output_res_);
-      postproc_stage->SetProfiler(profiler_);
-      batching_done_stages_.push_back(postproc_stage);
-    } else {
-      auto postproc_stage =
-          std::make_shared<PostprocessingBatchingDoneStage>(model_, batchsize_, device_id_, postprocessor_, cpu_output_res_);
-      postproc_stage->SetProfiler(profiler_);
-      batching_done_stages_.push_back(postproc_stage);
-    }
-  }
+  cpu_input_res_ = config.cpu_input_res;
+  cpu_output_res_ = config.cpu_output_res;
+  net_input_res_ = config.net_input_res;
+  net_output_res_ = config.net_output_res;
 }
 
 /**

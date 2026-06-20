@@ -11,3 +11,4 @@ docs/
 **/build/
 python/test/*
 !python/test/*.py
+*.md

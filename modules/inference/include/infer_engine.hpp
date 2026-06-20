@@ -37,6 +37,7 @@
 #include "infer_resource.hpp"
 #include "infer_thread_pool.hpp"
 #include "obj_batching_stage.hpp"
+#include "pipeline_strategy.hpp"
 #include "postproc.hpp"
 #include "preproc.hpp"
 #include "obj_filter.hpp"
@@ -91,10 +92,15 @@ class InferEngine {
   std::shared_ptr<ObjPostprocessingBatchingDoneStage>               obj_postproc_stage_ = nullptr;
   std::shared_ptr<ObjFilter>                                        obj_filter_ = nullptr;
 
+  std::shared_ptr<IOResource>        input_res_ = nullptr;
+  std::shared_ptr<IOResource>        output_res_ = nullptr;
+  
   std::shared_ptr<CpuInputResource>  cpu_input_res_ = nullptr;
   std::shared_ptr<CpuOutputResource> cpu_output_res_ = nullptr;
   std::shared_ptr<NetInputResource>  net_input_res_ = nullptr;
   std::shared_ptr<NetOutputResource> net_output_res_ = nullptr;
+
+  InferOptions options_;
 
   TimeoutHelper timeout_helper_;
   std::shared_ptr<InferThreadPool> thread_pool_ = nullptr;

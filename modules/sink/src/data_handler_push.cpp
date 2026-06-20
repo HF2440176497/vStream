@@ -2,6 +2,7 @@
 #include "cnstream_logging.hpp"
 #include "data_converter.hpp"
 
+#include <algorithm>
 #include <opencv2/opencv.hpp>
 #include <cmath>
 
@@ -106,11 +107,19 @@ int PushHandlerIm::Process(const std::shared_ptr<FrameInfo> data) {
   task.pts     = ComputePts();
   task.is_eos  = false;
 
+  // LOGI(SINK) << "[DEBUG-B] before Push stream_id=" << stream_id_
+  //            << " queue_size=" << encode_queue_.Size()
+  //            << " pts_count=" << pts_count_;
+
   if (!encode_queue_.Push(task)) {
-    LOGW(SINK) << "[" << stream_id_ << "]: encode queue full, dropping frame";
+    LOGW(SINK) << "[DEBUG-B] encode queue full, dropping frame stream_id=" << stream_id_
+               << " queue_size=" << encode_queue_.Size();
     return 0;
   }
   pts_count_++;
+
+  // LOGI(SINK) << "[DEBUG-B] encode queue Push ok stream_id=" << stream_id_
+  //            << " pts_count=" << pts_count_;
   return 0;
 }
 
@@ -474,22 +483,52 @@ int64_t PushHandlerIm::ComputePts() {
 
 bool PushHandlerIm::ControlFps() {
   auto now = std::chrono::steady_clock::now();
+  static thread_local std::chrono::steady_clock::time_point last_arrival =
+      std::chrono::steady_clock::now();
+  auto arrival_interval_us =
+      std::chrono::duration_cast<std::chrono::microseconds>(now - last_arrival).count();
+  last_arrival = now;
   if (first_frame_) {
       push_start_time_ = now;
-      next_frame_time_ = now;
       last_push_time_ = now;
       fps_stat_start_time_ = now;
+      token_bucket_last_update_ = now;
+      token_bucket_tokens_ = kTokenBucketBurstSize - 1;
       first_frame_ = false;
       fps_stat_frame_count_ = 1;
+      LOGI(SINK) << "[DEBUG-A] first frame accepted stream_id=" << stream_id_
+                 << " arrival_interval_us=" << arrival_interval_us
+                 << " tokens=" << token_bucket_tokens_;
       return true;
   }
-  auto frame_interval = std::chrono::microseconds(1000000 / fps_);
-  if (now < next_frame_time_) {
+
+  // Token bucket: add tokens based on elapsed time, cap at burst size
+  auto elapsed_us = std::chrono::duration_cast<std::chrono::microseconds>(
+      now - token_bucket_last_update_).count();
+  double tokens_to_add = static_cast<double>(elapsed_us) * fps_ / 1000000.0;
+  token_bucket_tokens_ = std::min(token_bucket_tokens_ + tokens_to_add, kTokenBucketBurstSize);
+  token_bucket_last_update_ = now;
+
+  LOGI(SINK) << "[DEBUG-A] ControlFps check stream_id=" << stream_id_
+             << " arrival_interval_us=" << arrival_interval_us
+             << " tokens=" << token_bucket_tokens_;
+
+  if (token_bucket_tokens_ < 1.0) {
+      LOGW(SINK) << "[DEBUG-A] frame dropped by ControlFps (no token) stream_id=" << stream_id_
+                 << " arrival_interval_us=" << arrival_interval_us
+                 << " tokens=" << token_bucket_tokens_;
       return false;
   }
-  next_frame_time_ = std::max(now, next_frame_time_) + frame_interval;
+
+  token_bucket_tokens_ -= 1.0;
   last_push_time_ = now;
   fps_stat_frame_count_++;
+
+  LOGI(SINK) << "[DEBUG-A] frame accepted by ControlFps stream_id=" << stream_id_
+             << " arrival_interval_us=" << arrival_interval_us
+             << " tokens_after=" << token_bucket_tokens_
+             << " fps_stat_count=" << fps_stat_frame_count_;
+
   if (fps_stat_frame_count_ >= kFpsStatInterval) {
       auto stat_elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
           now - fps_stat_start_time_).count();

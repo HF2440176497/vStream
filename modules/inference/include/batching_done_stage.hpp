@@ -126,13 +126,13 @@ class InferBatchingDoneStage : public BatchingDoneStage {
   InferBatchingDoneStage(ModelLoader* model,
                          uint32_t batchsize,
                          int device_id,
-                         std::shared_ptr<NetInputResource> net_input_res,
-                         std::shared_ptr<NetOutputResource> net_output_res);
+                         std::shared_ptr<IOResource> input_res,
+                         std::shared_ptr<IOResource> output_res);
   ~InferBatchingDoneStage();
   std::vector<std::shared_ptr<InferTask>> BatchingDone(const BatchingDoneInput& finfos) override;
  private:
-  std::shared_ptr<NetInputResource> net_input_res_;
-  std::shared_ptr<NetOutputResource> net_output_res_;
+  std::shared_ptr<IOResource> input_res_;
+  std::shared_ptr<IOResource> output_res_;
 };  // class InferBatchingDoneStage
 
 class D2HBatchingDoneStage : public BatchingDoneStage {

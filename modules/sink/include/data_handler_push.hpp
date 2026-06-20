@@ -162,8 +162,12 @@ class PushHandlerIm {
 
   std::chrono::steady_clock::time_point push_start_time_;
   std::chrono::steady_clock::time_point last_push_time_;
-  std::chrono::steady_clock::time_point next_frame_time_;
   bool first_frame_ = true;
+
+  // Token bucket for fps control, allows short bursts while keeping long-term average <= fps_
+  static constexpr double kTokenBucketBurstSize = 8.0;
+  double token_bucket_tokens_ = 0.0;
+  std::chrono::steady_clock::time_point token_bucket_last_update_;
 
   std::unique_ptr<MarkRender> render_;
   MarkConfig mark_config_;
