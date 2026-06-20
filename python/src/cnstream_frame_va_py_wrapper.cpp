@@ -90,7 +90,8 @@ void DataFrameWrapper(const py::module &m) {
   py::enum_<DevType>(m, "DevType")
     .value("INVALID", DevType::INVALID)
     .value("CPU", DevType::CPU)
-    .value("CUDA", DevType::CUDA);
+    .value("CUDA", DevType::CUDA)
+    .value("ROCKCHIP", DevType::ROCKCHIP);
 
   py::class_<DevContext>(m, "DevContext")
     .def(py::init())

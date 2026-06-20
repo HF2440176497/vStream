@@ -89,17 +89,10 @@ class InferencePrivate: public NonCopyable {
 
     LOGI(INFER) << "[" << module_name_ << "] load model [path: " << model_path << "]";
 
-    // TODO: 推理模块的参数用于查找推理后端
     auto device_type = params.device_type;
     auto device_id = params.device_id;
     auto& factory = ModelLoaderFactory::Instance();
 
-    if (device_type != DevType::CPU && device_id == -1) {
-      LOGE(INFER) << "[" << module_name_ << "] device_type [" << DevType2Str(device_type) << "] not CPU. but device_id is -1";
-      return false;
-    }
-
-    // LoadEngine - ParBinding
     model_loader_ = factory.CreateModelLoader(device_type, device_id);
     if (!model_loader_) {
       LOGE(INFER) << "[" << module_name_ << "] create model loader failed. device_type: "

@@ -15,6 +15,8 @@ std::unique_ptr<PipelineStrategy> PipelineStrategy::Create(DevType device_type) 
       return std::make_unique<CudaPipelineStrategy>();
     case DevType::CPU:
       return std::make_unique<CpuPipelineStrategy>();
+    case DevType::ROCKCHIP:
+      return std::make_unique<CpuPipelineStrategy>();
     default:
       LOGW(INFER) << "PipelineStrategy: unsupported device type "
                   << DevType2Str(device_type) << ", fallback to CPU strategy.";

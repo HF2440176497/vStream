@@ -193,9 +193,9 @@ vStream/
 ├── framework/              # 核心框架
 │   ├── core/               # 核心框架代码
 │   │   ├── include/        # 头文件
-│   │   │   ├── util/           # 队列、读写锁
-│   │   │   ├── profiler/       # 性能剖析
-│   │   │   └── private/        # 内部 API
+│   │   │   ├── util/
+│   │   │   ├── profiler/
+│   │   │   └── private/
 │   │   └── src/            # 源文件
 │   └── unittest/           # 框架单元测试
 ├── modules/                # 功能模块

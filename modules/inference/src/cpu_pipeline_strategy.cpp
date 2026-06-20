@@ -35,6 +35,8 @@ PipelineConfig CpuPipelineStrategy::Build(ModelLoader* model, const InferOptions
 
   config.input_res = config.cpu_input_res;
   config.output_res = config.cpu_output_res;
+  config.net_input_res = nullptr;
+  config.net_output_res = nullptr;
 
   // 预处理阶段
   if (batching_by_obj) {
