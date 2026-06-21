@@ -10,6 +10,7 @@
 #include "common_wrapper.hpp"
 
 #include <memory>
+#include <sstream>
 #include <string>
 
 namespace py = pybind11;
@@ -61,9 +62,14 @@ void SinkModuleWrapper(py::module &m) {
       .def(py::init<>())
       .def_readwrite("id", &s_class_infos::id)
       .def_readwrite("model_name", &s_class_infos::model_name)
-      .def_readwrite("id_name", &s_class_infos::id_name)
+      .def_readwrite("name", &s_class_infos::name)
       .def_readwrite("score", &s_class_infos::score)
-      .def_readwrite("value", &s_class_infos::value);
+      .def_readwrite("value", &s_class_infos::value)
+      .def("__repr__", [](const s_class_infos& info) {
+        std::ostringstream oss;
+        oss << info;
+        return oss.str();
+      });
 
   py::class_<s_obj_in>(m, "obj_in")
       .def(py::init<>())
@@ -73,7 +79,12 @@ void SinkModuleWrapper(py::module &m) {
       .def_readwrite("bboxs", &s_obj_in::bboxs)
       .def_readwrite("feature", &s_obj_in::feature)
       .def_readwrite("classes", &s_obj_in::classes)
-      .def_readwrite("model_name", &s_obj_in::model_name);
+      .def_readwrite("model_name", &s_obj_in::model_name)
+      .def("__repr__", [](const s_obj_in& obj) {
+        std::ostringstream oss;
+        oss << obj;
+        return oss.str();
+      });
 
   py::class_<s_output_data>(m, "output_data")
       .def(py::init<>())
@@ -83,6 +94,11 @@ void SinkModuleWrapper(py::module &m) {
       .def_readwrite("objects", &s_output_data::objects)
       .def_readwrite("objects_dict", &s_output_data::objects_dict)
       .def_readwrite("objects_json", &s_output_data::objects_json)
+      .def("__repr__", [](const s_output_data& data) {
+        std::ostringstream oss;
+        oss << data;
+        return oss.str();
+      })
       .def_property("image_dict",
         [](const s_output_data& data) {
           py::dict dict;

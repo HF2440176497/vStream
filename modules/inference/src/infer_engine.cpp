@@ -19,7 +19,6 @@
  *************************************************************************/
 
 #include "infer_engine.hpp"
-#include <cuda_runtime_api.h>
 #include <chrono>
 #include <iostream>
 

@@ -7,6 +7,7 @@
 #include <vector>
 #include <map>
 #include <unordered_map>
+#include <iostream>
 #include <opencv2/opencv.hpp>
 
 namespace cnstream {
@@ -30,10 +31,19 @@ inline const std::string key_original_image = "original_image";
 struct s_class_infos {
   int id = -1;                // 分类序号
   std::string model_name;     // 模型名
-  std::string id_name;        // 分类名称
+  std::string name;           // 分类名称
   float score = 0;            // 得分
   float value = 0;            // 归一化得分
 };
+
+inline std::ostream& operator<<(std::ostream& os, const s_class_infos& info) {
+  os << "{id=" << info.id
+     << ", model_name=" << info.model_name
+     << ", name=" << info.name
+     << ", score=" << info.score
+     << ", value=" << info.value << "}";
+  return os;
+}
 
 /**
  * @brief 对象 obj 结构体
@@ -48,6 +58,29 @@ struct s_obj_in {
   std::string model_name;                   // 模型名
 };
 
+inline std::ostream& operator<<(std::ostream& os, const s_obj_in& obj) {
+  os << "{id=" << obj.id
+     << ", track_id=" << obj.track_id
+     << ", score=" << obj.score
+     << ", bboxs=[";
+  for (size_t i = 0; i < obj.bboxs.size(); ++i) {
+    if (i > 0) os << ", ";
+    os << obj.bboxs[i];
+  }
+  os << "], feature=[";
+  for (size_t i = 0; i < obj.feature.size(); ++i) {
+    if (i > 0) os << ", ";
+    os << obj.feature[i];
+  }
+  os << "], classes=[";
+  for (size_t i = 0; i < obj.classes.size(); ++i) {
+    if (i > 0) os << ", ";
+    os << obj.classes[i];
+  }
+  os << "], model_name=" << obj.model_name << "}";
+  return os;
+}
+
 /**
  * @brief 单帧的输出数据结构
  */
@@ -60,6 +93,32 @@ struct s_output_data {
   std::string objects_json;                                   // JSON 序列化结果
   std::unordered_map<std::string, cv::Mat> image_dict;        // 图像字典
 };
+
+inline std::ostream& operator<<(std::ostream& os, const s_output_data& data) {
+  os << "{result=" << data.result
+     << ", timestamp=" << data.timestamp
+     << ", frame_id_s=" << data.frame_id_s
+     << ", objects=[";
+  for (size_t i = 0; i < data.objects.size(); ++i) {
+    if (i > 0) os << ", ";
+    os << data.objects[i];
+  }
+  os << "], objects_dict=[";
+  for (size_t i = 0; i < data.objects_dict.size(); ++i) {
+    if (i > 0) os << ", ";
+    os << "{";
+    size_t j = 0;
+    for (const auto& kv : data.objects_dict[i]) {
+      if (j > 0) os << ", ";
+      os << kv.first << "=" << kv.second;
+      ++j;
+    }
+    os << "}";
+  }
+  os << "], objects_json=" << data.objects_json
+     << ", image_dict_size=" << data.image_dict.size() << "}";
+  return os;
+}
 
 }  // namespace cnstream
 

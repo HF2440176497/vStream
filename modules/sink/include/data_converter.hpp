@@ -19,7 +19,7 @@ inline s_class_infos ConvertClassInfo(const InferObjectInfo& src) {
   s_class_infos dst;
   dst.id         = src.id;
   dst.model_name = src.model_name;
-  dst.id_name    = src.id_name;
+  dst.name       = src.name;
   dst.score      = src.score;
   dst.value      = src.value;
   return dst;
@@ -33,11 +33,15 @@ inline s_obj_in ConvertInferObject(const std::shared_ptr<InferObject>& src) {
   dst.id         = src->id;
   dst.score      = src->score;
   dst.model_name = src->model_name;
+
+  // classes
   {
     for (const auto& cls : src->classes) {
       dst.classes.push_back(ConvertClassInfo(cls));
     }
   }
+  // feature
+  
   dst.bboxs = {src->bbox.x, src->bbox.y, src->bbox.w, src->bbox.h};
   dst.track_id = src->track_id;
   return dst;

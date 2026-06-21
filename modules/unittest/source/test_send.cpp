@@ -105,7 +105,7 @@ TEST_F(SourceSend, TestSend) {
       // frame_id_s start from 0
       send_handler_->Send(pts, std::to_string(send_count_), image_);
       send_count_++;
-      std::this_thread::sleep_for(std::chrono::milliseconds(4));
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
   });
 
@@ -119,7 +119,11 @@ TEST_F(SourceSend, TestSend) {
       }
       count++;
       if (count % 20 == 0) {
-        LOGI(T_SEND) << "Receive: " << count << " frames; id_s: " << data.frame_id_s;
+        auto objects = data.objects;
+        for (auto& obj : objects) {
+          LOGI(T_SEND) << obj;
+        }
+        LOGI(T_SEND) << "Receive: " << count << "Send: " << send_count_ << "; frames; id_s: " << data.frame_id_s;
       }
     }
   });

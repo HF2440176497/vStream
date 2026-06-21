@@ -115,7 +115,8 @@ def test_send_queue_pipeline():
                 continue
             receive_count += 1
             if receive_count % 20 == 0:
-                print(f"Received {receive_count} frames, latest frame_id_s={data.frame_id_s}")
+                print(f'receive {data}')
+                print(f"Received {receive_count} frames, send_count: {send_count}")
 
     t_send = threading.Thread(target=send_thread)
     t_recv = threading.Thread(target=receive_thread)

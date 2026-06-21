@@ -47,11 +47,11 @@ def test_data_structures():
 
     cls = vstream.class_infos()
     cls.id = 0
-    cls.model_name = "model"
-    cls.id_name = "person"
+    cls.model_name = "resnet"
+    cls.name = "person"
     cls.score = 0.9
     cls.value = 0.85
-    print(f"class_infos: id={cls.id}, name={cls.id_name}")
+    print(f"class_infos: id={cls.id}, name={cls.name}")
 
     obj_in = vstream.obj_in()
     obj_in.id = 0

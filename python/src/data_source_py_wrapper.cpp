@@ -109,10 +109,10 @@ void DataHandlerWrapper(const py::module &m) {
       .def("stop", &SendHandler::Stop)
       .def("close", &SendHandler::Close)
       .def("send", [](SendHandler& self, uint64_t pts, const std::string& frame_id_s, py::array_t<uint8_t> image) {
-        cv::Mat mat = ArrayToMat(image);
+        cv::Mat mat = ArrayToMat(image);  // must hold GIL for numpy buffer access
+        py::gil_scoped_release release;
         return self.Send(pts, frame_id_s, mat);
-      }, py::arg("pts"), py::arg("frame_id_s"), py::arg("image"),
-         py::call_guard<py::gil_scoped_release>())
+      }, py::arg("pts"), py::arg("frame_id_s"), py::arg("image"))
       .def("send_frame", [](SendHandler& self, const SendFrame& frame) {
         return self.Send(frame);
       }, py::arg("frame"),

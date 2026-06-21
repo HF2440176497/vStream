@@ -138,7 +138,7 @@ using StringPairs = std::vector<std::pair<std::string, std::string>>;
 struct InferObjectInfo {
   int id = -1;                ///< 分类序号
   std::string model_name;     ///< 模型名
-  std::string id_name;        ///< 分类名称
+  std::string name;           ///< 分类名称
   float score = 0;            ///< 得分
   float value = 0;            ///< 归一化得分
 };

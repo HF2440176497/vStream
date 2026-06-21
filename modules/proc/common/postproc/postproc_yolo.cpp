@@ -391,15 +391,14 @@ class Post_YOLOv8_CPU_v2: public Postproc {
   int Execute(const std::vector<float*>& cpu_outputs, ModelLoader* model,
               const std::shared_ptr<cnstream::FrameInfo>& package) override {
     LOGD(POSTPROC) << "Execute for data: " << package->GetStreamId() << ", timestamp: " << package->GetTimestamp();
-  
-    DataFramePtr frame = package->collection.Get<DataFramePtr>(cnstream::kDataFrameTag);
-    const int img_w = frame->GetWidth();
-    const int img_h = frame->GetHeight();
-
+    
     if (model_name_.empty()) {
       model_name_ = model->get_name();
     }
-    int output_index = 0;
+
+    DataFramePtr frame = package->collection.Get<DataFramePtr>(cnstream::kDataFrameTag);
+    const int img_w = frame->GetWidth();
+    const int img_h = frame->GetHeight();
 
     const int input_w = model->get_width();
     const int input_h = model->get_height();
@@ -407,7 +406,8 @@ class Post_YOLOv8_CPU_v2: public Postproc {
     float img_scale = std::min((float)input_w / img_w, (float)input_h / img_h);
     float pad_w = std::max(0.0f, (input_w - img_w * img_scale) / 2.0f);
     float pad_h = std::max(0.0f, (input_h - img_h * img_scale) / 2.0f);
-    
+
+    int output_index = 0;
     const float* output = cpu_outputs[output_index];
     TensorShape output_shape = model->OutputShape(output_index);
     int num_bboxes = output_shape.shape(2);   // 8400
@@ -577,13 +577,14 @@ class Post_YOLOv5_CPU_NoNMS: public Postproc {
 
     LOGD(POSTPROC) << "Execute for data: " << package->GetStreamId() << ", timestamp: " << package->GetTimestamp();
  
+    if (model_name_.empty()) {
+      model_name_ = model->get_name();
+    }
+
     DataFramePtr frame = package->collection.Get<DataFramePtr>(cnstream::kDataFrameTag);
     const int img_w = frame->GetWidth();
     const int img_h = frame->GetHeight();
 
-    if (model_name_.empty()) {
-      model_name_ = model->get_name();
-    }
     int output_index = 0;  // output tensor index
 
     const int input_w = model->get_width();

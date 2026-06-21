@@ -24,22 +24,6 @@ class Pre_Resnet_Obj : public ObjPreproc {
  public:
   bool Init(const std::map<std::string, std::string> &params) override {
     params_ = params;
-    if (params_.find(key_config_file) != params_.end()) {
-      config_file_ = params_[key_config_file];
-    } else {
-      LOGE(PREPROC) << "Init config_file must be in custom_postproc_params.";
-      return false;
-    }
-    std::ifstream file(config_file_);
-    if (!file.is_open()) {
-      LOGE(PREPROC) << "Init Could not open file " << config_file_;
-      return false;
-    }
-    nlohmann::ordered_json data = nlohmann::ordered_json::parse(file);
-    if (!data.is_object()) {
-      LOGE(PREPROC) << "Init config file must be object type.";
-      return false;
-    }
     return true;
   }
 
@@ -82,6 +66,27 @@ class Pre_Resnet_Obj : public ObjPreproc {
     }
 
     cv::Mat img = src_img(cv::Rect(bx, by, bw, bh)).clone();
+
+/**
+
+#ifdef VSTREAM_UNIT_TEST
+    {
+      std::lock_guard<std::mutex> lock(last_save_time_mutex_);
+      auto now = std::chrono::steady_clock::now();
+      if (save_duration_ms_ > 0) {
+        if (last_save_time_.time_since_epoch().count() == 0 ||
+            std::chrono::duration_cast<std::chrono::milliseconds>(now - last_save_time_).count() >= save_duration_ms_) {
+            auto sys_now = std::chrono::system_clock::now();
+            auto timestamp_ms = std::chrono::duration_cast<std::chrono::milliseconds>(sys_now.time_since_epoch()).count();
+            std::string filename = "save/pre-" +  std::to_string(timestamp_ms) + ".jpg";
+            cv::imwrite(filename, img);
+            last_save_time_ = now;
+        }
+      }
+    }
+#endif
+
+*/
 
     int img_w = img.cols;
     int img_h = img.rows;
@@ -141,22 +146,16 @@ class Pre_Resnet_Obj : public ObjPreproc {
         memcpy(cpu_output + c * input_h * input_w, float_ch.ptr<float>(), input_h * input_w * sizeof(float));
     }
 
-#ifdef VSTREAM_UNIT_TEST
-    if (!has_save_frame_mat_) {
-        save_float_image_chw_cpu(cpu_output, input_h, input_w, save_file_, ChannelsArrange::RGB, true);
-        has_save_frame_mat_ = true;
-    }
-#endif
     return 0;
   }
 private:
   std::string model_name_;
 
  private:
-  bool has_save_frame_mat_ = false;
-  std::string save_file_ = "save/test_preproc_save.jpg";
+  std::mutex last_save_time_mutex_;
+  std::chrono::steady_clock::time_point last_save_time_;
+  uint32_t save_duration_ms_ = 1000;
 
- private:
   DECLARE_REFLEX_OBJECT_EX(Pre_Resnet_Obj, cnstream::ObjPreproc);
 };  // class Pre_Resnet_Obj
 
