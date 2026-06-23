@@ -37,6 +37,10 @@ class Pre_PPOCRv3_rec_Obj : public ObjPreproc {
     int input_index = model->get_input_ordered_index();
 
     DataFramePtr frame = finfo->collection.Get<DataFramePtr>(kDataFrameTag);
+    if (!frame) {
+        LOGE(PREPROC) << "Pre_PPOCRv3_rec_Obj Execute: DataFrame is null";
+        return -1;
+    }
     cv::Mat img = frame->GetImage();
     if (img.empty()) return -1;
 

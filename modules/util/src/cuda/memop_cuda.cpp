@@ -97,6 +97,13 @@ int CudaMemOp::ConvertImageFormat(CNSyncedMemory* dst_mem, DataFormat dst_fmt,
   int height = src_frame->height;
   DataFormat src_fmt = src_frame->fmt;
 
+  if (src_frame->device_type == DevType::CUDA && src_frame->device_id != device_id_) {
+    LOGE(CORE) << "ConvertImageFormat: source frame is on CUDA device "
+               << src_frame->device_id << " but CudaMemOp is bound to device " << device_id_
+               << ", cross-device conversion is not supported";
+    return -1;
+  }
+
   if (dst_fmt != DataFormat::PIXEL_FORMAT_BGR24 &&
       dst_fmt != DataFormat::PIXEL_FORMAT_RGB24) {
     LOGE(CORE) << "CudaMemOp::ConvertImageFormat: Unsupported destination format " 

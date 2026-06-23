@@ -4,6 +4,7 @@
 
 #include "common.hpp"
 #include "cuda/cuda_check.hpp"
+#include "cuda/cnstream_allocator_cuda.hpp"
 
 namespace cnstream {
 
@@ -149,6 +150,7 @@ bool ModelLoaderTrt::Init(const std::string& engine_path, const InferParams& par
 }
 
 ModelLoaderTrt::~ModelLoaderTrt() {
+  CudaDeviceGuard guard(device_id_);
   if (stream_) {
     CHECK_CUDA_RUNTIME(cudaStreamDestroy(stream_));
     stream_ = nullptr;
@@ -165,6 +167,7 @@ ModelLoaderTrt::~ModelLoaderTrt() {
 }
 
 bool ModelLoaderTrt::LoadEngine(const std::string& engine_path) {
+  CudaDeviceGuard guard(device_id_);
   auto model_data = utils::load_model(engine_path);
   if (model_data.empty()) {
     LOGF(MODEL) << "Failed to load model file: " << engine_path;
@@ -316,6 +319,7 @@ bool ModelLoaderTrt::ParseBindings() {
  */
 bool ModelLoaderTrt::RunSync(std::vector<std::shared_ptr<void>> inputs, std::vector<std::shared_ptr<void>> outputs) {
   std::lock_guard<std::mutex> lock(mutex_);
+  CudaDeviceGuard guard(device_id_);
   if (inputs.size() != input_names_.size() || outputs.size() != output_names_.size()) {
     LOGE(MODEL) << "Tensor count mismatch: inputs " << inputs.size() << " vs " << input_names_.size()
                 << ", outputs " << outputs.size() << " vs " << output_names_.size();

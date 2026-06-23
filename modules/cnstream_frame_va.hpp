@@ -23,6 +23,14 @@
 
 namespace cnstream {
 
+/**
+ * @brief 集中管理 InferObject::AddAttribute / GetAttribute 使用的 key，
+ *        避免后处理、输出转换等模块各自硬编码字符串导致不一致。
+ */
+namespace attribute_keys {
+inline const std::string key_content = "content";  // 识别结果
+}  // namespace attribute_keys
+
 
 /**
  * @class DataFrame
@@ -209,6 +217,15 @@ class InferObject {
    * @note This is a thread-safe function.
    */
   InferAttr GetAttribute(const std::string& key);
+
+  /**
+   * @brief Gets all attributes of an object.
+   *
+   * @return Returns all attributes as key-value pairs.
+   *
+   * @note This is a thread-safe function.
+   */
+  std::map<std::string, InferAttr> GetAttributes();
 
   /**
    * @brief Adds the key of the extended attribute to a specified object.

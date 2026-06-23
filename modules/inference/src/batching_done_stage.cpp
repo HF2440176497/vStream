@@ -87,10 +87,9 @@ std::vector<std::shared_ptr<InferTask>> H2DBatchingDoneStage::BatchingDone(const
 
 InferBatchingDoneStage::InferBatchingDoneStage(ModelLoader* model,
                                                uint32_t batchsize,
-                                               int device_id,
                                                std::shared_ptr<IOResource> input_res,
                                                std::shared_ptr<IOResource> output_res)
-    : BatchingDoneStage(model, batchsize, device_id),
+    : BatchingDoneStage(model, batchsize, model ? model->GetDeviceId() : -1),
       input_res_(input_res),
       output_res_(output_res) {
 }

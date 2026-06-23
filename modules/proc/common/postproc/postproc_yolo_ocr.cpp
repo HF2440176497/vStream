@@ -265,9 +265,10 @@ class Post_YOLOv5_CPU_NoNMS_OCR: public Postproc {
       merged_obj->bbox.h = r[3];
       merged_obj->model_name = model_name_;
       cnstream::SetInferObjType(merged_obj, cnstream::InferObjType::kMerged);
-
-      std::lock_guard<std::mutex> objs_mutex(objs_holder->mutex_);
-      objs.push_back(merged_obj);
+      {
+        std::lock_guard<std::mutex> objs_mutex(objs_holder->mutex_);
+        objs.push_back(merged_obj);
+      }
     }
 
     return 0;

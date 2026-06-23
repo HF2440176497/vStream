@@ -114,9 +114,47 @@ def test_send_queue_pipeline():
                 time.sleep(0.01)
                 continue
             receive_count += 1
-            if receive_count % 20 == 0:
+            if receive_count % 10 == 0:
                 print(f'receive {data}')
                 print(f"Received {receive_count} frames, send_count: {send_count}")
+
+                # 检查并保存 data 顶层成员（防御式获取）
+                data_members = [m for m in dir(data) if not m.startswith('_')]
+                print(f"data members: {data_members}")
+
+                result = getattr(data, 'result', None)
+                timestamp = getattr(data, 'timestamp', None)
+                frame_id_s = getattr(data, 'frame_id_s', None)
+                objects_json = getattr(data, 'objects_json', None)
+                objects = getattr(data, 'objects', [])
+                print(f"  result={result}, timestamp={timestamp}, frame_id_s={frame_id_s}")
+                print(f"  objects count={len(objects)}, objects_json={objects_json}")
+
+                # 检查并保存每个 obj 的成员（防御式获取）
+                for idx, obj in enumerate(objects):
+                    obj_members = [m for m in dir(obj) if not m.startswith('_')]
+                    print(f"  obj[{idx}] members: {obj_members}")
+
+                    obj_id = getattr(obj, 'id', -1)
+                    obj_score = getattr(obj, 'score', 0.0)
+                    obj_type = getattr(obj, 'type', '')
+                    obj_bboxs = getattr(obj, 'bboxs', [])
+                    obj_classes = getattr(obj, 'classes', [])
+                    obj_attributes = getattr(obj, 'attributes', [])
+
+                    print(f"    id={obj_id}, score={obj_score}, type={obj_type}")
+                    print(f"    bboxs={obj_bboxs}")
+                    print(f"    classes={obj_classes}")
+                    print(f"    attributes={obj_attributes}")
+
+                    # 遍历 attributes，保存 OCR 等识别结果
+                    for attr_key, attr in obj_attributes:
+                        attr_name = getattr(attr, 'name', '')
+                        attr_score = getattr(attr, 'score', 0.0)
+                        attr_id = getattr(attr, 'id', -1)
+                        attr_value = getattr(attr, 'value', -1)
+                        print(f"    attr key={attr_key}, name={attr_name}, "
+                              f"score={attr_score}, id={attr_id}, value={attr_value}")
 
     t_send = threading.Thread(target=send_thread)
     t_recv = threading.Thread(target=receive_thread)

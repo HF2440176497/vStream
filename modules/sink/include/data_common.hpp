@@ -7,6 +7,7 @@
 #include <vector>
 #include <map>
 #include <unordered_map>
+#include <utility>
 #include <iostream>
 #include <opencv2/opencv.hpp>
 
@@ -46,6 +47,24 @@ inline std::ostream& operator<<(std::ostream& os, const s_class_infos& info) {
 }
 
 /**
+ * @brief 属性信息结构体（承接 InferAttr，输出层独立定义）
+ */
+struct s_attr_info {
+  int id = -1;          // 属性序号
+  int value = -1;       // 属性值（label value）
+  float score = 0;      // 属性置信度
+  std::string name;     // 属性名称/文本
+};
+
+inline std::ostream& operator<<(std::ostream& os, const s_attr_info& info) {
+  os << "{id=" << info.id
+     << ", value=" << info.value
+     << ", score=" << info.score
+     << ", name=" << info.name << "}";
+  return os;
+}
+
+/**
  * @brief 对象 obj 结构体
  */
 struct s_obj_in {
@@ -57,7 +76,8 @@ struct s_obj_in {
   std::vector<s_class_infos> classes;       // 分类结果列表
   std::string model_name;                   // 模型名
   std::vector<std::vector<float>> key_points;  // 关键点结果列表
-  std::string type;                           // 对象类型："original" 
+  std::string type;                         // 对象类型："original"
+  std::vector<std::pair<std::string, s_attr_info>> attributes;  // 属性列表（key -> 属性值）
 };
 
 inline std::ostream& operator<<(std::ostream& os, const s_obj_in& obj) {
@@ -90,7 +110,13 @@ inline std::ostream& operator<<(std::ostream& os, const s_obj_in& obj) {
     os << "]";
   }
   os << "], model_name=" << obj.model_name
-     << ", type=" << obj.type << "}";
+     << ", type=" << obj.type
+     << ", attributes=[";
+  for (size_t i = 0; i < obj.attributes.size(); ++i) {
+    if (i > 0) os << ", ";
+    os << "(" << obj.attributes[i].first << ": " << obj.attributes[i].second << ")";
+  }
+  os << "]}";
   return os;
 }
 

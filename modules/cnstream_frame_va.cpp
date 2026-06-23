@@ -202,6 +202,11 @@ InferAttr InferObject::GetAttribute(const std::string& key) {
   return InferAttr();
 }
 
+std::map<std::string, InferAttr> InferObject::GetAttributes() {
+  std::lock_guard<std::mutex> lk(attribute_mutex_);
+  return attributes_;  // value copy
+}
+
 bool InferObject::AddExtraAttribute(const std::string& key, const std::string& value) {
   std::lock_guard<std::mutex> lk(attribute_mutex_);
   if (extra_attributes_.find(key) != extra_attributes_.end()) return false;

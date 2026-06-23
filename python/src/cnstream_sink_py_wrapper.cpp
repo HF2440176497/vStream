@@ -12,6 +12,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <vector>
 
 namespace py = pybind11;
 
@@ -69,6 +70,24 @@ void SinkModuleWrapper(py::module &m) {
         std::ostringstream oss;
         oss << info;
         return oss.str();
+      })
+      .def("__dir__", [](const s_class_infos&) {
+        return std::vector<std::string>{"id", "model_name", "name", "score", "value"};
+      });
+
+  py::class_<s_attr_info>(m, "attr_info")
+      .def(py::init<>())
+      .def_readwrite("id", &s_attr_info::id)
+      .def_readwrite("value", &s_attr_info::value)
+      .def_readwrite("score", &s_attr_info::score)
+      .def_readwrite("name", &s_attr_info::name)
+      .def("__repr__", [](const s_attr_info& info) {
+        std::ostringstream oss;
+        oss << info;
+        return oss.str();
+      })
+      .def("__dir__", [](const s_attr_info&) {
+        return std::vector<std::string>{"id", "value", "score", "name"};
       });
 
   py::class_<s_obj_in>(m, "obj_in")
@@ -80,10 +99,18 @@ void SinkModuleWrapper(py::module &m) {
       .def_readwrite("feature", &s_obj_in::feature)
       .def_readwrite("classes", &s_obj_in::classes)
       .def_readwrite("model_name", &s_obj_in::model_name)
+      .def_readwrite("key_points", &s_obj_in::key_points)
+      .def_readwrite("type", &s_obj_in::type)
+      .def_readwrite("attributes", &s_obj_in::attributes)
       .def("__repr__", [](const s_obj_in& obj) {
         std::ostringstream oss;
         oss << obj;
         return oss.str();
+      })
+      .def("__dir__", [](const s_obj_in&) {
+        return std::vector<std::string>{
+            "id", "track_id", "score", "bboxs", "feature", "classes",
+            "model_name", "key_points", "type", "attributes"};
       });
 
   py::class_<s_output_data>(m, "output_data")
@@ -98,6 +125,11 @@ void SinkModuleWrapper(py::module &m) {
         std::ostringstream oss;
         oss << data;
         return oss.str();
+      })
+      .def("__dir__", [](const s_output_data&) {
+        return std::vector<std::string>{
+            "result", "timestamp", "frame_id_s", "objects",
+            "objects_dict", "objects_json", "image_dict"};
       })
       .def_property("image_dict",
         [](const s_output_data& data) {

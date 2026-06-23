@@ -19,7 +19,6 @@ PipelineConfig CudaPipelineStrategy::Build(ModelLoader* model, const InferOption
   PipelineConfig config;
 
   const uint32_t batchsize = model->get_batch_size();
-  const int device_id = options.device_id();
   const bool batching_by_obj = options.batching_by_obj();
   const bool postproc_on_device = options.postproc_on_device();
 
@@ -54,12 +53,12 @@ PipelineConfig CudaPipelineStrategy::Build(ModelLoader* model, const InferOption
                                                         config.cpu_input_res);
   }
 
-  auto h2d_stage = std::make_shared<H2DBatchingDoneStage>(model, batchsize, device_id,
+  auto h2d_stage = std::make_shared<H2DBatchingDoneStage>(model, batchsize,
                                                           config.cpu_input_res, config.net_input_res);
   h2d_stage->SetProfiler(options.profiler());
   config.batching_done_stages.push_back(h2d_stage);
 
-  auto infer_stage = std::make_shared<InferBatchingDoneStage>(model, batchsize, device_id,
+  auto infer_stage = std::make_shared<InferBatchingDoneStage>(model, batchsize,
                                                               config.net_input_res, config.net_output_res);
   infer_stage->SetProfiler(options.profiler());
   infer_stage->SetDumpResizedImageDir(options.dump_resized_image_dir());
@@ -68,7 +67,7 @@ PipelineConfig CudaPipelineStrategy::Build(ModelLoader* model, const InferOption
 
   // D2H：（若后处理在 CPU）
   if (!postproc_on_device) {
-    auto d2h_stage = std::make_shared<D2HBatchingDoneStage>(model, batchsize, device_id,
+    auto d2h_stage = std::make_shared<D2HBatchingDoneStage>(model, batchsize,
                                                             config.net_output_res, config.cpu_output_res);
     d2h_stage->SetProfiler(options.profiler());
     config.batching_done_stages.push_back(d2h_stage);
@@ -76,19 +75,19 @@ PipelineConfig CudaPipelineStrategy::Build(ModelLoader* model, const InferOption
 
   if (batching_by_obj) {
     config.obj_postproc_stage =
-        std::make_shared<ObjPostprocessingBatchingDoneStage>(model, batchsize, device_id,
+        std::make_shared<ObjPostprocessingBatchingDoneStage>(model, batchsize,
                                                              options.obj_postprocessor(), config.cpu_output_res);
   } else {
     if (postproc_on_device) {
       auto postproc_stage =
-          std::make_shared<PostprocessingBatchingDoneStage>(model, batchsize, device_id,
+          std::make_shared<PostprocessingBatchingDoneStage>(model, batchsize,
                                                             options.postprocessor(), config.net_output_res);
       postproc_stage->SetProfiler(options.profiler());
       postproc_stage->SetDumpResizedImageDir(options.dump_resized_image_dir());
       config.batching_done_stages.push_back(postproc_stage);
     } else {
       auto postproc_stage =
-          std::make_shared<PostprocessingBatchingDoneStage>(model, batchsize, device_id,
+          std::make_shared<PostprocessingBatchingDoneStage>(model, batchsize,
                                                             options.postprocessor(), config.cpu_output_res);
       postproc_stage->SetProfiler(options.profiler());
       postproc_stage->SetDumpResizedImageDir(options.dump_resized_image_dir());

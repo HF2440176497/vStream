@@ -20,7 +20,6 @@ PipelineConfig CpuPipelineStrategy::Build(ModelLoader* model, const InferOptions
   PipelineConfig config;
 
   const uint32_t batchsize = model->get_batch_size();
-  const int device_id = options.device_id();
   const bool batching_by_obj = options.batching_by_obj();
 
   if (options.postproc_on_device()) {
@@ -50,7 +49,7 @@ PipelineConfig CpuPipelineStrategy::Build(ModelLoader* model, const InferOptions
   }
 
   // 推理阶段：直接读写 CPU 缓冲，无需 H2D/D2H
-  auto infer_stage = std::make_shared<InferBatchingDoneStage>(model, batchsize, device_id,
+  auto infer_stage = std::make_shared<InferBatchingDoneStage>(model, batchsize,
                                                               config.input_res, config.output_res);
   infer_stage->SetProfiler(options.profiler());
   infer_stage->SetDumpResizedImageDir(options.dump_resized_image_dir());
@@ -60,11 +59,11 @@ PipelineConfig CpuPipelineStrategy::Build(ModelLoader* model, const InferOptions
   // 后处理阶段
   if (batching_by_obj) {
     config.obj_postproc_stage =
-        std::make_shared<ObjPostprocessingBatchingDoneStage>(model, batchsize, device_id,
+        std::make_shared<ObjPostprocessingBatchingDoneStage>(model, batchsize,
                                                              options.obj_postprocessor(), config.cpu_output_res);
   } else {
     auto postproc_stage =
-        std::make_shared<PostprocessingBatchingDoneStage>(model, batchsize, device_id,
+        std::make_shared<PostprocessingBatchingDoneStage>(model, batchsize,
                                                           options.postprocessor(), config.cpu_output_res);
     postproc_stage->SetProfiler(options.profiler());
     postproc_stage->SetDumpResizedImageDir(options.dump_resized_image_dir());

@@ -136,7 +136,7 @@ class Post_PPOCRv3_rec_Obj : public ObjPostproc {
     data_cl.score = score;
     data_cl.value = 0;
     data_cl.name = str_res;
-    pobj->AddAttribute("Identification", data_cl);
+    pobj->AddAttribute(attribute_keys::key_content, data_cl);
 
     double dr_ms = std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - timeUse).count();

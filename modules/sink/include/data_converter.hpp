@@ -26,6 +26,18 @@ inline s_class_infos ConvertClassInfo(const InferObjectInfo& src) {
 }
 
 /**
+ * @brief InferAttr → s_attr_info
+ */
+inline s_attr_info ConvertInferAttr(const InferAttr& src) {
+  s_attr_info dst;
+  dst.id    = src.id;
+  dst.value = src.value;
+  dst.score = src.score;
+  dst.name  = src.name;
+  return dst;
+}
+
+/**
  * @brief InferObject → s_obj_in
  */
 inline s_obj_in ConvertInferObject(const std::shared_ptr<InferObject>& src) {
@@ -41,7 +53,7 @@ inline s_obj_in ConvertInferObject(const std::shared_ptr<InferObject>& src) {
     }
   }
   // feature
-  
+
   dst.bboxs = {src->bbox.x, src->bbox.y, src->bbox.w, src->bbox.h};
   dst.track_id = src->track_id;
 
@@ -49,6 +61,14 @@ inline s_obj_in ConvertInferObject(const std::shared_ptr<InferObject>& src) {
   {
     for (const auto& kp : src->key_points) {
       dst.key_points.push_back(kp);
+    }
+  }
+
+  // attributes（支持多个 key，例如 OCR 的 Identification）
+  {
+    auto attrs = src->GetAttributes();
+    for (const auto& [key, attr] : attrs) {
+      dst.attributes.push_back({key, ConvertInferAttr(attr)});
     }
   }
 
