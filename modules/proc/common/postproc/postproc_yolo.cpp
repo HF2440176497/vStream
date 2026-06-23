@@ -14,8 +14,6 @@
 #include <string>
 #include <nlohmann/json.hpp>
 #include <opencv2/opencv.hpp>
-#include <cuda_runtime.h>
-
 
 
 using json = nlohmann::json;
@@ -24,6 +22,7 @@ namespace cnstream {
 
 static const std::string key_config_file = "config_file";
 
+static const std::string key_classes = "classes";
 static const std::string key_name = "name";
 static const std::string key_threshold = "threshold";
 
@@ -131,17 +130,25 @@ class Post_YOLOv8_CPU: public Postproc {
       LOGE(POSTPROC) << "Init config file must be object type.";
       return false;
     }
-    for (auto it = data.begin(); it != data.end(); ++it) {
-      const std::string& key = it.key();
-      const nlohmann::ordered_json& value = it.value();
-      if (!value.is_object()) {
-        LOGE(POSTPROC) << "Invalid item format in conf file, key: " << key;
+
+    if (data.find(key_classes) != data.end()) {
+      const auto& classes = data[key_classes];
+      if (!classes.is_object()) {
+        LOGE(POSTPROC) << "Invalid classes format in conf file.";
         return false;
       }
-      ItemInfo info;
-      info.name = value[key_name].get<std::string>();
-      info.threshold = value[key_threshold].get<float>();
-      item_infos_[std::stoi(key)] = info;
+      for (auto it = classes.begin(); it != classes.end(); ++it) {
+        const std::string& key = it.key();
+        const nlohmann::ordered_json& value = it.value();
+        if (!value.is_object()) {
+          LOGE(POSTPROC) << "Invalid item format in conf file, key: " << key;
+          return false;
+        }
+        ItemInfo info;
+        info.name = value["name"].get<std::string>();
+        info.threshold = value["threshold"].get<float>();
+        item_infos_[std::stoi(key)] = info;
+      }
     }
     return true;
   }
@@ -363,30 +370,27 @@ class Post_YOLOv8_CPU_v2: public Postproc {
       return false;
     }
 
-    int max_label = -1;
-    for (auto it = data.begin(); it != data.end(); ++it) {
-      int label = std::stoi(it.key());
-      if (label > max_label) max_label = label;
-    }
-    if (max_label < 0) {
-      LOGE(POSTPROC) << "No valid label found in config.";
-      return false;
-    }
-    // label 是从 0 开始 可能是不连续的
-    item_infos_.resize(max_label + 1);
-    for (auto it = data.begin(); it != data.end(); ++it) {
-      int label = std::stoi(it.key());
-      const auto& value = it.value();
-      if (!value.is_object()) {
-        LOGE(POSTPROC) << "Invalid item format in conf file, key: " << it.key();
+    if (data.find(key_classes) != data.end()) {
+      const auto& classes = data[key_classes];
+      if (!classes.is_object()) {
+        LOGE(POSTPROC) << "Invalid classes format in conf file.";
         return false;
       }
-      item_infos_[label].name = value["name"].get<std::string>();
-      item_infos_[label].threshold = value["threshold"].get<float>();
+      for (auto it = classes.begin(); it != classes.end(); ++it) {
+        const std::string& key = it.key();
+        const nlohmann::ordered_json& value = it.value();
+        if (!value.is_object()) {
+          LOGE(POSTPROC) << "Invalid item format in conf file, key: " << key;
+          return false;
+        }
+        ItemInfo info;
+        info.name = value["name"].get<std::string>();
+        info.threshold = value["threshold"].get<float>();
+        item_infos_[std::stoi(key)] = info;
+      }
     }
     return true;
   }
-
 
   int Execute(const std::vector<float*>& cpu_outputs, ModelLoader* model,
               const std::shared_ptr<cnstream::FrameInfo>& package) override {
@@ -546,6 +550,12 @@ class Post_YOLOv5_CPU_NoNMS: public Postproc {
       LOGE(POSTPROC) << "Init config_file must be in custom_postproc_params.";
       return false;
     }
+    std::string config_file_path = "./";
+    if (params_.find(CNS_JSON_DIR_PARAM_NAME) != params_.end()) {
+      config_file_path = params_[CNS_JSON_DIR_PARAM_NAME];
+    }
+    config_file_ = GetPathRelativeToTheJSONFile(config_file_, config_file_path);
+
     LOGI(POSTPROC) << "model_name: " << model_name_ << ", post conf file: " << config_file_;
     std::ifstream file(config_file_);
     if (!file.is_open()) {
@@ -557,17 +567,25 @@ class Post_YOLOv5_CPU_NoNMS: public Postproc {
       LOGE(POSTPROC) << "Init config file must be object type.";
       return false;
     }
-    for (auto it = data.begin(); it != data.end(); ++it) {
-      const std::string& key = it.key();
-      const nlohmann::ordered_json& value = it.value();
-      if (!value.is_object()) {
-        LOGE(POSTPROC) << "Invalid item format in conf file, key: " << key;
+
+    if (data.find(key_classes) != data.end()) {
+      const auto& classes = data[key_classes];
+      if (!classes.is_object()) {
+        LOGE(POSTPROC) << "Invalid classes format in conf file.";
         return false;
       }
-      ItemInfo info;
-      info.name = value["name"].get<std::string>();
-      info.threshold = value["threshold"].get<float>();
-      item_infos_[std::stoi(key)] = info;
+      for (auto it = classes.begin(); it != classes.end(); ++it) {
+        const std::string& key = it.key();
+        const nlohmann::ordered_json& value = it.value();
+        if (!value.is_object()) {
+          LOGE(POSTPROC) << "Invalid item format in conf file, key: " << key;
+          return false;
+        }
+        ItemInfo info;
+        info.name = value["name"].get<std::string>();
+        info.threshold = value["threshold"].get<float>();
+        item_infos_[std::stoi(key)] = info;
+      }
     }
     return true;
   }
@@ -676,7 +694,7 @@ class Post_YOLOv5_CPU_NoNMS: public Postproc {
   };
   std::map<int, ItemInfo> item_infos_;
 
-  const int max_boxes_num_ = 100;
+  const int max_boxes_num_ = 150;
   std::string model_name_;  ///< The name of the model.
 
   bool has_save_frame_mat_ = false;

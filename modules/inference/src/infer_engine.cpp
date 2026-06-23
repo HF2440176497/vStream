@@ -51,7 +51,7 @@ InferEngine::InferEngine(const InferOptions& options)
 
   thread_pool_ = std::make_shared<InferThreadPool>();
   thread_pool_->SetErrorHandleFunc(error_func_);
-  thread_pool_->Init(device_id_, batchsize_ * 3 + 4);
+  thread_pool_->Init(batchsize_ * 3 + 4);
 
   StageAssemble();
   timeout_helper_.SetTimeout(batching_timeout_);

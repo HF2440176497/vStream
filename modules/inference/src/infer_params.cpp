@@ -308,6 +308,38 @@ void InferParamManager::RegisterAll(ParamRegister *pregister) {
     return true;
   };
   ASSERT(RegisterParam(pregister, param));
+
+  param.name = "custom_obj_filter_params";
+  param.desc_str =
+      "Optional. Custom object filter parameters. After the inferencer module creates an instance of "
+      "the object filter class specified by obj_filter_name, the Init function of the specified "
+      "object filter class will be called, and these parameters will be passed to Init. See ObjFilter::Init for detail.";
+  param.default_value = "";
+  param.type = "json string";
+  param.parser = [](const std::string &value, InferParams *param_set) -> bool {
+    if (value.empty()) {
+      param_set->custom_obj_filter_params.clear();
+      return true;
+    }
+    auto doc = nlohmann::ordered_json::parse(value);
+    if (!doc.is_object()) {
+      LOGE(CORE) << "Custom object filter parameters configuration must be object type.";
+      return false;
+    }
+    param_set->custom_obj_filter_params.clear();
+
+    std::string value_str {};
+    for (auto& [key, val] : doc.items()) {
+      if (!val.is_string()) {
+        value_str = val.dump();
+      } else {
+        value_str = val.get<std::string>();
+      }
+      param_set->custom_obj_filter_params[key] = value_str;
+    }
+    return true;
+  };
+  ASSERT(RegisterParam(pregister, param));
 }
 
 /**

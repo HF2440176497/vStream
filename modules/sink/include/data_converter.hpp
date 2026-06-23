@@ -44,6 +44,17 @@ inline s_obj_in ConvertInferObject(const std::shared_ptr<InferObject>& src) {
   
   dst.bboxs = {src->bbox.x, src->bbox.y, src->bbox.w, src->bbox.h};
   dst.track_id = src->track_id;
+
+  // key_points
+  {
+    for (const auto& kp : src->key_points) {
+      dst.key_points.push_back(kp);
+    }
+  }
+
+  // 默认是 "original" 类型
+  dst.type = cnstream::GetInferObjType(src);
+
   return dst;
 }
 
@@ -83,7 +94,12 @@ inline s_output_data ConvertFrameInfo(const std::shared_ptr<FrameInfo>& frame_in
   if (frame_info->collection.HasValue(kDataFrameTag)) {
     auto img_data = frame_info->collection.Get<DataFramePtr>(kDataFrameTag);
     data.image_dict[output_constants::key_original_image] = img_data->GetImage();
+  } else {
+    LOGE(DATA_CONVERTER) << "ConvertFrameInfo: DataFrame not found in FrameInfo collection.";
+    data.result = -1;
+    return data;
   }
+
   // 自定义图像
   if (frame_info->collection.HasValue(kCustomImagesTag)) {
     auto custom_images = frame_info->collection.Get<CustomImagesPtr>(kCustomImagesTag);
@@ -91,7 +107,7 @@ inline s_output_data ConvertFrameInfo(const std::shared_ptr<FrameInfo>& frame_in
       data.image_dict[key] = mat;
     }
   }
-  // 推理对象
+  // 检测对象（原始框 + 合并框均在 kInferObjsTag 中，通过 type 区分）
   if (frame_info->collection.HasValue(kInferObjsTag)) {
     auto objs_holder = frame_info->collection.Get<InferObjsPtr>(kInferObjsTag);
     {
@@ -100,10 +116,12 @@ inline s_output_data ConvertFrameInfo(const std::shared_ptr<FrameInfo>& frame_in
         data.objects.push_back(ConvertInferObject(obj));
       }
     }
-    data.result = 0;
   } else {
+    LOGE(DATA_CONVERTER) << "ConvertFrameInfo: InferObjs not found in FrameInfo collection.";
     data.result = -1;
+    return data;
   }
+  data.result = 0;
   return data;
 }
 

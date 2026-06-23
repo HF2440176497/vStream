@@ -32,9 +32,8 @@
 
 namespace cnstream {
 
-void InferThreadPool::Init(int device_id, size_t thread_num) {
+void InferThreadPool::Init(size_t thread_num) {
   std::unique_lock<std::mutex> lk(mtx_);
-  device_id_ = device_id;
   running_ = true;
   max_tnum_ = 2 * thread_num;
   for (size_t ti = 0; ti < thread_num; ++ti) {

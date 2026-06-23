@@ -122,6 +122,10 @@ class InferencePrivate: public NonCopyable {
                      << params.obj_filter_name;
           return false;
         }
+        if (!obj_filter_->Init(params.custom_obj_filter_params)) {
+          LOGE(INFER) << "obj_filter_ init failed.";
+          return false;
+        }
       }
     }
 

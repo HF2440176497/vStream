@@ -24,6 +24,7 @@ static const std::string key_name = "name";
 class Post_Resnet_Obj : public ObjPostproc {
  public:
   bool Init(const std::map<std::string, std::string> &params) override {
+
     params_ = params;
     if (params_.find(key_config_file) != params_.end()) {
       config_file_ = params_[key_config_file];
@@ -37,7 +38,7 @@ class Post_Resnet_Obj : public ObjPostproc {
     }
     config_file_ = GetPathRelativeToTheJSONFile(config_file_, config_file_path);
 
-    LOGI(POSTPROC) << "model_name: " << model_name_ << ", post conf file: " << config_file_;
+    LOGI(POSTPROC) << "Post_Resnet_Obj post conf file: " << config_file_;
     std::ifstream file(config_file_);
     if (!file.is_open()) {
       LOGE(POSTPROC) << "Init Could not open file " << config_file_;
@@ -49,25 +50,32 @@ class Post_Resnet_Obj : public ObjPostproc {
       return false;
     }
 
-    int max_label = -1;
-    for (auto it = data.begin(); it != data.end(); ++it) {
-      int label = std::stoi(it.key());
-      if (label > max_label) max_label = label;
-    }
-    if (max_label < 0) {
-      LOGE(POSTPROC) << "No valid label found in config.";
-      return false;
-    }
-    item_infos_.resize(max_label + 1);
-    for (auto it = data.begin(); it != data.end(); ++it) {
-      int label = std::stoi(it.key());
-      const auto& value = it.value();
-      if (!value.is_object()) {
-        LOGE(POSTPROC) << "Invalid item format in conf file, key: " << it.key();
+    if (data.find(key_classes) != data.end()) {
+      const auto& classes = data[key_classes];
+      if (!classes.is_object()) {
+        LOGE(POSTPROC) << "Invalid classes format in conf file.";
         return false;
       }
-      item_infos_[label].name = value["name"].get<std::string>();
-    }
+      int max_label = -1;
+      for (auto it = classes.begin(); it != classes.end(); ++it) {
+        int label = std::stoi(it.key());
+        if (label > max_label) max_label = label;
+      }
+      if (max_label < 0) {
+        LOGE(POSTPROC) << "No valid label found in config.";
+        return false;
+      }
+      item_infos_.resize(max_label + 1);
+      for (auto it = classes.begin(); it != classes.end(); ++it) {
+        int label = std::stoi(it.key());
+        const auto& value = it.value();
+        if (!value.is_object()) {
+          LOGE(POSTPROC) << "Invalid item format in conf file, key: " << it.key();
+          return false;
+        }
+        item_infos_[label].name = value["name"].get<std::string>();
+      }
+    }  // find classes
     return true;
   }
 
@@ -115,6 +123,7 @@ class Post_Resnet_Obj : public ObjPostproc {
   }
 
  private:
+  // TODO: 后期可加入阈值
   struct ItemInfo {
     std::string name;
   };
@@ -127,4 +136,4 @@ class Post_Resnet_Obj : public ObjPostproc {
 
 IMPLEMENT_REFLEX_OBJECT_EX(Post_Resnet_Obj, cnstream::ObjPostproc);
 
-}
+}  // namespace cnstream

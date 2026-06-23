@@ -59,6 +59,10 @@ class ObjFilter : virtual public ReflexObjectEx<ObjFilter> {
     return ReflexObjectEx<ObjFilter>::CreateObject(filter_name);
   }
 
+  virtual bool Init(const std::map<std::string, std::string> &params) {
+    return true;
+  }
+
   /**
    * @brief Filters objects of the frame.
    *

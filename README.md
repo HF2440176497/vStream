@@ -508,14 +508,6 @@ class MyPythonModule(vstream.Module):
 
 ## 适配模型
 
-### CUDA 平台（TensorRT 后端）
-
-| 模型 | 状态 |
-|:---|:---:|
-| YOLOv5 检测 | 已完成 |
-| YOLOv8 检测 | 已完成 |
-| ResNet 分类 | 已完成 |
-
 ### 前后处理
 
 | 处理类型 | 模型 |

@@ -56,6 +56,8 @@ struct s_obj_in {
   std::vector<float> feature;               // 特征向量
   std::vector<s_class_infos> classes;       // 分类结果列表
   std::string model_name;                   // 模型名
+  std::vector<std::vector<float>> key_points;  // 关键点结果列表
+  std::string type;                           // 对象类型："original" 
 };
 
 inline std::ostream& operator<<(std::ostream& os, const s_obj_in& obj) {
@@ -77,7 +79,18 @@ inline std::ostream& operator<<(std::ostream& os, const s_obj_in& obj) {
     if (i > 0) os << ", ";
     os << obj.classes[i];
   }
-  os << "], model_name=" << obj.model_name << "}";
+  os << "], key_points=[";
+  for (size_t i = 0; i < obj.key_points.size(); ++i) {
+    if (i > 0) os << ", ";
+    os << "[";
+    for (size_t j = 0; j < obj.key_points[i].size(); ++j) {
+      if (j > 0) os << ", ";
+      os << obj.key_points[i][j];
+    }
+    os << "]";
+  }
+  os << "], model_name=" << obj.model_name
+     << ", type=" << obj.type << "}";
   return os;
 }
 

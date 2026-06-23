@@ -48,6 +48,7 @@ struct InferParams {
   bool saving_infer_input = false;
   std::map<std::string, std::string> custom_preproc_params;
   std::map<std::string, std::string> custom_postproc_params;
+  std::map<std::string, std::string> custom_obj_filter_params;
 };  // struct InferParams
 
 struct InferParamDesc {

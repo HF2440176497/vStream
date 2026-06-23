@@ -37,7 +37,7 @@ class InferThreadPool {
   InferThreadPool() = default;
   ~InferThreadPool() = default;
 
-  void Init(int device_id, size_t thread_num);
+  void Init(size_t thread_num);
   void Destroy();
 
   void SubmitTask(const InferTaskSptr& task);
@@ -48,7 +48,6 @@ class InferThreadPool {
   InferTaskSptr PopTask();
 
   void TaskLoop();
-  int device_id_ = -1;
   std::vector<std::thread> threads_;
   std::queue<InferTaskSptr> task_q_;
   size_t max_tnum_ = 20;

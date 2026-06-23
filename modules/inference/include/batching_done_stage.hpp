@@ -95,7 +95,7 @@ class BatchingDoneStage {
   std::string dump_resized_image_dir_ = "";
   ModelLoader* model_;
   uint32_t batchsize_ = 0;
-  int device_id_ = 0;
+  int device_id_ = -1;
 };  // class BatchingDoneStage
 
 

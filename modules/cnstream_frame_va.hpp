@@ -117,6 +117,7 @@ typedef struct {
   int id = -1;      ///< The unique ID of the classification. The value -1 means invalid.
   int value = -1;   ///< The label value of the classification.
   float score = 0;  ///< The label score of the classification.
+  std::string name;  ///< The label name of the classification.
 } InferAttr;
 
 /**
@@ -170,7 +171,7 @@ class InferObject {
   InferBoundingBox bbox;   ///< The object normalized coordinates.
   Collection collection;   ///< User-defined structured information.
   std::vector<InferObjectInfo> classes;  ///< Full classification results (primary + secondary).
-  cv::Mat mask;            ///< Segmentation mask (optional).
+  std::vector<std::vector<float>> key_points;  ///< Full key point results.
 
   /**
    * @brief Adds the key of an attribute to a specified object.
@@ -405,6 +406,63 @@ inline constexpr char kDataFrameTag[] = "DataFrame"; /*!< value type in FrameInf
 inline constexpr char kInferObjsTag[] = "InferObjs"; /*!< value type in FrameInfo::Collection : InferObjsPtr. */
 inline constexpr char kInferDataTag[] = "InferData"; /*!< value type in FrameInfo::Collection : InferDataPtr. */
 inline constexpr char kCustomImagesTag[] = "CustomImages"; /*!< value type in FrameInfo::Collection : CustomImagesPtr. */
+
+/**
+ * @brief Type classification for InferObject, used to distinguish original detection boxes
+ *        from post-processed merged boxes (e.g. OCR text lines).
+ */
+enum class InferObjType {
+  kOriginal = 0,  ///< Original detection box.
+  kMerged,        ///< Merged box (e.g. OCR text line).
+  kUnknown        ///< Unknown / uninitialized.
+};
+
+/**
+ * @brief Converts InferObjType to its string representation.
+ *
+ * This is the single source of truth for type string values.
+ */
+inline const char* ToString(InferObjType type) {
+  switch (type) {
+    case InferObjType::kOriginal: return "original";
+    case InferObjType::kMerged:   return "merged";
+    default:                      return "unknown";
+  }
+}
+
+/**
+ * @brief Parses a type string to InferObjType.
+ */
+inline InferObjType InferObjTypeFromString(const std::string& str) {
+  if (str == "original") return InferObjType::kOriginal;
+  if (str == "merged")   return InferObjType::kMerged;
+  return InferObjType::kUnknown;
+}
+
+/**
+ * @brief Extra attribute key used to store InferObjType in InferObject.
+ */
+inline constexpr char kInferObjTypeKey[] = "type";
+
+/**
+ * @brief Sets the type of an InferObject via extra attribute.
+ */
+inline void SetInferObjType(const std::shared_ptr<InferObject>& obj, InferObjType type) {
+  obj->AddExtraAttribute(kInferObjTypeKey, ToString(type));
+}
+
+/**
+ * @brief Gets the type string of an InferObject, defaulting to "original".
+ * 如果当时设置的 type 未定义，那么默认是 "original"
+ */
+inline std::string GetInferObjType(const std::shared_ptr<InferObject>& obj) {
+  auto type = InferObjTypeFromString(obj->GetExtraAttribute(kInferObjTypeKey));
+  if (type == InferObjType::kUnknown) {
+    type = InferObjType::kOriginal;
+  }
+  return std::string(ToString(type));
+}
+
 /*!
  * Defines an alias for std::shared_ptr<std::map<std::string, cv::Mat>>.
  * Used to pass additional images (e.g. segmentation masks) from any module to the sink.
