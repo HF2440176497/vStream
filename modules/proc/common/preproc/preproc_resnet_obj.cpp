@@ -16,7 +16,11 @@ using json = nlohmann::json;
 
 namespace cnstream {
 
-static const std::string key_config_file = "config_file";
+namespace preproc_resnet_obj {
+  
+const std::string key_config_file = "config_file";
+
+}  // namespace preproc_resnet_obj
 
 /**
  * @brief ResNet CPU 前处理

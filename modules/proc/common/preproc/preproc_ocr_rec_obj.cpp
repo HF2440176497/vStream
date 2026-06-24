@@ -29,7 +29,7 @@ class Pre_PPOCRv3_rec_Obj : public ObjPreproc {
   virtual int Execute(const std::vector<float*>& cpu_outputs, ModelLoader* model,
                       const FrameInfoPtr& finfo, const std::shared_ptr<InferObject>& pobj) override {
 
-    LOGI(PREPROC) << "Pre_PPOCRv3_rec_Obj Execute";
+    LOGD(PREPROC) << "Pre_PPOCRv3_rec_Obj Execute";
     auto start_time = std::chrono::steady_clock::now();
     if (model_name_.empty()) {
       model_name_ = model->get_name();

@@ -159,11 +159,12 @@ foreach(module ${module_list})
   list(APPEND srcs ${${module}_srcs})
 endforeach()
 
-# 前后处理模块
+# 前后处理模块 / filter 模块
 set(proc_common_srcs "")
 file(GLOB proc_common_pre_src ${CMAKE_CURRENT_SOURCE_DIR}/proc/common/preproc/*.cpp)
 file(GLOB proc_common_post_src ${CMAKE_CURRENT_SOURCE_DIR}/proc/common/postproc/*.cpp)
-list(APPEND proc_common_srcs ${proc_common_pre_src} ${proc_common_post_src})
+file(GLOB proc_common_filter_src ${CMAKE_CURRENT_SOURCE_DIR}/proc/common/filter/*.cpp)
+list(APPEND proc_common_srcs ${proc_common_pre_src} ${proc_common_post_src} ${proc_common_filter_src})
 
 list(APPEND srcs ${proc_common_srcs})
 

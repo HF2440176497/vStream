@@ -168,7 +168,7 @@ void PullHandlerImRK::clean_up() {
 
 
 int PullHandlerImRK::decode_write() {
-  int ret = avcodec_send_packet(codec_ctx_, &pkt_);
+  int ret = avcodec_send_packet(codec_ctx_, pkt_);
   if (ret == AVERROR(EAGAIN)) {
     // 清空解码器输出缓冲区
     AVFrame *drain_frame = nullptr;
@@ -192,7 +192,7 @@ int PullHandlerImRK::decode_write() {
       }
     }  // while
     // 重新尝试发送当前包
-    ret = avcodec_send_packet(codec_ctx_, &pkt_);
+    ret = avcodec_send_packet(codec_ctx_, pkt_);
   }
   if (ret < 0 && ret != AVERROR_EOF) {
     LOGE(SOURCE) << "send_packet error: " << ret;

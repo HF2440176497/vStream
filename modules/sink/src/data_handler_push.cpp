@@ -42,6 +42,7 @@ void PushHandlerIm::Stop() {
   if (encode_thread_.joinable()) {
     encode_thread_.join();
   }
+  first_frame_ = true;
 }
 
 void PushHandlerIm::Close() {
@@ -55,6 +56,7 @@ void PushHandlerIm::Close() {
     encode_thread_.join();
   }
   ClearStream();
+  first_frame_ = true;
 }
 
 int PushHandlerIm::Process(const std::shared_ptr<FrameInfo> data) {
@@ -107,10 +109,6 @@ int PushHandlerIm::Process(const std::shared_ptr<FrameInfo> data) {
   task.pts     = ComputePts();
   task.is_eos  = false;
 
-  // LOGI(SINK) << "[DEBUG-B] before Push stream_id=" << stream_id_
-  //            << " queue_size=" << encode_queue_.Size()
-  //            << " pts_count=" << pts_count_;
-
   if (!encode_queue_.Push(task)) {
     LOGW(SINK) << "[DEBUG-B] encode queue full, dropping frame stream_id=" << stream_id_
                << " queue_size=" << encode_queue_.Size();
@@ -118,8 +116,6 @@ int PushHandlerIm::Process(const std::shared_ptr<FrameInfo> data) {
   }
   pts_count_++;
 
-  // LOGI(SINK) << "[DEBUG-B] encode queue Push ok stream_id=" << stream_id_
-  //            << " pts_count=" << pts_count_;
   return 0;
 }
 
@@ -481,64 +477,134 @@ int64_t PushHandlerIm::ComputePts() {
 //   return true;
 // }
 
+// bool PushHandlerIm::ControlFps() {
+//   auto now = std::chrono::steady_clock::now();
+//   static thread_local std::chrono::steady_clock::time_point last_arrival =
+//       std::chrono::steady_clock::now();
+//   auto arrival_interval_us =
+//       std::chrono::duration_cast<std::chrono::microseconds>(now - last_arrival).count();
+//   last_arrival = now;
+//   if (first_frame_) {
+//       push_start_time_ = now;
+//       last_push_time_ = now;
+//       fps_stat_start_time_ = now;
+//       token_bucket_last_update_ = now;
+//       token_bucket_tokens_ = kTokenBucketBurstSize - 1;
+//       first_frame_ = false;
+//       fps_stat_frame_count_ = 1;
+//       return true;
+//   }
+
+//   // Token bucket: add tokens based on elapsed time, cap at burst size
+//   auto elapsed_us = std::chrono::duration_cast<std::chrono::microseconds>(
+//       now - token_bucket_last_update_).count();
+//   double tokens_to_add = static_cast<double>(elapsed_us) * fps_ / 1000000.0;
+//   token_bucket_tokens_ = std::min(token_bucket_tokens_ + tokens_to_add, kTokenBucketBurstSize);
+//   token_bucket_last_update_ = now;
+
+//   LOGD(SINK) << "Control check: stream_id=" << stream_id_
+//              << " arrival_interval_us=" << arrival_interval_us
+//              << " tokens=" << token_bucket_tokens_;
+
+//   if (token_bucket_tokens_ < 1.0) {
+//       LOGW(SINK) << "frame dropped: stream_id=" << stream_id_
+//                  << " arrival_interval_us=" << arrival_interval_us
+//                  << " tokens=" << token_bucket_tokens_;
+//       return false;
+//   }
+
+//   token_bucket_tokens_ -= 1.0;
+//   last_push_time_ = now;
+//   fps_stat_frame_count_++;
+
+//   LOGD(SINK) << "frame accepted: stream_id=" << stream_id_
+//              << " arrival_interval_us=" << arrival_interval_us
+//              << " tokens_after=" << token_bucket_tokens_;
+
+//   if (fps_stat_frame_count_ >= kFpsStatInterval) {
+//       auto stat_elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+//           now - fps_stat_start_time_).count();
+//       if (stat_elapsed_ms > 0) {
+//           double actual_fps = fps_stat_frame_count_ * 1000.0 / stat_elapsed_ms;
+//           LOGI(SINK) << "Actual FPS = " << actual_fps;
+//       }
+//       fps_stat_frame_count_ = 0;
+//       fps_stat_start_time_ = now;
+//   }
+//   return true;
+// }
+
 bool PushHandlerIm::ControlFps() {
-  auto now = std::chrono::steady_clock::now();
-  static thread_local std::chrono::steady_clock::time_point last_arrival =
-      std::chrono::steady_clock::now();
-  auto arrival_interval_us =
-      std::chrono::duration_cast<std::chrono::microseconds>(now - last_arrival).count();
-  last_arrival = now;
+  using clock = std::chrono::steady_clock;
+  using us = std::chrono::microseconds;
+  auto now = clock::now();
+
+  // 目标帧间隔 (us)
+  const int64_t frame_interval_us = static_cast<int64_t>(1000000) / fps_;
+  auto frame_interval = us(frame_interval_us);
+  
   if (first_frame_) {
-      push_start_time_ = now;
-      last_push_time_ = now;
-      fps_stat_start_time_ = now;
-      token_bucket_last_update_ = now;
-      token_bucket_tokens_ = kTokenBucketBurstSize - 1;
-      first_frame_ = false;
-      fps_stat_frame_count_ = 1;
-      LOGI(SINK) << "[DEBUG-A] first frame accepted stream_id=" << stream_id_
-                 << " arrival_interval_us=" << arrival_interval_us
-                 << " tokens=" << token_bucket_tokens_;
-      return true;
+    push_start_time_ = now;
+    fps_stat_start_time_ = now;
+    fps_stat_frame_count_ = 1;
+    last_push_time_ = now + frame_interval;
+    first_frame_ = false;
+    return true;
   }
 
-  // Token bucket: add tokens based on elapsed time, cap at burst size
-  auto elapsed_us = std::chrono::duration_cast<std::chrono::microseconds>(
-      now - token_bucket_last_update_).count();
-  double tokens_to_add = static_cast<double>(elapsed_us) * fps_ / 1000000.0;
-  token_bucket_tokens_ = std::min(token_bucket_tokens_ + tokens_to_add, kTokenBucketBurstSize);
-  token_bucket_last_update_ = now;
-
-  LOGI(SINK) << "[DEBUG-A] ControlFps check stream_id=" << stream_id_
-             << " arrival_interval_us=" << arrival_interval_us
-             << " tokens=" << token_bucket_tokens_;
-
-  if (token_bucket_tokens_ < 1.0) {
-      LOGW(SINK) << "[DEBUG-A] frame dropped by ControlFps (no token) stream_id=" << stream_id_
-                 << " arrival_interval_us=" << arrival_interval_us
-                 << " tokens=" << token_bucket_tokens_;
-      return false;
-  }
-
-  token_bucket_tokens_ -= 1.0;
-  last_push_time_ = now;
   fps_stat_frame_count_++;
-
-  LOGI(SINK) << "[DEBUG-A] frame accepted by ControlFps stream_id=" << stream_id_
-             << " arrival_interval_us=" << arrival_interval_us
-             << " tokens_after=" << token_bucket_tokens_
-             << " fps_stat_count=" << fps_stat_frame_count_;
-
   if (fps_stat_frame_count_ >= kFpsStatInterval) {
-      auto stat_elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-          now - fps_stat_start_time_).count();
-      if (stat_elapsed_ms > 0) {
-          double actual_fps = fps_stat_frame_count_ * 1000.0 / stat_elapsed_ms;
-          LOGI(SINK) << "Actual FPS = " << actual_fps;
-      }
-      fps_stat_frame_count_ = 0;
-      fps_stat_start_time_ = now;
+    auto stat_elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        now - fps_stat_start_time_).count();
+    if (stat_elapsed_ms > 0) {
+      double input_fps = fps_stat_frame_count_ * 1000.0 / stat_elapsed_ms;
+      LOGI(SINK) << "FPS stats stream_id=" << stream_id_
+                 << " input_fps=" << input_fps
+                 << " target_fps=" << fps_
+                 << " window_ms=" << stat_elapsed_ms;
+    }
+    fps_stat_frame_count_ = 0;
+    fps_stat_start_time_ = now;
   }
+  int64_t next_frame_delay_us = std::chrono::duration_cast<us>(
+      last_push_time_ - now).count();
+
+  uint32_t queue_size = encode_queue_.Size();
+  if (queue_size + 5 >= kEncodeQueueSize) {
+    LOGW(SINK) << "frame dropped (queue full) stream_id=" << stream_id_
+               << " queue_size=" << queue_size
+               << " next_frame_delay_us=" << next_frame_delay_us;
+    return false;
+  }
+  LOGI(SINK) << "ControlFps check stream_id=" << stream_id_
+             << " next_frame_delay_us=" << next_frame_delay_us;
+
+  if (now < last_push_time_) {
+    LOGW(SINK) << "frame dropped stream_id=" << stream_id_
+               << " wait_remaining_us=" << next_frame_delay_us;
+    return false;
+  }
+  // 接受当前帧，计算下一帧时间点
+  auto ideal_next = last_push_time_ + frame_interval;
+
+  const int64_t min_spacing_us = frame_interval_us / 2;
+  auto earliest_next = now + us(min_spacing_us);
+
+  constexpr int kMaxFrameLag = 3;
+  auto max_lag = us(frame_interval_us * kMaxFrameLag);
+
+  if (now > last_push_time_ + max_lag) {
+    int64_t lag_us = std::chrono::duration_cast<us>(now - last_push_time_).count();
+    LOGW(SINK) << "ControlFps reset after gap stream_id=" << stream_id_
+               << " lag_us=" << lag_us;
+    last_push_time_ = now + frame_interval;
+  } else {
+    last_push_time_ = std::max(ideal_next, earliest_next);
+  }
+  int64_t new_next_delay_us = std::chrono::duration_cast<us>(last_push_time_ - now).count();
+  LOGI(SINK) << "frame accepted by ControlFps stream_id=" << stream_id_
+             << " next_frame_delay_us=" << new_next_delay_us
+             << " queue_size=" << queue_size;
   return true;
 }
 

@@ -20,15 +20,15 @@ using json = nlohmann::json;
 
 namespace cnstream {
 
-static const std::string key_config_file = "config_file";
+namespace postproc_yolo {
+  
+const std::string key_config_file = "config_file";
+const std::string key_classes = "classes";
+const std::string key_name = "name";
+const std::string key_threshold = "threshold";
 
-static const std::string key_classes = "classes";
-static const std::string key_name = "name";
-static const std::string key_threshold = "threshold";
-
-
-static float box_iou(float aleft, float atop, float aright, float abottom, 
-                    float bleft, float btop, float bright, float bbottom) {
+float box_iou(float aleft, float atop, float aright, float abottom,
+              float bleft, float btop, float bright, float bbottom) {
   float cleft = std::max(aleft, bleft);
   float ctop = std::max(atop, btop);
   float cright = std::min(aright, bright);
@@ -52,8 +52,8 @@ void fast_nms(ObjsVec& objs, int max_boxes, float threshold) {
   if (count <= 1) return;
 
   // 按置信度降序排序
-  std::partial_sort(objs.begin(), 
-                    objs.begin() + count, 
+  std::partial_sort(objs.begin(),
+                    objs.begin() + count,
                     objs.end(),
       [](const auto& a, const auto& b) { return a->score > b->score; });
 
@@ -61,18 +61,18 @@ void fast_nms(ObjsVec& objs, int max_boxes, float threshold) {
 
   for (int i = 0; i < count; ++i) {
     if (suppressed[i]) continue;
-    
+
     const auto& cur_obj = objs[i];
     const int cur_class_id = cur_obj->id;
 
     for (int j = i + 1; j < count; ++j) {
       if (suppressed[j]) continue;
-      
+
       const auto& item_obj = objs[j];
       if (item_obj->id != cur_class_id) continue;
 
       float iou = box_iou(
-          cur_obj->bbox.x, 
+          cur_obj->bbox.x,
           cur_obj->bbox.y,
           cur_obj->bbox.x + cur_obj->bbox.w,   // right
           cur_obj->bbox.y + cur_obj->bbox.h,   // bottom
@@ -96,6 +96,7 @@ void fast_nms(ObjsVec& objs, int max_boxes, float threshold) {
   }
   objs.resize(keep_idx);
 }
+}  // namespace postproc_yolo
 
 
 class Post_YOLOv8_CPU: public Postproc {
@@ -107,8 +108,8 @@ class Post_YOLOv8_CPU: public Postproc {
    */
   bool Init(const std::map<std::string, std::string> &params) override {
     params_ = params;
-    if (params_.find(key_config_file) != params_.end()) {
-      config_file_ = params_[key_config_file];
+    if (params_.find(postproc_yolo::key_config_file) != params_.end()) {
+      config_file_ = params_[postproc_yolo::key_config_file];
     } else {
       LOGE(POSTPROC) << "Init config_file must be in custom_postproc_params.";
       return false;
@@ -131,8 +132,8 @@ class Post_YOLOv8_CPU: public Postproc {
       return false;
     }
 
-    if (data.find(key_classes) != data.end()) {
-      const auto& classes = data[key_classes];
+    if (data.find(postproc_yolo::key_classes) != data.end()) {
+      const auto& classes = data[postproc_yolo::key_classes];
       if (!classes.is_object()) {
         LOGE(POSTPROC) << "Invalid classes format in conf file.";
         return false;
@@ -253,7 +254,7 @@ class Post_YOLOv8_CPU: public Postproc {
       std::lock_guard<std::mutex> objs_mutex(objs_holder->mutex_);
       objs.push_back(obj);
     }
-    fast_nms(objs, max_boxes_num_, 0.5f);
+    postproc_yolo::fast_nms(objs, max_boxes_num_, 0.5f);
 
     return 0;
   }
@@ -277,9 +278,10 @@ class Post_YOLOv8_CPU: public Postproc {
 
 IMPLEMENT_REFLEX_OBJECT_EX(Post_YOLOv8_CPU, cnstream::Postproc);
 
+namespace postproc_yolo {
 
-static float box_iou_v2(float aleft, float atop, float aright, float abottom, float a_area,
-                       float bleft, float btop, float bright, float bbottom, float b_area) {
+float box_iou_v2(float aleft, float atop, float aright, float abottom, float a_area,
+                 float bleft, float btop, float bright, float bbottom, float b_area) {
     float cleft = std::max(aleft, bleft);
     float ctop = std::max(atop, btop);
     float cright = std::min(aright, bright);
@@ -288,7 +290,6 @@ static float box_iou_v2(float aleft, float atop, float aright, float abottom, fl
     if (c_area <= 0.0f) return 0.0f;
     return c_area / (a_area + b_area - c_area);
 }
-
 
 /**
  * @brief 首先按照类别分组，进行单向遍历
@@ -340,14 +341,15 @@ void fast_nms_class(ObjsVec& objs, int max_boxes, float threshold) {
     }
     objs.resize(keep_idx);
 }
+}  // namespace postproc_yolo
 
 
 class Post_YOLOv8_CPU_v2: public Postproc {
  public:
   bool Init(const std::map<std::string, std::string> &params) override {
     params_ = params;
-    if (params_.find(key_config_file) != params_.end()) {
-      config_file_ = params_[key_config_file];
+    if (params_.find(postproc_yolo::key_config_file) != params_.end()) {
+      config_file_ = params_[postproc_yolo::key_config_file];
     } else {
       LOGE(POSTPROC) << "Init config_file must be in custom_postproc_params.";
       return false;
@@ -370,8 +372,8 @@ class Post_YOLOv8_CPU_v2: public Postproc {
       return false;
     }
 
-    if (data.find(key_classes) != data.end()) {
-      const auto& classes = data[key_classes];
+    if (data.find(postproc_yolo::key_classes) != data.end()) {
+      const auto& classes = data[postproc_yolo::key_classes];
       if (!classes.is_object()) {
         LOGE(POSTPROC) << "Invalid classes format in conf file.";
         return false;
@@ -476,7 +478,7 @@ class Post_YOLOv8_CPU_v2: public Postproc {
       obj->model_name = model_name_;
       local_objs.push_back(obj);
     }
-    fast_nms(local_objs, max_boxes_num_, 0.5f);
+    postproc_yolo::fast_nms(local_objs, max_boxes_num_, 0.5f);
     {
       InferObjsPtr objs_holder = package->collection.Get<InferObjsPtr>(cnstream::kInferObjsTag);
       std::lock_guard<std::mutex> lock(objs_holder->mutex_);
@@ -544,8 +546,8 @@ class Post_YOLOv5_CPU_NoNMS: public Postproc {
    */
   bool Init(const std::map<std::string, std::string> &params) override {
     params_ = params;
-    if (params_.find(key_config_file) != params_.end()) {
-      config_file_ = params_[key_config_file];
+    if (params_.find(postproc_yolo::key_config_file) != params_.end()) {
+      config_file_ = params_[postproc_yolo::key_config_file];
     } else {
       LOGE(POSTPROC) << "Init config_file must be in custom_postproc_params.";
       return false;
@@ -568,8 +570,8 @@ class Post_YOLOv5_CPU_NoNMS: public Postproc {
       return false;
     }
 
-    if (data.find(key_classes) != data.end()) {
-      const auto& classes = data[key_classes];
+    if (data.find(postproc_yolo::key_classes) != data.end()) {
+      const auto& classes = data[postproc_yolo::key_classes];
       if (!classes.is_object()) {
         LOGE(POSTPROC) << "Invalid classes format in conf file.";
         return false;

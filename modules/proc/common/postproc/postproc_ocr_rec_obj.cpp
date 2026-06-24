@@ -18,16 +18,19 @@
 
 namespace cnstream {
 
-static const std::string key_config_file = "config_file";
+namespace postproc_ocr_rec_obj {
 
-static const std::string key_label_path = "label_path";
+const std::string key_config_file = "config_file";
+const std::string key_label_path = "label_path";
+
+}  // namespace postproc_ocr_rec_obj
 
 class Post_PPOCRv3_rec_Obj : public ObjPostproc {
  public:
   bool Init(const std::map<std::string, std::string> &params) override {
     params_ = params;
-    if (params_.find(key_config_file) != params_.end()) {
-      config_file_ = params_[key_config_file];
+    if (params_.find(postproc_ocr_rec_obj::key_config_file) != params_.end()) {
+      config_file_ = params_[postproc_ocr_rec_obj::key_config_file];
     } else {
       LOGE(POSTPROC) << "Init config_file must be in custom_postproc_params.";
       return false;
@@ -49,11 +52,11 @@ class Post_PPOCRv3_rec_Obj : public ObjPostproc {
       LOGE(POSTPROC) << "Init config file must be object type.";
       return false;
     }
-    if (data.find(key_label_path) == data.end()) {
+    if (data.find(postproc_ocr_rec_obj::key_label_path) == data.end()) {
       LOGE(POSTPROC) << "Init label_path must be in config file.";
       return false;
     }
-    label_path_ = data[key_label_path].get<std::string>();
+    label_path_ = data[postproc_ocr_rec_obj::key_label_path].get<std::string>();
     LOGI(POSTPROC) << "Post_PPOCRv3_rec_Obj label_path: " << label_path_;
 
     if (!label_path_.empty()) {
@@ -68,6 +71,8 @@ class Post_PPOCRv3_rec_Obj : public ObjPostproc {
   int Execute(const std::vector<float*>& outputs, ModelLoader* model,
               const FrameInfoPtr& finfo, const std::shared_ptr<InferObject>& pobj) override {
 
+    LOGD(POSTPROC) << "Post_PPOCRv3_rec_Obj Execute";
+    auto start_time = std::chrono::steady_clock::now();
     if (model_name_.empty()) {
       model_name_ = model->get_name();
     }
@@ -80,13 +85,13 @@ class Post_PPOCRv3_rec_Obj : public ObjPostproc {
         LOGE(POSTPROC) << "Post_PPOCRv3_rec_Obj output shape " << output_shape;
         return -1;
     }
-    if (output_shape.shape[0] != 1) {
+    if (output_shape.shape(0) != 1) {
         LOGE(POSTPROC) << "Obj model shape must be batch size 1, but " << output_shape;
         return -1;
     }
     
-    uint32_t rows = output_shape.shape[1];  // 40
-    uint32_t cols = output_shape.shape[2];  // 6625
+    uint32_t rows = output_shape.shape(1);  // 40
+    uint32_t cols = output_shape.shape(2);  // 6625
 
     std::vector<float> v(rows * cols);
     memcpy(v.data(), output, rows * cols * sizeof(float));
@@ -131,7 +136,6 @@ class Post_PPOCRv3_rec_Obj : public ObjPostproc {
     float score = score_sum / count;
 
     InferAttr data_cl;
-    data_cl.model_name = model_name_;
     data_cl.id = 0;
     data_cl.score = score;
     data_cl.value = 0;
@@ -139,8 +143,8 @@ class Post_PPOCRv3_rec_Obj : public ObjPostproc {
     pobj->AddAttribute(attribute_keys::key_content, data_cl);
 
     double dr_ms = std::chrono::duration<double, std::milli>(
-        std::chrono::steady_clock::now() - timeUse).count();
-    LOGI(POSTPROC) << "Post_PPOCRv3_rec_Obj: " << dr_ms << " ms, result: " << str_res;
+        std::chrono::steady_clock::now() - start_time).count();
+    LOGD(POSTPROC) << "Post_PPOCRv3_rec_Obj: " << dr_ms << " ms, result: " << str_res;
 
     return 0;
   }

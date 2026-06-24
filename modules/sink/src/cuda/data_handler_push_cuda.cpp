@@ -96,6 +96,7 @@ bool PushHandlerImCUDA::SendFrameCuda(const DataFramePtr& frame, AVPixelFormat s
   const int src_stride = frame->GetStride(0);
 
 #ifdef VSTREAM_UNIT_TEST
+  LOGD(SINK) << "SendFrameCuda: stream_id=" << stream_id_;
   if (src_stride != GetStride_8U_C3(src_width)) {
     LOGE(SINK) << "[" << stream_id_ << "]: src_stride != GetStride_8U_C3(src_width)";
     return false;

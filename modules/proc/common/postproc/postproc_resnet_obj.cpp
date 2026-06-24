@@ -17,17 +17,21 @@
 
 namespace cnstream {
 
-static const std::string key_config_file = "config_file";
+namespace postproc_resnet_obj {
+  
+const std::string key_config_file = "config_file";
+const std::string key_classes = "classes";
+const std::string key_name = "name";
 
-static const std::string key_name = "name";
+}  // namespace postproc_resnet_obj
 
 class Post_Resnet_Obj : public ObjPostproc {
  public:
   bool Init(const std::map<std::string, std::string> &params) override {
 
     params_ = params;
-    if (params_.find(key_config_file) != params_.end()) {
-      config_file_ = params_[key_config_file];
+    if (params_.find(postproc_resnet_obj::key_config_file) != params_.end()) {
+      config_file_ = params_[postproc_resnet_obj::key_config_file];
     } else {
       LOGE(POSTPROC) << "Init config_file must be in custom_postproc_params.";
       return false;
@@ -50,8 +54,8 @@ class Post_Resnet_Obj : public ObjPostproc {
       return false;
     }
 
-    if (data.find(key_classes) != data.end()) {
-      const auto& classes = data[key_classes];
+    if (data.find(postproc_resnet_obj::key_classes) != data.end()) {
+      const auto& classes = data[postproc_resnet_obj::key_classes];
       if (!classes.is_object()) {
         LOGE(POSTPROC) << "Invalid classes format in conf file.";
         return false;
@@ -84,7 +88,8 @@ class Post_Resnet_Obj : public ObjPostproc {
    */
   int Execute(const std::vector<float*>& outputs, ModelLoader* model,
               const FrameInfoPtr& finfo, const std::shared_ptr<InferObject>& pobj) override {
-
+    
+    LOGD(POSTPROC) << "Post_Resnet_Obj Execute";
     if (model_name_.empty()) {
       model_name_ = model->get_name();
     }

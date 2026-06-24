@@ -53,7 +53,9 @@ class PullHandlerIm : public SourceRender {
   };
 
   explicit PullHandlerIm(DataSource *module, SourceHandler *handler)
-      : SourceRender(handler), module_(module), stream_id_(handler->GetStreamId()) {}
+      : SourceRender(handler), module_(module), stream_id_(handler->GetStreamId()) {
+    pkt_ = av_packet_alloc();
+  }
   virtual ~PullHandlerIm() = default;
 
   bool Open();
@@ -104,7 +106,7 @@ class PullHandlerIm : public SourceRender {
   AVCodec           *codec_        = nullptr;
   AVCodecContext    *codec_ctx_    = nullptr;
   AVCodecParameters *codecpar_     = nullptr;
-  AVPacket           pkt_;
+  AVPacket          *pkt_ = nullptr;
 
   OutputType output_type_ = OutputType::OUTPUT_CPU;
 };

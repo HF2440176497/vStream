@@ -21,7 +21,7 @@
 namespace cnstream {
 
 static const std::string             source_module_name = "source";
-static const std::string             inference_module_name = "inference";
+static const std::string             inference_module_name = "inference_rec";
 static const std::string             sink_module_name = "sink";
 
 static const std::string             stream_id_1_ = "channel-1";
@@ -34,8 +34,11 @@ static std::vector<std::string>      stream_ids_image_queue_ = {stream_id_3_};
 static std::vector<std::string>      stream_ids_send_queue_ = {stream_id_4_};
 
 static std::string test_pipeline_send_json = "pipeline_source_send.json";
-static std::string test_image_path = "image.png";
+static std::string test_pipeline_send_ocr_json = "OCR/pipeline_source_send_ocr.json";
+// static std::string test_pipeline_send_ocr_json = "pipeline_source_send_ocr.json";
 
+static std::string test_image_path = "OCR/image.jpg";
+// static std::string test_image_path = "image.png";
 
 class SourceSend : public testing::Test {
 
@@ -43,7 +46,7 @@ class SourceSend : public testing::Test {
   virtual void SetUp() {
     pipeline_ = std::make_shared<Pipeline>("pipeline");
     EXPECT_NE(pipeline_, nullptr);
-    EXPECT_TRUE(pipeline_->BuildPipelineByJSONFile(test_pipeline_send_json));
+    EXPECT_TRUE(pipeline_->BuildPipelineByJSONFile(test_pipeline_send_ocr_json));
   }
 
  protected:
@@ -62,7 +65,7 @@ class SourceSend : public testing::Test {
 /*
  * @brief 启动线程读取图片，不断发送给 SendHandler
  */
-TEST_F(SourceSend, TestSend) {
+TEST_F(SourceSend, Run) {
   EXPECT_TRUE(pipeline_->Start());
 
   Module* source_module = pipeline_->GetModule(source_module_name);
@@ -119,18 +122,14 @@ TEST_F(SourceSend, TestSend) {
       }
       count++;
       if (count % 20 == 0) {
-        auto objects = data.objects;
-        for (auto& obj : objects) {
-          LOGI(T_SEND) << obj;
-        }
-        LOGI(T_SEND) << "Receive: " << count << "Send: " << send_count_ << "; frames; id_s: " << data.frame_id_s;
+        LOGI(T_SEND) << "Receive: " << data;
+        LOGI(T_SEND) << "Received: " << count << "Send: " << send_count_ << "; frames; id_s: " << data.frame_id_s;
       }
     }
   });
 
   auto inference_module = pipeline_->GetModule(inference_module_name);
-  EXPECT_NE(inference_module, nullptr);
-
+  ASSERT_NE(inference_module, nullptr);
   std::this_thread::sleep_for(std::chrono::seconds(10));
 
   auto profiler = inference_module->GetProfiler();

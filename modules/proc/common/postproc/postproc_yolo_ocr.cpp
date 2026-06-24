@@ -20,15 +20,16 @@ using json = nlohmann::json;
 
 namespace cnstream {
 
-static const std::string key_config_file = "config_file";
+namespace postproc_yolo_ocr {
+  
+const std::string key_config_file = "config_file";
+const std::string key_classes = "classes";
+const std::string key_name = "name";
+const std::string key_threshold = "threshold";
+const std::string key_interval = "interval";
 
-static const std::string key_classes = "classes";
-static const std::string key_name = "name";
-static const std::string key_threshold = "threshold";
-static const std::string key_interval = "interval";
-
-static float box_iou(float aleft, float atop, float aright, float abottom, 
-                    float bleft, float btop, float bright, float bbottom) {
+float box_iou(float aleft, float atop, float aright, float abottom,
+              float bleft, float btop, float bright, float bbottom) {
   float cleft = std::max(aleft, bleft);
   float ctop = std::max(atop, btop);
   float cright = std::min(aright, bright);
@@ -41,7 +42,7 @@ static float box_iou(float aleft, float atop, float aright, float abottom,
   float b_area = std::max(0.0f, bright - bleft) * std::max(0.0f, bbottom - btop);
   return c_area / (a_area + b_area - c_area);
 }
-
+}  // namespace postproc_yolo_ocr
 
 /**
  * @brief YOLOv5 后处理类
@@ -65,8 +66,8 @@ class Post_YOLOv5_CPU_NoNMS_OCR: public Postproc {
    */
   bool Init(const std::map<std::string, std::string> &params) override {
     params_ = params;
-    if (params_.find(key_config_file) != params_.end()) {
-      config_file_ = params_[key_config_file];
+    if (params_.find(postproc_yolo_ocr::key_config_file) != params_.end()) {
+      config_file_ = params_[postproc_yolo_ocr::key_config_file];
     } else {
       LOGE(POSTPROC) << "Init config_file must be in custom_postproc_params.";
       return false;
@@ -89,8 +90,8 @@ class Post_YOLOv5_CPU_NoNMS_OCR: public Postproc {
       return false;
     }
 
-    if (data.find(key_classes) != data.end()) {
-      const auto& classes = data[key_classes];
+    if (data.find(postproc_yolo_ocr::key_classes) != data.end()) {
+      const auto& classes = data[postproc_yolo_ocr::key_classes];
       if (!classes.is_object()) {
         LOGE(POSTPROC) << "Invalid classes format in conf file.";
         return false;
@@ -108,8 +109,8 @@ class Post_YOLOv5_CPU_NoNMS_OCR: public Postproc {
         item_infos_[std::stoi(key)] = info;
       }
     }
-    if (data.find(key_interval) != data.end()) {
-      interval_ = data[key_interval].get<float>();
+    if (data.find(postproc_yolo_ocr::key_interval) != data.end()) {
+      interval_ = data[postproc_yolo_ocr::key_interval].get<float>();
     }
     return true;
   }
@@ -196,6 +197,11 @@ class Post_YOLOv5_CPU_NoNMS_OCR: public Postproc {
       }
     }  // end for 
 
+    LOGU(POSTPROC) << "YOLOv5 NoNMS objs: " << objs.size();
+    for (auto& obj : objs) {
+      LOGU(POSTPROC) << "obj: " << obj->id << ", score: " << obj->score << ", bbox: " << obj->bbox.x << ", " << obj->bbox.y << ", " << obj->bbox.w << ", " << obj->bbox.h;
+    }
+
     std::vector<CharBox> boxes;
     boxes.reserve(objs.size());
     for (const auto& obj : objs) {
@@ -254,6 +260,8 @@ class Post_YOLOv5_CPU_NoNMS_OCR: public Postproc {
 
     }
 
+    LOGU(POSTPROC) << "YOLOv5 NoNMS results_merge: " << results_merge.size();
+
     // 将合并后的字符行框也加入 objs，通过 type 与原始 YOLO 框区分
     for (const auto& r : results_merge) {
       auto merged_obj = std::make_shared<InferObject>();
@@ -281,7 +289,7 @@ class Post_YOLOv5_CPU_NoNMS_OCR: public Postproc {
   };
   std::map<int, ItemInfo> item_infos_;
   float interval_ = 50;  // pixel
-  const int max_boxes_num_ = 100;
+  const int max_boxes_num_ = 200;
   std::string model_name_;  ///< The name of the model.
 
   bool has_save_frame_mat_ = false;

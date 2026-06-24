@@ -200,7 +200,9 @@ int PullHandlerIm::input_format_init() {
 }
 
 void PullHandlerIm::clean_up() {
-  av_packet_unref(&pkt_);
+  if (pkt_) {
+    av_packet_free(&pkt_);
+  }
   if (codec_ctx_) {
     avcodec_free_context(&codec_ctx_);
     codec_ctx_ = nullptr;
@@ -293,13 +295,13 @@ void PullHandlerIm::Loop() {
   if (frame_rate_ > 0) controller.Start();
 
   while (running_.load()) {
-    int ret = av_read_frame(ifmt_ctx_, &pkt_);
+    int ret = av_read_frame(ifmt_ctx_, pkt_);
     if (ret < 0) {
       LOGE(SOURCE) << "[" << stream_id_ << "]: av_read_frame failed: " << ret;
       break;
     }
-    if (pkt_.stream_index != video_index_) {
-      av_packet_unref(&pkt_);
+    if (pkt_->stream_index != video_index_) {
+      av_packet_unref(pkt_);
       continue;
     }
     ret = decode_write();
@@ -307,7 +309,7 @@ void PullHandlerIm::Loop() {
       LOGE(SOURCE) << "[" << stream_id_ << "]: decode_write failed: " << ret;
       break;
     }
-    av_packet_unref(&pkt_);
+    av_packet_unref(pkt_);
     if (frame_rate_ > 0) {
       controller.Control();
     }
@@ -381,7 +383,7 @@ int PullHandlerImCPU::codec_init() {
 
 
 int PullHandlerImCPU::decode_write() {
-  int ret = avcodec_send_packet(codec_ctx_, &pkt_);
+  int ret = avcodec_send_packet(codec_ctx_, pkt_);
   if (ret == AVERROR(EAGAIN)) {
     // 清空解码器输出缓冲区
     AVFrame *drain_frame = nullptr;
@@ -405,7 +407,7 @@ int PullHandlerImCPU::decode_write() {
       }
     }  // while
     // 重新尝试发送当前包
-    ret = avcodec_send_packet(codec_ctx_, &pkt_);
+    ret = avcodec_send_packet(codec_ctx_, pkt_);
   }
   if (ret < 0 && ret != AVERROR_EOF) {
     LOGE(SOURCE) << "send_packet error: " << ret;
