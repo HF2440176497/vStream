@@ -10,6 +10,7 @@ namespace cnstream {
 
 static const std::string key_model_name = "f_model_name";
 static const std::string key_obj_id = "f_obj_id";
+static const std::string key_obj_type = "f_obj_type";
 
 
 class ObjFilterCommon : public ObjFilter {
@@ -21,27 +22,17 @@ class ObjFilterCommon : public ObjFilter {
     }
     if (params_.find(key_obj_id) != params_.end()) {
       std::string value = params_[key_obj_id];
-      if (!value.empty() && value[0] == '#') {
-        value.erase(0, 1);
-      }
-      size_t start = 0;
-      while (start < value.size()) {
-        size_t end = value.find('!', start);
-        if (end == std::string::npos) {
-          end = value.size();
-        }
-        std::string id_str = value.substr(start, end - start);
-        if (!id_str.empty()) {
-          obj_ids_.push_back(std::stoi(id_str));
-        }
-        start = end + 1;
-      }
+      obj_ids_ = ParseIntList(value);
+    }
+    if (params_.find(key_obj_type) != params_.end()) {
+      std::string value = params_[key_obj_type];
+      obj_types_ = ParseStringList(value);
     }
     return true;
   }
 
   /**
-   * @return 
+   * @return
    * 返回 false 时，说明当前 obj 被过滤，continue
    * 返回 true 时，说明当前 obj 被保留
    */
@@ -53,13 +44,71 @@ class ObjFilterCommon : public ObjFilter {
         std::find(obj_ids_.begin(), obj_ids_.end(), pobj->id) == obj_ids_.end()) {
       return false;
     }
+    if (!obj_types_.empty()) {
+      std::string obj_type = GetInferObjType(pobj);
+      if (std::find(obj_types_.begin(), obj_types_.end(), obj_type) == obj_types_.end()) {
+        return false;
+      }
+    }
     return true;
+  }
+
+ private:
+  // Parse a "#a!b!c" style string into a list of integers.
+  // The leading '#' is optional.
+  static std::vector<int> ParseIntList(const std::string& raw) {
+    std::vector<int> result;
+    std::string value = raw;
+    if (!value.empty() && value[0] == '#') {
+      value.erase(0, 1);
+    }
+    size_t start = 0;
+    while (start < value.size()) {
+      size_t end = value.find('!', start);
+      if (end == std::string::npos) {
+        end = value.size();
+      }
+      std::string token = value.substr(start, end - start);
+      if (!token.empty()) {
+        try {
+          result.push_back(std::stoi(token));
+        } catch (const std::exception&) {
+          // ignore invalid integer token
+        }
+      }
+      start = end + 1;
+    }
+    return result;
+  }
+
+  // Parse a "#merged!original" style string into a list of strings.
+  // The leading '#' is optional.
+  static std::vector<std::string> ParseStringList(const std::string& raw) {
+    std::vector<std::string> result;
+    std::string value = raw;
+    if (!value.empty() && value[0] == '#') {
+      value.erase(0, 1);
+    }
+    size_t start = 0;
+    while (start < value.size()) {
+      size_t end = value.find('!', start);
+      if (end == std::string::npos) {
+        end = value.size();
+      }
+      std::string token = value.substr(start, end - start);
+      if (!token.empty()) {
+        result.push_back(token);
+      }
+      start = end + 1;
+    }
+    return result;
   }
 
  private:
   std::map<std::string, std::string> params_;
   std::string model_name_;
   std::vector<int> obj_ids_;
+  std::vector<std::string> obj_types_;
 
  private:
   DECLARE_REFLEX_OBJECT_EX(ObjFilterCommon, cnstream::ObjFilter);

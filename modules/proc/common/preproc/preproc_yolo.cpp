@@ -165,7 +165,6 @@ class Pre_YOLO_CPU_v2: public Preproc {
   }
 
  private:
-  std::chrono::steady_clock::time_point last_save_time_;
   uint32_t save_duration_ms_ = 1000;
 
   DECLARE_REFLEX_OBJECT_EX(Pre_YOLO_CPU_v2, cnstream::Preproc);

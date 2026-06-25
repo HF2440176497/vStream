@@ -41,7 +41,7 @@ class Post_PPOCRv3_rec_Obj : public ObjPostproc {
     }
     config_file_ = GetPathRelativeToTheJSONFile(config_file_, config_file_path);
 
-    LOGI(POSTPROC) << "Post_PPOCRv3_rec_Obj post conf file: " << config_file_;
+    LOGI(POSTPROC) << "PPOCRv3 post conf file: " << config_file_;
     std::ifstream file(config_file_);
     if (!file.is_open()) {
       LOGE(POSTPROC) << "Init Could not open file " << config_file_;
@@ -57,7 +57,7 @@ class Post_PPOCRv3_rec_Obj : public ObjPostproc {
       return false;
     }
     label_path_ = data[postproc_ocr_rec_obj::key_label_path].get<std::string>();
-    LOGI(POSTPROC) << "Post_PPOCRv3_rec_Obj label_path: " << label_path_;
+    LOGI(POSTPROC) << "PPOCRv3 label_path: " << label_path_;
 
     if (!label_path_.empty()) {
         label_list_ = PaddlePaddle::ReadDict(label_path_);
@@ -71,7 +71,7 @@ class Post_PPOCRv3_rec_Obj : public ObjPostproc {
   int Execute(const std::vector<float*>& outputs, ModelLoader* model,
               const FrameInfoPtr& finfo, const std::shared_ptr<InferObject>& pobj) override {
 
-    LOGD(POSTPROC) << "Post_PPOCRv3_rec_Obj Execute";
+    LOGD(POSTPROC) << "PPOCRv3 Execute";
     auto start_time = std::chrono::steady_clock::now();
     if (model_name_.empty()) {
       model_name_ = model->get_name();
@@ -82,11 +82,11 @@ class Post_PPOCRv3_rec_Obj : public ObjPostproc {
     TensorShape output_shape = model->OutputShape(output_index);
 
     if (output_shape.ndims() != 3) {
-        LOGE(POSTPROC) << "Post_PPOCRv3_rec_Obj output shape " << output_shape;
+        LOGE(POSTPROC) << "PPOCRv3 output shape " << output_shape;
         return -1;
     }
     if (output_shape.shape(0) != 1) {
-        LOGE(POSTPROC) << "Obj model shape must be batch size 1, but " << output_shape;
+        LOGE(POSTPROC) << "PPOCRv3 model shape must be batch size 1, but " << output_shape;
         return -1;
     }
     
@@ -111,15 +111,17 @@ class Post_PPOCRv3_rec_Obj : public ObjPostproc {
         int max_idx = static_cast<int>(PaddlePaddle::Argmax(
             &v[offset], &v[offset + cols]));
 
-        // 校验 max_idx 范围
         if (max_idx < 0 || max_idx >= static_cast<int>(label_list_.size())) {
-            LOGE(POSTPROC) << "Post_PPOCRv3_rec_Obj: max_idx " << max_idx
+            LOGE(POSTPROC) << "PPOCRv3: max_idx " << max_idx
                         << " out of range [0, " << label_list_.size() << ")";
             continue;
         }
-
         float max_value = static_cast<float>(*std::max_element(
             &v[offset], &v[offset + cols]));
+
+        // LOGD(POSTPROC) << "Step " << j << "; max_idx=" << max_idx 
+        //     << "; max_value=" << max_value 
+        //     << "; last_index=" << last_index;
 
         // CTC 规则：跳过 blank（索引 0），跳过连续重复字符
         if (max_idx > 0 && !(j > 0 && max_idx == last_index)) {
@@ -130,7 +132,7 @@ class Post_PPOCRv3_rec_Obj : public ObjPostproc {
         last_index = max_idx;
     }
     if (count == 0) {
-        LOGW(POSTPROC) << "Post_PPOCRv3_rec_Obj: no valid character decoded";
+        LOGW(POSTPROC) << "no valid character decoded";
         return 0;
     }
     float score = score_sum / count;
@@ -142,9 +144,40 @@ class Post_PPOCRv3_rec_Obj : public ObjPostproc {
     data_cl.name = str_res;
     pobj->AddAttribute(attribute_keys::key_content, data_cl);
 
+#ifdef VSTREAM_UNIT_TEST
+    DataFramePtr frame = finfo->collection.Get<DataFramePtr>(kDataFrameTag);
+    if (!frame) {
+        LOGE(POSTPROC) << "PPOCRv3: DataFrame is null";
+        return -1;
+    }
+  
+    if (enable_save_)  {
+      cv::Mat img = frame->GetImage();
+      std::lock_guard<std::mutex> lock(last_save_time_mutex_);
+      auto now = std::chrono::steady_clock::now();
+      if (save_duration_ms_ > 0) {
+        if (last_save_time_.time_since_epoch().count() == 0 ||
+            std::chrono::duration_cast<std::chrono::milliseconds>(now - last_save_time_).count() >= save_duration_ms_) {
+
+              cv::rectangle(img, cv::Rect(pobj->bbox.x, pobj->bbox.y, pobj->bbox.w, pobj->bbox.h),
+                            cv::Scalar(0, 255, 0), 2);
+              cv::putText(img, str_res,
+                          cv::Point(pobj->bbox.x, std::max(pobj->bbox.y - 5, 15.0f)),
+                          cv::FONT_HERSHEY_SIMPLEX, 2.0, cv::Scalar(0, 255, 0), 2);
+            
+            auto sys_now = std::chrono::system_clock::now();
+            auto timestamp_ms = std::chrono::duration_cast<std::chrono::milliseconds>(sys_now.time_since_epoch()).count();
+            std::string filename = "save/post_ocr_rec_" +  std::to_string(timestamp_ms) + ".jpg";
+            cv::imwrite(filename, img);
+            last_save_time_ = now;
+        }
+      }
+    }
+#endif
+
     double dr_ms = std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - start_time).count();
-    LOGD(POSTPROC) << "Post_PPOCRv3_rec_Obj: " << dr_ms << " ms, result: " << str_res;
+    LOGD(POSTPROC) << "PPOCRv3: " << dr_ms << " ms, result: " << str_res;
 
     return 0;
   }
@@ -155,6 +188,11 @@ class Post_PPOCRv3_rec_Obj : public ObjPostproc {
   std::string model_name_;
 
  private:
+  bool enable_save_ = false;
+  std::mutex last_save_time_mutex_;
+  std::chrono::steady_clock::time_point last_save_time_;
+  uint32_t save_duration_ms_ = 500;
+
   DECLARE_REFLEX_OBJECT_EX(Post_PPOCRv3_rec_Obj, cnstream::ObjPostproc);
 };  // class Post_PPOCRv3_rec_Obj
 

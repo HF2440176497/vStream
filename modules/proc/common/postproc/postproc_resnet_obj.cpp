@@ -42,7 +42,7 @@ class Post_Resnet_Obj : public ObjPostproc {
     }
     config_file_ = GetPathRelativeToTheJSONFile(config_file_, config_file_path);
 
-    LOGI(POSTPROC) << "Post_Resnet_Obj post conf file: " << config_file_;
+    LOGI(POSTPROC) << "Resnet post conf file: " << config_file_;
     std::ifstream file(config_file_);
     if (!file.is_open()) {
       LOGE(POSTPROC) << "Init Could not open file " << config_file_;
@@ -89,7 +89,7 @@ class Post_Resnet_Obj : public ObjPostproc {
   int Execute(const std::vector<float*>& outputs, ModelLoader* model,
               const FrameInfoPtr& finfo, const std::shared_ptr<InferObject>& pobj) override {
     
-    LOGD(POSTPROC) << "Post_Resnet_Obj Execute";
+    LOGD(POSTPROC) << "Resnet Execute";
     if (model_name_.empty()) {
       model_name_ = model->get_name();
     }

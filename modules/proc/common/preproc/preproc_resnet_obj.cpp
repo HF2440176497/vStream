@@ -72,10 +72,9 @@ class Pre_Resnet_Obj : public ObjPreproc {
 
     cv::Mat img = src_img(cv::Rect(bx, by, bw, bh)).clone();
 
-/**
 
 #ifdef VSTREAM_UNIT_TEST
-    {
+    if (enable_save_) {
       std::lock_guard<std::mutex> lock(last_save_time_mutex_);
       auto now = std::chrono::steady_clock::now();
       if (save_duration_ms_ > 0) {
@@ -83,7 +82,7 @@ class Pre_Resnet_Obj : public ObjPreproc {
             std::chrono::duration_cast<std::chrono::milliseconds>(now - last_save_time_).count() >= save_duration_ms_) {
             auto sys_now = std::chrono::system_clock::now();
             auto timestamp_ms = std::chrono::duration_cast<std::chrono::milliseconds>(sys_now.time_since_epoch()).count();
-            std::string filename = "save/pre-" +  std::to_string(timestamp_ms) + ".jpg";
+            std::string filename = "save/pre_resnet_" + std::to_string(timestamp_ms) + ".jpg";
             cv::imwrite(filename, img);
             last_save_time_ = now;
         }
@@ -91,7 +90,6 @@ class Pre_Resnet_Obj : public ObjPreproc {
     }
 #endif
 
-*/
 
     int img_w = img.cols;
     int img_h = img.rows;
@@ -157,6 +155,7 @@ private:
   std::string model_name_;
 
  private:
+  bool enable_save_ = false;
   std::mutex last_save_time_mutex_;
   std::chrono::steady_clock::time_point last_save_time_;
   uint32_t save_duration_ms_ = 1000;

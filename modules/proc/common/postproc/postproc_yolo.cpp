@@ -23,9 +23,13 @@ namespace cnstream {
 namespace postproc_yolo {
   
 const std::string key_config_file = "config_file";
+
 const std::string key_classes = "classes";
 const std::string key_name = "name";
 const std::string key_threshold = "threshold";
+
+const std::string key_max_boxes_num = "max_boxes_num";
+const std::string key_nms_iou_threshold = "nms_iou_threshold";
 
 float box_iou(float aleft, float atop, float aright, float abottom,
               float bleft, float btop, float bright, float bbottom) {
@@ -151,6 +155,14 @@ class Post_YOLOv8_CPU: public Postproc {
         item_infos_[std::stoi(key)] = info;
       }
     }
+
+    if (data.find(postproc_yolo::key_max_boxes_num) != data.end()) {
+      max_boxes_num_ = data[postproc_yolo::key_max_boxes_num].get<int>();
+    }
+    if (data.find(postproc_yolo::key_nms_iou_threshold) != data.end()) {
+      nms_iou_threshold_ = data[postproc_yolo::key_nms_iou_threshold].get<float>();
+    }
+
     return true;
   }
 
@@ -265,13 +277,11 @@ class Post_YOLOv8_CPU: public Postproc {
     float threshold = 0;
   };
   std::map<int, ItemInfo> item_infos_;  // class_id -> item_info
+  std::string model_name_;
 
-  const int max_boxes_num_ = 100;
-  std::string model_name_;  ///< The name of the model.
-
-  bool has_save_frame_mat_ = false;
-  std::string save_file_ = "save/test_postproc_save.jpg";
-
+  int max_boxes_num_ = 100;
+  float nms_iou_threshold_ = 0.45f;
+  
  private:
   DECLARE_REFLEX_OBJECT_EX(Post_YOLOv8_CPU, cnstream::Postproc);
 };  // class Post_YOLOv8_CPU
@@ -391,6 +401,13 @@ class Post_YOLOv8_CPU_v2: public Postproc {
         item_infos_[std::stoi(key)] = info;
       }
     }
+
+    if (data.find(postproc_yolo::key_max_boxes_num) != data.end()) {
+      max_boxes_num_ = data[postproc_yolo::key_max_boxes_num].get<int>();
+    }
+    if (data.find(postproc_yolo::key_nms_iou_threshold) != data.end()) {
+      nms_iou_threshold_ = data[postproc_yolo::key_nms_iou_threshold].get<float>();
+    }
     return true;
   }
 
@@ -478,17 +495,16 @@ class Post_YOLOv8_CPU_v2: public Postproc {
       obj->model_name = model_name_;
       local_objs.push_back(obj);
     }
-    postproc_yolo::fast_nms(local_objs, max_boxes_num_, 0.5f);
+    postproc_yolo::fast_nms(local_objs, max_boxes_num_, nms_iou_threshold_);
     {
       InferObjsPtr objs_holder = package->collection.Get<InferObjsPtr>(cnstream::kInferObjsTag);
       std::lock_guard<std::mutex> lock(objs_holder->mutex_);
       ObjsVec& global_objs = objs_holder->objs_;
       global_objs.insert(global_objs.end(), local_objs.begin(), local_objs.end());
     }
-/**
 
 #ifdef VSTREAM_UNIT_TEST
-    {
+    if (enable_save_) {
       std::lock_guard<std::mutex> lock(last_save_time_mutex_);
       auto now = std::chrono::steady_clock::now();
       if (save_duration_ms_ > 0) {
@@ -501,14 +517,13 @@ class Post_YOLOv8_CPU_v2: public Postproc {
             }
             auto sys_now = std::chrono::system_clock::now();
             auto timestamp_ms = std::chrono::duration_cast<std::chrono::milliseconds>(sys_now.time_since_epoch()).count();
-            std::string filename = "save/post-" +  std::to_string(timestamp_ms) + ".jpg";
+            std::string filename = "save/post_yolo_" + std::to_string(timestamp_ms) + ".jpg";
             cv::imwrite(filename, img);
             last_save_time_ = now;
         }
       }
     }
 #endif
-*/
 
     return 0;
   }
@@ -519,11 +534,13 @@ class Post_YOLOv8_CPU_v2: public Postproc {
     float threshold = 0.0f;
   };
   std::vector<ItemInfo> item_infos_;   // 下标即类别ID，O(1)访问
-
-  const int max_boxes_num_ = 100;
   std::string model_name_;
 
+  int max_boxes_num_ = 100;
+  float nms_iou_threshold_ = 0.45f;
+
 private:
+  bool enable_save_ = false;
   std::mutex last_save_time_mutex_;
   std::chrono::steady_clock::time_point last_save_time_;
   uint32_t save_duration_ms_ = 1000;
@@ -536,7 +553,7 @@ IMPLEMENT_REFLEX_OBJECT_EX(Post_YOLOv8_CPU_v2, cnstream::Postproc);
 
 /**
  * @brief YOLOv5 后处理类
- * @note 此后处理假设输出已进行了 NMS
+ * @note 适用于标准 YOLOv5 ONNX 输出：shape [1, 25200, 5 + num_classes]
  */
 class Post_YOLOv5_CPU_NoNMS: public Postproc {
 
@@ -589,6 +606,12 @@ class Post_YOLOv5_CPU_NoNMS: public Postproc {
         item_infos_[std::stoi(key)] = info;
       }
     }
+    if (data.find(postproc_yolo::key_max_boxes_num) != data.end()) {
+      max_boxes_num_ = data[postproc_yolo::key_max_boxes_num].get<int>();
+    }
+    if (data.find(postproc_yolo::key_nms_iou_threshold) != data.end()) {
+      nms_iou_threshold_ = data[postproc_yolo::key_nms_iou_threshold].get<float>();
+    }
     return true;
   }
 
@@ -596,7 +619,6 @@ class Post_YOLOv5_CPU_NoNMS: public Postproc {
               const std::shared_ptr<cnstream::FrameInfo>& package) override {
 
     LOGD(POSTPROC) << "Execute for data: " << package->GetStreamId() << ", timestamp: " << package->GetTimestamp();
- 
     if (model_name_.empty()) {
       model_name_ = model->get_name();
     }
@@ -605,33 +627,50 @@ class Post_YOLOv5_CPU_NoNMS: public Postproc {
     const int img_w = frame->GetWidth();
     const int img_h = frame->GetHeight();
 
-    int output_index = 0;  // output tensor index
-
     const int input_w = model->get_width();
     const int input_h = model->get_height();
-    float img_scale = std::min((float)(input_w) / (float)(img_w), (float)(input_h) / (float)(img_h));
 
-    float pad_w = std::max(0, int(input_w - img_w * img_scale) / 2);
-    float pad_h = std::max(0, int(input_h - img_h * img_scale) / 2);
-    
+    float img_scale = std::min((float)input_w / img_w, (float)input_h / img_h);
+    float pad_w = std::max(0.0f, (input_w - img_w * img_scale) / 2.0f);
+    float pad_h = std::max(0.0f, (input_h - img_h * img_scale) / 2.0f);
+
+    int output_index = 0;
     const float* output = cpu_outputs[output_index];
     TensorShape output_shape = model->OutputShape(output_index);
 
-    InferObjsPtr objs_holder = package->collection.Get<InferObjsPtr>(cnstream::kInferObjsTag);
-    ObjsVec &objs = objs_holder->objs_;
+    int num_classes = output_shape.shape(2) - 5;  // 类别数 = 总通道数 - 5
+    int stride = 5 + num_classes;                // 单个检测框的浮点数个数
+    int box_num = output_shape.shape(1);          // 640x640 输入下通常为 25200
 
-    LOGU(POSTPROC) << "YOLOv5 NoNMS output_shape: " << output_shape;
+    LOGU(POSTPROC) << "YOLOv5 output_shape: " << output_shape
+                   << ", num_classes: " << num_classes
+                   << ", box_num: " << box_num;
 
-    int stride = 7;
+    ObjsVec local_objs;
+    local_objs.reserve(1024);
 
-    for (int i = 0; i < max_boxes_num_; ++i) {
-      if (int(output[i * stride + stride - 1]) == 0) {  // flag
-        break;
+    for (int i = 0; i < box_num; ++i) {
+      const float* row = output + i * stride;
+
+      // 标准 YOLOv5 原始输出格式：
+      // [center_x, center_y, width, height, obj_conf, cls0_conf, cls1_conf, ...]
+      float cx = row[0];
+      float cy = row[1];
+      float bw = row[2];
+      float bh = row[3];
+      float obj_conf = row[4];
+
+      // 找最大类别置信度及其索引
+      int detect_class = 0;
+      float cls_conf = row[5];
+      for (int c = 1; c < num_classes; ++c) {
+        if (row[5 + c] > cls_conf) {
+          cls_conf = row[5 + c];
+          detect_class = c;
+        }
       }
 
-      const float* bbox = output + i * stride;
-      int detect_class =int(output[i*stride+5]);
-      float score = output[i*stride+4];
+      float score = obj_conf * cls_conf;
 
       float class_threshold = 0.0f;
       if (item_infos_.find(detect_class) != item_infos_.end()) {
@@ -642,50 +681,45 @@ class Post_YOLOv5_CPU_NoNMS: public Postproc {
         continue;
       }
 
-      float left = bbox[0];
-      float top = bbox[1];
-      float right = bbox[2];
-      float bottom = bbox[3];
+      float left   = cx - bw * 0.5f;
+      float top    = cy - bh * 0.5f;
+      float right  = cx + bw * 0.5f;
+      float bottom = cy + bh * 0.5f;
 
       left   = (left   - pad_w) / img_scale;
       top    = (top    - pad_h) / img_scale;
       right  = (right  - pad_w) / img_scale;
       bottom = (bottom - pad_h) / img_scale;
 
-      left   = std::max(0.0f, std::min(left,   (float)img_w));  // 先限制右边界，再左边界
-      top    = std::max(0.0f, std::min(top,    (float)img_h));
-      right  = std::max(0.0f, std::min(right,  (float)img_w));
-      bottom = std::max(0.0f, std::min(bottom, (float)img_h));
+      left   = std::clamp(left,   0.0f, (float)img_w);
+      top    = std::clamp(top,    0.0f, (float)img_h);
+      right  = std::clamp(right,  0.0f, (float)img_w);
+      bottom = std::clamp(bottom, 0.0f, (float)img_h);
+
+      float w = right - left;
+      float h = bottom - top;
+      if (w <= 0.0f || h <= 0.0f) continue;
 
       auto obj = std::make_shared<InferObject>();
       obj->id = detect_class;
       obj->score = score;
-
       obj->bbox.x = left;
       obj->bbox.y = top;
-      obj->bbox.w = right - left;
-      obj->bbox.h = bottom - top;
+      obj->bbox.w = w;
+      obj->bbox.h = h;
+      obj->area = w * h;
       obj->model_name = model_name_;
 
-      std::lock_guard<std::mutex> objs_mutex(objs_holder->mutex_);
-      objs.push_back(obj);
-    }  // end for 
+      local_objs.push_back(obj);
+    }  // end for
 
-#ifdef VSTREAM_UNIT_TEST
-    if (!has_save_frame_mat_) {
-      cv::Mat img = frame->GetImage().clone();  // BGR
-      for (auto& obj : objs) {
-        float x = obj->bbox.x;
-        float y = obj->bbox.y;
-        float w = obj->bbox.w;
-        float h = obj->bbox.h;
-        cv::rectangle(img, cv::Rect(x, y, w, h), cv::Scalar(0, 255, 0), 2);
-      }
-      cv::imwrite(save_file_, img);
-      has_save_frame_mat_ = true;
+    postproc_yolo::fast_nms(local_objs, max_boxes_num_, nms_iou_threshold_);
+    {
+      InferObjsPtr objs_holder = package->collection.Get<InferObjsPtr>(cnstream::kInferObjsTag);
+      std::lock_guard<std::mutex> lock(objs_holder->mutex_);
+      ObjsVec& global_objs = objs_holder->objs_;
+      global_objs.insert(global_objs.end(), local_objs.begin(), local_objs.end());
     }
-#endif
-
     return 0;
   }
 
@@ -695,13 +729,11 @@ class Post_YOLOv5_CPU_NoNMS: public Postproc {
     float threshold = 0.0f;
   };
   std::map<int, ItemInfo> item_infos_;
-
-  const int max_boxes_num_ = 150;
   std::string model_name_;  ///< The name of the model.
 
-  bool has_save_frame_mat_ = false;
-  std::string save_file_ = "save/test_postproc_save.jpg";
-
+  int max_boxes_num_ = 200;
+  float nms_iou_threshold_ = 0.45f;
+  
  private:
   DECLARE_REFLEX_OBJECT_EX(Post_YOLOv5_CPU_NoNMS, cnstream::Postproc);
 };  // class Post_YOLOv5_CPU_NoNMS

@@ -47,7 +47,7 @@ class Pre_PPOCRv3_rec_Obj : public ObjPreproc {
     int input_h = model->get_height();  // 48
     int input_w  = model->get_width();  // 320
 
-    // 2. 裁剪并 clamp 到图像范围内
+    // 裁剪
     int x = std::max(0, (int)pobj->bbox.x);
     int y = std::max(0, (int)pobj->bbox.y);
     int w = std::min((int)pobj->bbox.w, img.cols - x);
@@ -56,23 +56,40 @@ class Pre_PPOCRv3_rec_Obj : public ObjPreproc {
     cv::Rect rect(x, y, w, h);
     cv::Mat crop_img = img(rect).clone();
 
-    // 3. （可选）宽度压缩
+    // （可选）宽度压缩
     if (crop_img.cols > 3) {
         cv::resize(crop_img, crop_img,
             cv::Size((crop_img.cols/3)*2, crop_img.rows),
             0, 0, cv::INTER_LINEAR);
     }
 
-    // 4. 按比例 resize 到 imgH
     float ratio = float(crop_img.cols) / float(crop_img.rows);
     int resize_w = std::min(int(ceilf(input_h * ratio)), input_w);
     cv::Mat resize_img;
     cv::resize(crop_img, resize_img, cv::Size(resize_w, input_h), 0, 0, cv::INTER_LINEAR);
 
-    // 5. 右侧补边
+    // 右侧补边
     cv::copyMakeBorder(resize_img, resize_img, 0, 0, 0,
                        input_w - resize_img.cols,
                        cv::BORDER_CONSTANT, {127,127,127});
+
+#ifdef VSTREAM_UNIT_TEST
+    if (enable_save_) {
+      std::lock_guard<std::mutex> lock(last_save_time_mutex_);
+      auto now = std::chrono::steady_clock::now();
+      if (save_duration_ms_ > 0) {
+        if (last_save_time_.time_since_epoch().count() == 0 ||
+            std::chrono::duration_cast<std::chrono::milliseconds>(now - last_save_time_).count() >= save_duration_ms_) {
+
+            auto sys_now = std::chrono::system_clock::now();
+            auto timestamp_ms = std::chrono::duration_cast<std::chrono::milliseconds>(sys_now.time_since_epoch()).count();
+            std::string filename = "save/pre_ocr_rec_" +  std::to_string(timestamp_ms) + ".jpg";
+            cv::imwrite(filename, resize_img);
+            last_save_time_ = now;
+        }
+      }
+    }
+#endif
 
     // 6. BGR->RGB + float
     cv::cvtColor(resize_img, resize_img, cv::COLOR_BGR2RGB);
@@ -98,6 +115,12 @@ class Pre_PPOCRv3_rec_Obj : public ObjPreproc {
 
  private:
   std::string model_name_;
+
+private:
+  bool enable_save_ = false;
+  std::mutex last_save_time_mutex_;
+  std::chrono::steady_clock::time_point last_save_time_;
+  uint32_t save_duration_ms_ = 500;
 
   DECLARE_REFLEX_OBJECT_EX(Pre_PPOCRv3_rec_Obj, cnstream::ObjPreproc);
 };  // class Pre_PPOCRv3_rec_Obj

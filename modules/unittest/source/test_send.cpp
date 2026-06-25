@@ -13,6 +13,8 @@
 #include "infer_params.hpp"
 #include "data_sink.hpp"
 
+#include "common.hpp"
+
 #include <atomic>
 #include <chrono>
 #include <thread>
@@ -38,6 +40,7 @@ static std::string test_pipeline_send_ocr_json = "OCR/pipeline_source_send_ocr.j
 // static std::string test_pipeline_send_ocr_json = "pipeline_source_send_ocr.json";
 
 static std::string test_image_path = "OCR/image.jpg";
+static std::string test_image_folder = "OCR/images";
 // static std::string test_image_path = "image.png";
 
 class SourceSend : public testing::Test {
@@ -57,7 +60,6 @@ class SourceSend : public testing::Test {
 
  protected:
    int send_count_ = 0;
-   cv::Mat   image_;
 
 };  // SourceSend
 
@@ -96,17 +98,21 @@ TEST_F(SourceSend, Run) {
     EXPECT_EQ(sink->AddSink(queue_handler_), 0);
   }
   
-  image_ = cv::imread(test_image_path, cv::IMREAD_COLOR);
-  ASSERT_FALSE(image_.empty()) << "Failed to load " << test_image_path;
-
+  utils::ImageFolderReader image_loader(test_image_folder);
   std::atomic<bool> running{true};
 
   std::thread send_thread([&]() {
     while (running.load()) {
       uint64_t pts = get_timestamp_ms();
 
+      cv::Mat image = image_loader.read();
+      if (image.empty()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        continue;
+      }
+
       // frame_id_s start from 0
-      send_handler_->Send(pts, std::to_string(send_count_), image_);
+      send_handler_->Send(pts, std::to_string(send_count_), image);
       send_count_++;
       std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
@@ -121,9 +127,9 @@ TEST_F(SourceSend, Run) {
         continue;
       }
       count++;
-      if (count % 20 == 0) {
+      if (count % 2 == 0) {
         LOGI(T_SEND) << "Receive: " << data;
-        LOGI(T_SEND) << "Received: " << count << "Send: " << send_count_ << "; frames; id_s: " << data.frame_id_s;
+        LOGI(T_SEND) << "Received: " << count << "; Send: " << send_count_ << "; frames; id_s: " << data.frame_id_s;
       }
     }
   });
@@ -142,7 +148,7 @@ TEST_F(SourceSend, Run) {
     LOGI(T_STABLE) << "Module Profile: " << module_profile;
   }
 
-  std::this_thread::sleep_for(std::chrono::seconds(10));
+  std::this_thread::sleep_for(std::chrono::seconds(20));
   pipeline_->Stop();
 
   running.store(false);
