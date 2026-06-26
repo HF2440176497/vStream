@@ -4,6 +4,8 @@
 #include "cnstream_frame_va.hpp"
 #include "data_common.hpp"
 
+#include <nlohmann/json.hpp>
+
 namespace cnstream {
 
 /**
@@ -78,6 +80,38 @@ inline s_obj_in ConvertInferObject(const std::shared_ptr<InferObject>& src) {
   return dst;
 }
 
+// JSON 序列化
+inline void to_json(nlohmann::json& j, const s_class_infos& info) {
+  j = nlohmann::json{
+      {"id", info.id},
+      {"model_name", info.model_name},
+      {"name", info.name},
+      {"score", info.score},
+      {"value", info.value}};
+}
+
+inline void to_json(nlohmann::json& j, const s_attr_info& info) {
+  j = nlohmann::json{
+      {"id", info.id},
+      {"value", info.value},
+      {"score", info.score},
+      {"name", info.name}};
+}
+
+inline void to_json(nlohmann::json& j, const s_obj_in& obj) {
+  j = nlohmann::json{
+      {"id", obj.id},
+      {"track_id", obj.track_id},
+      {"score", obj.score},
+      {"bboxs", obj.bboxs},
+      {"feature", obj.feature},
+      {"classes", obj.classes},
+      {"model_name", obj.model_name},
+      {"key_points", obj.key_points},
+      {"type", obj.type},
+      {"attributes", obj.attributes}};
+}
+
 /**
  * @brief 在 FrameInfo 的 collection 中保存原始图像到 kCustomImagesTag。
  *
@@ -141,6 +175,14 @@ inline s_output_data ConvertFrameInfo(const std::shared_ptr<FrameInfo>& frame_in
     data.result = -1;
     return data;
   }
+
+  try {
+    data.objects_json = nlohmann::json(data.objects).dump();
+  } catch (const std::exception& e) {
+    LOGE(DATA_CONVERTER) << "ConvertFrameInfo: failed to serialize objects to json: " << e.what();
+    data.objects_json.clear();
+  }
+
   data.result = 0;
   return data;
 }

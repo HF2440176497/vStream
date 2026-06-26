@@ -119,7 +119,6 @@ void SinkModuleWrapper(py::module &m) {
       .def_readwrite("timestamp", &s_output_data::timestamp)
       .def_readwrite("frame_id_s", &s_output_data::frame_id_s)
       .def_readwrite("objects", &s_output_data::objects)
-      .def_readwrite("objects_dict", &s_output_data::objects_dict)
       .def_readwrite("objects_json", &s_output_data::objects_json)
       .def("__repr__", [](const s_output_data& data) {
         std::ostringstream oss;
@@ -128,8 +127,8 @@ void SinkModuleWrapper(py::module &m) {
       })
       .def("__dir__", [](const s_output_data&) {
         return std::vector<std::string>{
-            "result", "timestamp", "frame_id_s", "objects",
-            "objects_dict", "objects_json", "image_dict"};
+            "result", "timestamp", "frame_id_s", "objects", "objects_json",
+            "image_dict"};
       })
       .def_property("image_dict",
         [](const s_output_data& data) {

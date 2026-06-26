@@ -18,7 +18,6 @@ namespace output_constants {
 inline const std::string key_result = "result";
 inline const std::string key_timestamp = "timestamp";
 inline const std::string key_objects = "objects";
-inline const std::string key_objects_dict = "objects_dict";
 inline const std::string key_objects_json = "objects_json";
 
 inline const std::string key_image_dict = "image_dict";
@@ -128,7 +127,6 @@ struct s_output_data {
   uint64_t timestamp = 0;                                     // 时间戳
   std::string frame_id_s;                                     // frame 标识
   std::vector<s_obj_in> objects;                              // 检测对象列表
-  std::vector<std::map<std::string, std::string>> objects_dict;
   std::string objects_json;                                   // JSON 序列化结果
   std::unordered_map<std::string, cv::Mat> image_dict;        // 图像字典
 };
@@ -141,18 +139,6 @@ inline std::ostream& operator<<(std::ostream& os, const s_output_data& data) {
   for (size_t i = 0; i < data.objects.size(); ++i) {
     if (i > 0) os << ", ";
     os << data.objects[i];
-  }
-  os << "], objects_dict=[";
-  for (size_t i = 0; i < data.objects_dict.size(); ++i) {
-    if (i > 0) os << ", ";
-    os << "{";
-    size_t j = 0;
-    for (const auto& kv : data.objects_dict[i]) {
-      if (j > 0) os << ", ";
-      os << kv.first << "=" << kv.second;
-      ++j;
-    }
-    os << "}";
   }
   os << "], objects_json=" << data.objects_json
      << ", image_dict_size=" << data.image_dict.size() << "}";

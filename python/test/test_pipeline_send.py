@@ -103,7 +103,7 @@ def test_send_queue_pipeline():
             if ok != 0:
                 print(f"Warning: send returned {ok}")
             send_count += 1
-            time.sleep(0.02)  # 50 fps
+            time.sleep(0.2)
 
     def receive_thread():
         nonlocal receive_count
@@ -114,7 +114,7 @@ def test_send_queue_pipeline():
                 time.sleep(0.01)
                 continue
             receive_count += 1
-            if receive_count % 10 == 0:
+            if receive_count % 2 == 0:
                 print(f'receive {data}')
                 print(f"Received {receive_count} frames, send_count: {send_count}")
 
@@ -130,6 +130,13 @@ def test_send_queue_pipeline():
                 print(f"  result={result}, timestamp={timestamp}, frame_id_s={frame_id_s}")
                 print(f"  objects count={len(objects)}, objects_json={objects_json}")
 
+                try:
+                    objects_dict = json.loads(objects_json)
+                    print(f"  objects_json parsed type={type(objects_dict)}, count={len(objects_dict)}")
+                    print(f"  objects_dict={objects_dict}")
+                except Exception as e:
+                    print(f"  parse objects_json failed: {e}")
+
                 # 检查并保存每个 obj 的成员（防御式获取）
                 for idx, obj in enumerate(objects):
                     obj_members = [m for m in dir(obj) if not m.startswith('_')]
@@ -137,12 +144,13 @@ def test_send_queue_pipeline():
 
                     obj_id = getattr(obj, 'id', -1)
                     obj_score = getattr(obj, 'score', 0.0)
+                    obj_model_name = getattr(obj, 'model_name', '')
                     obj_type = getattr(obj, 'type', '')
                     obj_bboxs = getattr(obj, 'bboxs', [])
                     obj_classes = getattr(obj, 'classes', [])
                     obj_attributes = getattr(obj, 'attributes', [])
 
-                    print(f"    id={obj_id}, score={obj_score}, type={obj_type}")
+                    print(f"    id={obj_id}, score={obj_score}, model_name={obj_model_name}, type={obj_type}")
                     print(f"    bboxs={obj_bboxs}")
                     print(f"    classes={obj_classes}")
                     print(f"    attributes={obj_attributes}")
