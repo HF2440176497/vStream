@@ -1,8 +1,8 @@
 
-#include "obj_filter.hpp"
-
 #include <algorithm>
 
+#include "common.hpp"
+#include "obj_filter.hpp"
 #include "cnstream_frame.hpp"
 #include "cnstream_frame_va.hpp"
 
@@ -28,6 +28,11 @@ class ObjFilterCommon : public ObjFilter {
       std::string value = params_[key_obj_type];
       obj_types_ = ParseStringList(value);
     }
+    LOGD(FILTER) << "ObjFilterCommon Init: " 
+                 << key_model_name << "=" << model_name_ << " "
+                 << key_obj_id << "=" << obj_ids_ << " " 
+                 << key_obj_type << "=" << obj_types_;
+
     return true;
   }
 

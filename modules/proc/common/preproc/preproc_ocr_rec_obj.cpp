@@ -29,7 +29,7 @@ class Pre_PPOCRv3_rec_Obj : public ObjPreproc {
   virtual int Execute(const std::vector<float*>& cpu_outputs, ModelLoader* model,
                       const FrameInfoPtr& finfo, const std::shared_ptr<InferObject>& pobj) override {
 
-    LOGD(PREPROC) << "Pre_PPOCRv3_rec_Obj Execute";
+    LOGD(PREPROC) << "Pre_PPOCRv3 Execute";
     auto start_time = std::chrono::steady_clock::now();
     if (model_name_.empty()) {
       model_name_ = model->get_name();
@@ -38,7 +38,7 @@ class Pre_PPOCRv3_rec_Obj : public ObjPreproc {
 
     DataFramePtr frame = finfo->collection.Get<DataFramePtr>(kDataFrameTag);
     if (!frame) {
-        LOGE(PREPROC) << "Pre_PPOCRv3_rec_Obj Execute: DataFrame is null";
+        LOGE(PREPROC) << "Pre_PPOCRv3 Execute: DataFrame is null";
         return -1;
     }
     cv::Mat img = frame->GetImage();
@@ -109,7 +109,7 @@ class Pre_PPOCRv3_rec_Obj : public ObjPreproc {
 
     double dr_ms = std::chrono::duration<double,std::milli>(
         std::chrono::steady_clock::now()-start_time).count();
-    LOGI(PREPROC) << " Pre_PPOCRv3_rec_Obj Execute " << dr_ms << " ms";
+    LOGI(PREPROC) << " Pre_PPOCRv3 Execute " << dr_ms << " ms";
     return 0;
   }
 
