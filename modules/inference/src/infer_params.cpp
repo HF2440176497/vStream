@@ -85,12 +85,32 @@ static bool STR2FLOAT(const std::string &value, float *ret) {
  */
 void InferParamManager::RegisterAll(ParamRegister *pregister) {
   InferParamDesc param;
-  param.name = "model_path";
-  param.desc_str = "Required. The path of the offline model.";
+  param.name = "model_name";
+  param.desc_str = "Required. The name of the offline model.";
   param.default_value = "";
   param.type = "string";
   param.parser = [](const std::string &value, InferParams *param_set) -> bool {
-    param_set->model_path = value;
+    param_set->model_name = value;
+    return true;
+  };
+  ASSERT(RegisterParam(pregister, param));
+
+  param.name = "config_dir_path";
+  param.desc_str = "Optional. The base directory where the model is stored.";
+  param.default_value = "";
+  param.type = "string";
+  param.parser = [](const std::string &value, InferParams *param_set) -> bool {
+    param_set->config_dir_path = value;
+    return true;
+  };
+  ASSERT(RegisterParam(pregister, param));
+
+  param.name = "version";
+  param.desc_str = "Optional. The version sub-directory of the model.";
+  param.default_value = "";
+  param.type = "string";
+  param.parser = [](const std::string &value, InferParams *param_set) -> bool {
+    param_set->version = value;
     return true;
   };
   ASSERT(RegisterParam(pregister, param));

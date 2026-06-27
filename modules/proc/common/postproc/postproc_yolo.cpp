@@ -118,11 +118,11 @@ class Post_YOLOv8_CPU: public Postproc {
       LOGE(POSTPROC) << "Init config_file must be in custom_postproc_params.";
       return false;
     }
-    std::string config_file_path = "./";
+    std::string dir_path;
     if (params_.find(CNS_JSON_DIR_PARAM_NAME) != params_.end()) {
-      config_file_path = params_[CNS_JSON_DIR_PARAM_NAME];
+      dir_path = params_[CNS_JSON_DIR_PARAM_NAME];
     }
-    config_file_ = GetPathRelativeToTheJSONFile(config_file_, config_file_path);
+    config_file_ = GetPathRelativeToTheJSONFile(config_file_, dir_path);
 
     LOGI(POSTPROC) << "model_name: " << model_name_ << ", post conf file: " << config_file_;
     std::ifstream file(config_file_);
@@ -364,11 +364,11 @@ class Post_YOLOv8_CPU_v2: public Postproc {
       LOGE(POSTPROC) << "Init config_file must be in custom_postproc_params.";
       return false;
     }
-    std::string config_file_path = "./";
+    std::string dir_path;
     if (params_.find(CNS_JSON_DIR_PARAM_NAME) != params_.end()) {
-      config_file_path = params_[CNS_JSON_DIR_PARAM_NAME];
+      dir_path = params_[CNS_JSON_DIR_PARAM_NAME];
     }
-    config_file_ = GetPathRelativeToTheJSONFile(config_file_, config_file_path);
+    config_file_ = GetPathRelativeToTheJSONFile(config_file_, dir_path);
 
     LOGI(POSTPROC) << "model_name: " << model_name_ << ", post conf file: " << config_file_;
     std::ifstream file(config_file_);
@@ -555,7 +555,7 @@ IMPLEMENT_REFLEX_OBJECT_EX(Post_YOLOv8_CPU_v2, cnstream::Postproc);
  * @brief YOLOv5 后处理类
  * @note 适用于标准 YOLOv5 ONNX 输出：shape [1, 25200, 5 + num_classes]
  */
-class Post_YOLOv5_CPU_NoNMS: public Postproc {
+class Post_YOLOv5_CPU: public Postproc {
 
  public:
   /**
@@ -569,11 +569,11 @@ class Post_YOLOv5_CPU_NoNMS: public Postproc {
       LOGE(POSTPROC) << "Init config_file must be in custom_postproc_params.";
       return false;
     }
-    std::string config_file_path = "./";
+    std::string dir_path;
     if (params_.find(CNS_JSON_DIR_PARAM_NAME) != params_.end()) {
-      config_file_path = params_[CNS_JSON_DIR_PARAM_NAME];
+      dir_path = params_[CNS_JSON_DIR_PARAM_NAME];
     }
-    config_file_ = GetPathRelativeToTheJSONFile(config_file_, config_file_path);
+    config_file_ = GetPathRelativeToTheJSONFile(config_file_, dir_path);
 
     LOGI(POSTPROC) << "model_name: " << model_name_ << ", post conf file: " << config_file_;
     std::ifstream file(config_file_);
@@ -735,9 +735,9 @@ class Post_YOLOv5_CPU_NoNMS: public Postproc {
   float nms_iou_threshold_ = 0.45f;
   
  private:
-  DECLARE_REFLEX_OBJECT_EX(Post_YOLOv5_CPU_NoNMS, cnstream::Postproc);
-};  // class Post_YOLOv5_CPU_NoNMS
+  DECLARE_REFLEX_OBJECT_EX(Post_YOLOv5_CPU, cnstream::Postproc);
+};  // class Post_YOLOv5_CPU
 
-IMPLEMENT_REFLEX_OBJECT_EX(Post_YOLOv5_CPU_NoNMS, cnstream::Postproc);
+IMPLEMENT_REFLEX_OBJECT_EX(Post_YOLOv5_CPU, cnstream::Postproc);
 
 }  // namespace cnstream

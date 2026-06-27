@@ -50,7 +50,7 @@ class DataSink : public SinkModule, public ModuleCreator<DataSink> {
   bool CheckParamSet(const ModuleParamSet &paramSet) const override;
 
   ModuleParamSet GetStreamParams(const std::string& stream_id) const;
-  bool LoadStreamConf(const std::string& config_file_path);
+  bool LoadStreamConf(const std::string& config_dir_path);
 
 #ifdef VSTREAM_UNIT_TEST
  public:

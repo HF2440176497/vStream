@@ -110,7 +110,7 @@ void fast_nms(ObjsVec& objs, int max_boxes, float threshold) {
  * @brief YOLOv5 后处理类
  * @note 适用于标准 YOLOv5 ONNX 输出：shape [1, 25200, 5 + num_classes]
  */
-class Post_YOLOv5_CPU_NoNMS_OCR: public Postproc {
+class Post_YOLOv5_CPU_OCR: public Postproc {
 
  public:
   struct CharBox {
@@ -134,11 +134,11 @@ class Post_YOLOv5_CPU_NoNMS_OCR: public Postproc {
       LOGE(POSTPROC) << "Init config_file must be in custom_postproc_params.";
       return false;
     }
-    std::string config_file_path = "./";
+    std::string dir_path;
     if (params_.find(CNS_JSON_DIR_PARAM_NAME) != params_.end()) {
-      config_file_path = params_[CNS_JSON_DIR_PARAM_NAME];
+      dir_path = params_[CNS_JSON_DIR_PARAM_NAME];
     }
-    config_file_ = GetPathRelativeToTheJSONFile(config_file_, config_file_path);
+    config_file_ = GetPathRelativeToTheJSONFile(config_file_, dir_path);
 
     LOGI(POSTPROC) << "model_name: " << model_name_ << ", post conf file: " << config_file_;
     std::ifstream file(config_file_);
@@ -279,7 +279,8 @@ class Post_YOLOv5_CPU_NoNMS_OCR: public Postproc {
 
       local_objs.push_back(obj);
     }  // end for
-    LOGU(POSTPROC) << "YOLOv5_CPU_NoNMS_OCR candidates before NMS: " << local_objs.size();
+
+    // LOGU(POSTPROC) << "YOLOv5_CPU_OCR candidates: " << local_objs.size();
     postproc_yolo_ocr::fast_nms(local_objs, max_boxes_num_, nms_iou_threshold_);
 
     {
@@ -289,7 +290,7 @@ class Post_YOLOv5_CPU_NoNMS_OCR: public Postproc {
       global_objs.insert(global_objs.end(), local_objs.begin(), local_objs.end());
     }
 
-    LOGU(POSTPROC) << "YOLOv5_CPU_NoNMS_OCR objs after NMS: " << local_objs.size();
+    LOGU(POSTPROC) << "YOLOv5_CPU_OCR after NMS: " << local_objs.size();
     // for (auto& obj : local_objs) {
     //   LOGU(POSTPROC) << "obj: " << obj->id << ", score: " << obj->score << ", bbox: " << obj->bbox.x << ", " << obj->bbox.y << ", " << obj->bbox.w << ", " << obj->bbox.h;
     // }
@@ -352,7 +353,7 @@ class Post_YOLOv5_CPU_NoNMS_OCR: public Postproc {
 
     }
 
-    LOGU(POSTPROC) << "YOLOv5_CPU_NoNMS_OCR results_size: " << results_merge.size();
+    LOGU(POSTPROC) << "YOLOv5_CPU_OCR results_size: " << results_merge.size();
 
     // 将合并后的字符行框也加入 objs，通过 type 与原始 YOLO 框区分
     {
@@ -407,9 +408,9 @@ class Post_YOLOv5_CPU_NoNMS_OCR: public Postproc {
   bool enable_save_ = false;
   bool has_save_frame_mat_ = false;
 
-  DECLARE_REFLEX_OBJECT_EX(Post_YOLOv5_CPU_NoNMS_OCR, cnstream::Postproc);
-};  // class Post_YOLOv5_CPU_NoNMS_OCR
+  DECLARE_REFLEX_OBJECT_EX(Post_YOLOv5_CPU_OCR, cnstream::Postproc);
+};  // class Post_YOLOv5_CPU_OCR
 
-IMPLEMENT_REFLEX_OBJECT_EX(Post_YOLOv5_CPU_NoNMS_OCR, cnstream::Postproc);
+IMPLEMENT_REFLEX_OBJECT_EX(Post_YOLOv5_CPU_OCR, cnstream::Postproc);
 
 }  // namespace cnstream

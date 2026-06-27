@@ -66,7 +66,7 @@ bool DataSource::Open(ModuleParamSet paramSet) {
   if (paramSet.find(key_source_config_file) != paramSet.end()) {
     std::string config_file = paramSet.at(key_source_config_file);
 
-    // paramSet from custom params, can include "config_file_path"
+    // paramSet from custom params, can include "config_dir_path"
     std::string config_path = GetPathRelativeToTheJSONFile(config_file, paramSet);
     if (!LoadStreamConf(config_path)) {
       LOGE(SOURCE) << "LoadStreamConf failed: " << config_path;

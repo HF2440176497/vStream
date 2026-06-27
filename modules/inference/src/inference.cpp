@@ -77,6 +77,47 @@ class InferencePrivate: public NonCopyable {
   }
 
   /**
+   * @brief 组装模型文件路径
+   * @details 路径格式为 config_dir_path[/version]/model_name.engine
+   *          - 若 model_name 为绝对路径，则直接使用；
+   *          - 若 config_dir_path 为相对路径，则相对于 JSON 文件目录解析；
+   *          - 若未指定 version，则直接在 config_dir_path 下查找；
+   *          - 自动为 model_name 追加 .engine 后缀。
+   */
+  std::string ComposeModelPath(const std::string& dir_path,
+                               const std::string& version,
+                               const std::string& model_name) const {
+    if (model_name.empty()) {
+      return "";
+    }
+    if (model_name[0] == '/') {
+      return model_name;
+    }
+    std::string base_dir = dir_path;
+    if (base_dir.empty()) {
+      base_dir = "./";
+    }
+    // 保证目录以 '/' 结尾
+    if (!base_dir.empty() && base_dir.back() != '/') {
+      base_dir += "/";
+    }
+    // 追加 version 子目录
+    if (!version.empty()) {
+      base_dir += version;
+      if (!base_dir.empty() && base_dir.back() != '/') {
+        base_dir += "/";
+      }
+    }
+    std::string model_file = model_name;
+    const std::string kEngineExt = ".engine";
+    if (model_file.size() < kEngineExt.size() ||
+        model_file.compare(model_file.size() - kEngineExt.size(), kEngineExt.size(), kEngineExt) != 0) {
+      model_file += kEngineExt;
+    }
+    return base_dir + model_file;
+  }
+
+  /**
    * @brief 解析来自 params 的模型参数
    * param_set 只是用于取出路径参数，需要的参数都已在 params 中
    */
@@ -84,8 +125,8 @@ class InferencePrivate: public NonCopyable {
     params_ = params;
     module_name_ = q_ptr_->GetName();
 
-    // model_path 拼接上 CNS_JSON_DIR_PARAM_NAME 参数
-    std::string model_path = GetPathRelativeToTheJSONFile(params.model_path, param_set);
+    // 根据 config_dir_path、version 和 model_name 组装模型路径
+    std::string model_path = ComposeModelPath(params.config_dir_path, params.version, params.model_name);
 
     LOGI(INFER) << "[" << module_name_ << "] load model [path: " << model_path << "]";
 

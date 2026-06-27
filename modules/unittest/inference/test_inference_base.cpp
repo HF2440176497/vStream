@@ -23,7 +23,7 @@
 #include <opencv2/opencv.hpp>
 
 
-static const std::string trt_yolov8_engine_path = "yolov8s_tracing_static_b1_quant_fix.engine";
+static const std::string model_name = "yolov8s_tracing_static_b1_quant_fix";
 
 static const int device_id = 0;
 
@@ -88,14 +88,14 @@ class ModelLoaderTest : public testing::Test {
     ASSERT_EQ(trt_model_loader->GetDeviceId(), device_id);
     ASSERT_EQ(trt_model_loader->GetDeviceType(), DevType::CUDA);
 
-    std::string model_path = GetExePath() + trt_yolov8_engine_path;
+    std::string model_path = model_name;
     std::cout << "[ModelLoaderTest] model_path = " << model_path << std::endl;
     
     InferParams params;
 
     params.device_type = DevType::CUDA;
     params.device_id = 0;
-    params.model_path = model_path;
+    params.model_name = model_name;
     params.input_ordered_index = 0;
 
     ASSERT_TRUE(model_loader_->Init(model_path, params));
@@ -332,7 +332,7 @@ bool InferParamsEQ(const InferParams &p1, const InferParams &p2) {
     p1.infer_interval == p2.infer_interval &&
     p1.batching_timeout == p2.batching_timeout &&
     p1.trans_data_size == p2.trans_data_size &&
-    p1.model_path == p2.model_path &&
+    p1.model_name == p2.model_name &&
     p1.preproc_name == p2.preproc_name &&
     p1.postproc_name == p2.postproc_name &&
     p1.obj_filter_name == p2.obj_filter_name &&
@@ -396,7 +396,7 @@ TEST(InferenceBaseTest, Param) {
     "infer_interval",
     "batching_timeout",
     "trans_data_size",
-    "model_path",
+    "model_name",
     "preproc_name",
     "postproc_name",
     "obj_filter_name",
@@ -418,7 +418,7 @@ TEST(InferenceBaseTest, Param) {
   expect_ret.infer_interval = 1;
   expect_ret.batching_timeout = 3;
   expect_ret.trans_data_size = 20;
-  expect_ret.model_path = "fake_path";
+  expect_ret.model_name = "fake_name";
   expect_ret.preproc_name = "fake_name";
   expect_ret.postproc_name = "fake_name";
   expect_ret.obj_filter_name = "filter_name";
@@ -435,7 +435,7 @@ TEST(InferenceBaseTest, Param) {
   raw_params["infer_interval"] = std::to_string(expect_ret.infer_interval);
   raw_params["batching_timeout"] = std::to_string(expect_ret.batching_timeout);
   raw_params["trans_data_size"] = std::to_string(expect_ret.trans_data_size);
-  raw_params["model_path"] = expect_ret.model_path;
+  raw_params["model_name"] = expect_ret.model_name;
   raw_params["preproc_name"] = expect_ret.preproc_name;
   raw_params["postproc_name"] = expect_ret.postproc_name;
   raw_params["obj_filter_name"] = expect_ret.obj_filter_name;
@@ -499,14 +499,12 @@ TEST(InferenceBaseTest, Demo) {
     std::cout << "REFLEX: obj_map name = " << name << std::endl;
   }
 
-  std::string model_path = GetExePath() + trt_yolov8_engine_path;
-
   std::shared_ptr<Module> infer = std::make_shared<Inference>("test_inference");
   std::shared_ptr<InferObserver> observer = std::make_shared<InferObserver>();
   infer->SetObserver(reinterpret_cast<IModuleObserver *>(observer.get()));
   // std::thread th = std::thread(&GetResult, observer);
   ModuleParamSet param;
-  param["model_path"] = model_path;
+  param["model_name"] = model_name;
   param["preproc_name"] = g_preproc_name;
   param["postproc_name"] = g_postproc_name;
   param["device_type"] = "cuda";

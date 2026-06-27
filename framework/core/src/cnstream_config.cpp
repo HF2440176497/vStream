@@ -214,10 +214,10 @@ bool CNGraphConfig::ParseByJSONStr(const std::string& json_str) {
  * @note CheckPath 调用
  */
 std::string GetPathRelativeToTheJSONFile(const std::string& path, const ModuleParamSet& param_set) {
-  std::string config_dir = "./";
+  std::string dir_path = "./";
   // pipeline json dir
   if (param_set.find(CNS_JSON_DIR_PARAM_NAME) != param_set.end()) {
-    config_dir = param_set.find(CNS_JSON_DIR_PARAM_NAME)->second;
+    dir_path = param_set.find(CNS_JSON_DIR_PARAM_NAME)->second;
   }
 
   std::string ret = "";
@@ -225,18 +225,24 @@ std::string GetPathRelativeToTheJSONFile(const std::string& path, const ModulePa
     /*absolute path*/
     ret = path;
   } else {
-    ret = config_dir + path;
+    if (!dir_path.empty() && dir_path.back() != '/') {
+      dir_path += "/";
+    }
+    ret = dir_path + path;
   }
   return ret;
 }
 
-std::string GetPathRelativeToTheJSONFile(const std::string& path, std::string config_file_path) {
+std::string GetPathRelativeToTheJSONFile(const std::string& path, std::string dir_path) {
   std::string ret = "";
   if (path.size() > 0 && '/' == path[0]) {
     /*absolute path*/
     ret = path;
   } else {
-    ret = config_file_path + path;
+    if (!dir_path.empty() && dir_path.back() != '/') {
+      dir_path += "/";
+    }
+    ret = dir_path + path;
   }
   return ret;
 }

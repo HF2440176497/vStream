@@ -54,10 +54,10 @@ bool DataSink::CheckParamSet(const ModuleParamSet &paramSet) const {
   return true;
 }
 
-bool DataSink::LoadStreamConf(const std::string& config_file_path) {
-  std::ifstream ifs(config_file_path);
+bool DataSink::LoadStreamConf(const std::string& config_dir_path) {
+  std::ifstream ifs(config_dir_path);
   if (!ifs.is_open()) {
-    LOGE(SINK) << "LoadStreamConf: cannot open " << config_file_path;
+    LOGE(SINK) << "LoadStreamConf: cannot open " << config_dir_path;
     return false;
   }
   try {

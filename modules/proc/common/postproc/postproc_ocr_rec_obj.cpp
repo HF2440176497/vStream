@@ -35,11 +35,11 @@ class Post_PPOCRv3_rec_Obj : public ObjPostproc {
       LOGE(POSTPROC) << "Init config_file must be in custom_postproc_params.";
       return false;
     }
-    std::string config_file_path = "./";
+    std::string dir_path;
     if (params_.find(CNS_JSON_DIR_PARAM_NAME) != params_.end()) {
-      config_file_path = params_[CNS_JSON_DIR_PARAM_NAME];
+      dir_path = params_[CNS_JSON_DIR_PARAM_NAME];
     }
-    config_file_ = GetPathRelativeToTheJSONFile(config_file_, config_file_path);
+    config_file_ = GetPathRelativeToTheJSONFile(config_file_, dir_path);
 
     LOGI(POSTPROC) << "PPOCRv3 post conf file: " << config_file_;
     std::ifstream file(config_file_);
