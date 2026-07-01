@@ -61,6 +61,7 @@ Pipeline::Pipeline(const std::string& name) : name_(name) {
 Pipeline::~Pipeline() {
   Stop();
   exit_msg_loop_ = true;
+  // note: smsg_thread_ not joined in Stop 
   if (smsg_thread_.joinable()) {
     smsg_thread_.join();
   }
@@ -133,6 +134,13 @@ bool Pipeline::Start() {
     return false;
   }
 
+  stop_requested_.store(false);
+  stopping_.store(false);
+  {
+    std::lock_guard<std::mutex> lk(stream_state_mtx_);
+    eos_streams_.clear();
+  }
+
   // open modules
   bool open_module_failed = false;
   std::vector<std::shared_ptr<Module>> opened_modules;
@@ -173,7 +181,18 @@ bool Pipeline::Start() {
 
 bool Pipeline::Stop() {
   LOGD(CORE) << "Pipeline [" << GetName() << "] " << "Prepare to stop";
-  if (!IsRunning()) return true;
+  bool expected = false;
+  if (!stopping_.compare_exchange_strong(expected, true)) {
+    // 已经有其他线程在执行 Stop()，等待其完全结束（stopping_ 复位）
+    while (stopping_.load()) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return true;
+  }
+  if (!IsRunning()) {
+    stopping_.store(false);
+    return true;
+  }
 
   // frist close head module
   for (auto node = graph_->DFSBegin(); node != graph_->DFSEnd(); ++node) {
@@ -215,6 +234,7 @@ bool Pipeline::Stop() {
   // When a circular reference occurs, GC(python) cannot handle it, resulting in a memory leak.
   RegisterFrameDoneCallBack(NULL);
   LOGI(CORE) << "Pipeline[" << GetName() << "] " << "Stop complete";
+  stopping_.store(false);
   return true;
 }
 
@@ -558,14 +578,16 @@ EventHandleFlag Pipeline::DefaultBusWatch(const Event& event) {
       UpdateByStreamMsg(smsg);
       LOGE(CORE) << "[" << event.module_name << "]: "
                  << event.message;
+      stop_requested_.store(true);
       ret = EventHandleFlag::EVENT_HANDLE_STOP;
       break;
     case EventType::EVENT_STOP:
       LOGI(CORE) << "[" << event.module_name << "]: "
                  << event.message;
+      stop_requested_.store(true);
       ret = EventHandleFlag::EVENT_HANDLE_STOP;
       break;
-    // EVENT_ERROR 和 EVENT_STOP 导致 EventBus 停止
+    // EVENT_ERROR、EVENT_STREAM_ERROR、EVENT_STOP 会导致 Pipeline 停止；EVENT_EOS 也会主动停止 Pipeline。
     case EventType::EVENT_WARNING:
       LOGW(CORE) << "[" << event.module_name << "] " << event.message;
       ret = EventHandleFlag::EVENT_HANDLE_SYNCED;
@@ -575,7 +597,20 @@ EventHandleFlag Pipeline::DefaultBusWatch(const Event& event) {
       smsg.type = StreamMsgType::EOS_MSG;
       smsg.module_name = event.module_name;
       smsg.stream_id = event.stream_id;
-      UpdateByStreamMsg(smsg);  // 执行 EOS 逻辑
+      UpdateByStreamMsg(smsg);
+      bool all_eos = false;
+      {
+        std::lock_guard<std::mutex> lk(stream_state_mtx_);
+        if (active_streams_.count(event.stream_id)) {
+          eos_streams_.insert(event.stream_id);
+        }
+        // stream_id data_source has not destructed
+        all_eos = (!active_streams_.empty() && eos_streams_ == active_streams_);
+      }
+      if (all_eos) {
+        LOGI(CORE) << "[" << GetName() << "] all active streams received eos, request stop";
+        stop_requested_.store(true);
+      }
       ret = EventHandleFlag::EVENT_HANDLE_SYNCED;
       break;
     }
@@ -586,7 +621,18 @@ EventHandleFlag Pipeline::DefaultBusWatch(const Event& event) {
       UpdateByStreamMsg(smsg);
       LOGD(CORE) << "Pipeline received stream error from module " + event.module_name
                  << " of stream " << event.stream_id;
-      ret = EventHandleFlag::EVENT_HANDLE_SYNCED;
+      stop_requested_.store(true);
+      ret = EventHandleFlag::EVENT_HANDLE_STOP;
+      break;
+    }
+    case EventType::EVENT_FRAME_ERROR: {
+      smsg.type = StreamMsgType::FRAME_ERR_MSG;
+      smsg.module_name = event.module_name;
+      smsg.stream_id = event.stream_id;
+      UpdateByStreamMsg(smsg);
+      LOGD(CORE) << "Pipeline received frame error from module " + event.module_name
+                 << " of stream " << event.stream_id;
+      ret = EventHandleFlag::EVENT_HANDLE_NULL;
       break;
     }
     case EventType::EVENT_INVALID:
@@ -612,36 +658,44 @@ void Pipeline::UpdateByStreamMsg(const StreamMsg& msg) {
 void Pipeline::StreamMsgHandleFunc() {
   while (!exit_msg_loop_) {
     StreamMsg msg;
-    while (!exit_msg_loop_ && !msgq_.WaitAndTryPop(msg, std::chrono::milliseconds(200))) {
+    bool got_msg = false;
+    while (!exit_msg_loop_ && !stop_requested_.load() && !(got_msg = msgq_.WaitAndTryPop(msg, std::chrono::milliseconds(200)))) {
     }
-
     if (exit_msg_loop_) {
-        LOGI(CORE) << "[" << GetName() << "] stop updating stream message";
-        return;
+      LOGI(CORE) << "[" << GetName() << "] stop updating stream message";
+      return;
     }
-    switch (msg.type) {
-      case StreamMsgType::EOS_MSG:
-      case StreamMsgType::ERROR_MSG:
-      case StreamMsgType::STREAM_ERR_MSG:
-      case StreamMsgType::FRAME_ERR_MSG:
-      case StreamMsgType::USER_MSG0:
-      case StreamMsgType::USER_MSG1:
-      case StreamMsgType::USER_MSG2:
-      case StreamMsgType::USER_MSG3:
-      case StreamMsgType::USER_MSG4:
-      case StreamMsgType::USER_MSG5:
-      case StreamMsgType::USER_MSG6:
-      case StreamMsgType::USER_MSG7:
-      case StreamMsgType::USER_MSG8:
-      case StreamMsgType::USER_MSG9:
-        LOGD(CORE) << "[" << GetName() << "]" << " stream: " << msg.stream_id 
-                   << " notify message: " << static_cast<std::size_t>(msg.type);
-        if (smsg_observer_) {
-          smsg_observer_->Update(msg);
-        }
-        break;
-      default:
-        break;
+    if (got_msg) {
+      switch (msg.type) {
+        case StreamMsgType::EOS_MSG:
+        case StreamMsgType::ERROR_MSG:
+        case StreamMsgType::STREAM_ERR_MSG:
+        case StreamMsgType::FRAME_ERR_MSG:
+        case StreamMsgType::USER_MSG0:
+        case StreamMsgType::USER_MSG1:
+        case StreamMsgType::USER_MSG2:
+        case StreamMsgType::USER_MSG3:
+        case StreamMsgType::USER_MSG4:
+        case StreamMsgType::USER_MSG5:
+        case StreamMsgType::USER_MSG6:
+        case StreamMsgType::USER_MSG7:
+        case StreamMsgType::USER_MSG8:
+        case StreamMsgType::USER_MSG9:
+          LOGD(CORE) << "[" << GetName() << "]" << " stream: " << msg.stream_id
+                     << " notify message: " << static_cast<std::size_t>(msg.type);
+          if (smsg_observer_) {
+            smsg_observer_->Update(msg);
+          }
+          break;
+        default:
+          break;
+      }
+    }
+    if (stop_requested_.load()) {
+      if (IsRunning()) {
+        LOGI(CORE) << "[" << GetName() << "] stop requested, stopping pipeline";
+        Stop();
+      }
     }
   }
 }

@@ -335,17 +335,24 @@ class Pipeline : private NonCopyable {
   std::map<std::string, std::unique_ptr<ModuleProfiler>> module_profilers_;
 
   std::string name_;  // pipeline_name
-  std::atomic<bool> running_{false};
+  std::atomic<bool> running_{false};   // 是否正在运行
+  std::atomic<bool> stopping_{false};  // 是否正在停止
   std::unique_ptr<EventBus> event_bus_ = nullptr;
 
   std::unique_ptr<IdxManager> idxManager_ = nullptr;
   std::vector<std::thread> threads_;
+
+  // stream state tracking for all-stream-eos stop
+  std::mutex stream_state_mtx_;
+  std::set<std::string> active_streams_;
+  std::set<std::string> eos_streams_;
 
   // message observer members
   ThreadSafeQueue<StreamMsg> msgq_;
   std::thread smsg_thread_;
   StreamMsgObserver* smsg_observer_ = nullptr;
   std::atomic<bool> exit_msg_loop_{false};
+  std::atomic<bool> stop_requested_{false};  // 是否请求停止
 
   uint64_t all_modules_mask_ = 0;
 
@@ -359,16 +366,27 @@ class Pipeline : private NonCopyable {
   friend class SourceModule;
 
   uint32_t GetStreamIndex(const std::string& stream_id) {
-    if (idxManager_) {
-      return idxManager_->GetStreamIndex(stream_id);
+    if (!idxManager_) {
+      return INVALID_STREAM_IDX;
     }
-    return INVALID_STREAM_IDX;
+    uint32_t idx = idxManager_->GetStreamIndex(stream_id);
+    if (idx != INVALID_STREAM_IDX) {
+      std::lock_guard<std::mutex> lk(stream_state_mtx_);
+      active_streams_.insert(stream_id);
+    }
+    return idx;
   }
 
+  /**
+   * 数据源模块调用
+   */
   void ReturnStreamIndex(const std::string& stream_id) {
     if (idxManager_) {
       idxManager_->ReturnStreamIndex(stream_id);
     }
+    std::lock_guard<std::mutex> lk(stream_state_mtx_);
+    active_streams_.erase(stream_id);
+    eos_streams_.erase(stream_id);
   }
 
   size_t GetModuleIdx() {
