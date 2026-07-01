@@ -43,14 +43,24 @@ foreach(demo_source ${VSTREAM_TOOLS_DEMO_TRT_SOURCES})
   get_filename_component(demo_name ${demo_source} NAME_WE)
   add_executable(${demo_name} ${demo_source})
   target_include_directories(${demo_name}
-   PRIVATE 
+   PRIVATE
     ${VSTREAM_TOOLS_3RDPARTY_INCLUDE}  # from tools/CMakeLists.txt
     ${VSTREAM_TOOLS_TRT_3RDPARTY_INCLUDE}
   )
-  target_link_libraries(${demo_name} 
+  target_link_libraries(${demo_name}
    PRIVATE
     ${VSTREAM_TOOLS_DEPENDENCIES}
     ${VSTREAM_TOOLS_3RDPARTY_LIBS}
     ${VSTREAM_TOOLS_TRT_3RDPARTY_LIBS}
   )
+
+  # install: 可执行文件装到 bin/，RPATH=$ORIGIN/../lib 找 vstream 库
+  # 第三方依赖由 ld.so.conf.d 自适应解析
+
+  if(VSTREAM_PACKAGE AND VSTREAM_PACKAGE_INCLUDE_TOOLS)
+    set_target_properties(${demo_name} PROPERTIES
+      INSTALL_RPATH "$ORIGIN/../lib"
+    )
+    install(TARGETS ${demo_name} RUNTIME DESTINATION bin)
+  endif()
 endforeach()

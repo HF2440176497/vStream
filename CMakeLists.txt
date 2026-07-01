@@ -3,7 +3,7 @@ if(" ${CMAKE_SOURCE_DIR}" STREQUAL " ${CMAKE_BINARY_DIR}")
   message(FATAL_ERROR "Please create a separate directory for build files.")
 endif()
 
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.16)
 
 if(UNIX)
   include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/SetupLibraryPaths_ubuntu.cmake)
@@ -50,6 +50,17 @@ option(VSTREAM_BUILD_TOOLS "build tools" ON)
 option(VSTREAM_BUILD_LIBYUV "build libyuv" ON)
 option(VSTREAM_BUILD_PYBIND11 "build pybind11" ON)
 
+# 打包相关选项
+option(VSTREAM_PACKAGE "Enable CPack packaging support" OFF)
+option(VSTREAM_PACKAGE_BUNDLE_DEPS
+       "Bundle third-party deps into <prefix>/dev/"
+       OFF)
+option(VSTREAM_PACKAGE_INCLUDE_TOOLS
+       "Include tools in the package" OFF)
+option(VSTREAM_PACKAGE_INCLUDE_TESTS
+       "Include unit-test executables in the package" OFF)
+
+
 # Release 构建类型编译器优化
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
   if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -81,6 +92,21 @@ if (VSTREAM_BUILD_LIBYUV)
   set(LIBYUV_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
   add_subdirectory(${VSTREAM_ROOT_PATH}/3rdparty/libyuv)
   set(VSTREAM_HAS_BUILT_LIBYUV TRUE)
+
+  # install libyuv（随 vstream 打包，装到 lib/）
+  if(VSTREAM_PACKAGE)
+    if(TARGET yuv_shared)
+      install(TARGETS yuv_shared
+        LIBRARY DESTINATION lib
+        ARCHIVE DESTINATION lib
+      )
+    elseif(TARGET yuv)
+      install(TARGETS yuv
+        LIBRARY DESTINATION lib
+        ARCHIVE DESTINATION lib
+      )
+    endif()
+  endif()
 endif()
 
 # ---[ pybind11
@@ -140,4 +166,24 @@ if (VSTREAM_BUILD_PYTHON_API)
 endif()
 if(VSTREAM_BUILD_TOOLS)
   add_subdirectory(tools)
+endif()
+
+# ============================================================
+# 打包相关：RPATH 与 CPack
+# ============================================================
+# RPATH 只覆盖 vstream 自身库（同级 lib/ 目录），第三方依赖交给 ld.so.conf.d 自适应排序
+
+if(VSTREAM_PACKAGE)
+  set(CMAKE_SKIP_BUILD_RPATH OFF)
+  set(CMAKE_BUILD_WITH_INSTALL_RPATH OFF)
+
+  set(CMAKE_INSTALL_RPATH "$ORIGIN")
+  set(CMAKE_INSTALL_RPATH_USE_LINK_PATH OFF)
+
+  # 默认安装前缀（可被 -DCMAKE_INSTALL_PREFIX=... 覆盖）
+  if(NOT CMAKE_INSTALL_PREFIX OR CMAKE_INSTALL_PREFIX STREQUAL "/usr/local")
+    set(CMAKE_INSTALL_PREFIX "/usr/local/vstream" CACHE PATH "vStream install prefix" FORCE)
+  endif()
+
+  include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Packaging.cmake)
 endif()

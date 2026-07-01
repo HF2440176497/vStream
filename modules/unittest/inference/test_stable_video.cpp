@@ -106,7 +106,8 @@ TEST_F(StableVideo, Run) {
   if (!force_exit) {
     pipeline_->Stop();
   } else {
-    system("pause");
+    auto pause = system("pause");
+    LOGI(T_STABLE) << "pause: " << pause;
   }
 }
 

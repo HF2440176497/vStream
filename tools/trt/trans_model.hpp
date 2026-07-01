@@ -28,7 +28,7 @@ struct ProfileShape {
 struct CompileConfig {
   size_t max_workspace_size = 2ULL << 30;
 
-  bool dynamic_batch = true;  // 仅支持 batch_size 是动态的
+  bool dynamic_batch = true;
   int  max_batch_size = 8;
   int  opt_batch_size = 4;
   int  min_batch_size = 1;
@@ -68,17 +68,20 @@ class CompileOutput {
   CompileOutput(const std::string& file);
   CompileOutput(const char* file);
 
-  void set_data(const std::vector<uint8_t>& data);
-  void set_data(std::vector<uint8_t>&& data);
-
   CompileOutputType    type_;
   std::string          file_;
   std::vector<uint8_t> data_;
 };
 
 
-bool compile(const ModelSource& source, const CompileOutput& saveto,
-             const CompileConfig& config = CompileConfig{});
+/**
+ * @param source 模型源 (ONNX 文件路径或内存数据)
+ * @param saveto 输出配置 (File: 写入磁盘; Memory: 不写盘, 由返回值返回)
+ * @param config 编译配置
+ * @return 序列化后的 engine 字节序列; 失败时返回空 vector
+ */
+std::vector<uint8_t> compile(const ModelSource& source, const CompileOutput& saveto,
+                             const CompileConfig& config = CompileConfig{});
 
 
 }  // namespace TRT

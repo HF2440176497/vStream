@@ -129,3 +129,14 @@ set_target_properties(vstream_python PROPERTIES
   LIBRARY_OUTPUT_DIRECTORY ${VSTREAM_ROOT_PATH}/lib
 )
 
+# RPATH=$ORIGIN 让 vstream_python 找到同级的 libvstream_core.so / libvstream_va.so
+set_target_properties(vstream_python PROPERTIES
+  INSTALL_RPATH "$ORIGIN"
+  INSTALL_RPATH_USE_LINK_PATH OFF
+)
+
+# only install the library, not include py scripts
+install(TARGETS vstream_python
+  LIBRARY DESTINATION lib
+)
+

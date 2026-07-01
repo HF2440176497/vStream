@@ -1,0 +1,10 @@
+{
+    "onnx_path": "vStream.onnx",
+    "engine_path": "vStream.engine",
+    "dynamic_batch": {
+        "enable": true,
+        "max_batch_size": 4,
+        "opt_batch_size": 4,
+        "min_batch_size": 1
+    }
+}

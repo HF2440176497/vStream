@@ -205,3 +205,34 @@ endif()
 if(VSTREAM_BUILD_TESTS)
   add_subdirectory(unittest)
 endif()
+
+
+if(VSTREAM_MODULES_BUILD_VA)
+  install(TARGETS vstream_va
+    EXPORT vstreamTargets
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+  )
+endif()
+
+# 各模块头文件分别安装到 include/vstream/modules/<module>
+foreach(module ${module_list})
+  install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/${module}/include/
+    DESTINATION include/vstream/modules/${module}
+    FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
+  )
+endforeach()
+
+# util 头文件
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/util/include/
+  DESTINATION include/vstream/modules/util
+  FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
+)
+
+# libyuv 头文件
+if(DEFINED VSTREAM_HAS_BUILT_LIBYUV AND VSTREAM_HAS_BUILT_LIBYUV)
+  install(DIRECTORY ${VSTREAM_ROOT_PATH}/3rdparty/libyuv/include/
+    DESTINATION include/vstream/libyuv
+    FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
+  )
+endif()

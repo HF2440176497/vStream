@@ -81,3 +81,26 @@ target_link_libraries(vstream_core
 if(VSTREAM_BUILD_TESTS)
   add_subdirectory(unittest)
 endif()
+
+
+include(GNUInstallDirs)
+
+install(TARGETS vstream_core
+  EXPORT vstreamTargets
+  LIBRARY DESTINATION lib
+  ARCHIVE DESTINATION lib
+  RUNTIME DESTINATION bin
+  INCLUDES DESTINATION include/vstream/core
+)
+
+# 公共头文件
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/core/include/
+  DESTINATION include/vstream/core
+  FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
+)
+
+# nlohmann/json 头文件
+install(DIRECTORY ${VSTREAM_ROOT_PATH}/3rdparty/nlohmann-json/include/
+  DESTINATION include/vstream
+  FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
+)

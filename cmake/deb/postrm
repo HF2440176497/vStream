@@ -1,0 +1,7 @@
+#!/bin/bash
+set -e
+if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
+  rm -f /etc/ld.so.conf.d/vstream.conf
+  rm -f /etc/profile.d/vstream.sh
+  ldconfig
+fi

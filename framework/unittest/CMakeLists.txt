@@ -63,5 +63,10 @@ if (HAVE_FRAMEWORK_TARGET)
       BUILD_RPATH ${VSTREAM_LIB_PATH}
     )
   endif()
+
+  # 仅当打包且显式开启测试安装时装到 bin/
+  if(VSTREAM_PACKAGE AND VSTREAM_PACKAGE_INCLUDE_TESTS)
+    install(TARGETS vstream_core_test RUNTIME DESTINATION bin)
+  endif()
 endif()
 

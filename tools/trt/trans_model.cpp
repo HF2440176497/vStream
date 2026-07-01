@@ -7,6 +7,8 @@
 #include <NvOnnxParser.h>
 #include <cuda_runtime_api.h>
 
+#include <nlohmann/json.hpp>
+
 #include <iostream>
 #include <fstream>
 #include <numeric>
@@ -96,24 +98,20 @@ CompileOutput::CompileOutput(CompileOutputType type) : type_(type) {}
 CompileOutput::CompileOutput(const std::string& file) : type_(CompileOutputType::File), file_(file) {}
 CompileOutput::CompileOutput(const char* file) : type_(CompileOutputType::File), file_(file) {}
 
-void CompileOutput::set_data(const std::vector<uint8_t>& data) { data_ = data; }
-void CompileOutput::set_data(std::vector<uint8_t>&& data) { data_ = std::move(data); }
-
 
 /**
- * @param mode 编译模式 (FP32, FP16, INT8)
  * @param source 模型源 (ONNX 文件路径或内存数据)
- * @param saveto 输出配置 (文件路径或内存指针)
+ * @param saveto 输出配置 (File: 写入磁盘; Memory: 不写盘, 由返回值返回)
  * @param config 编译配置
- * @return 是否编译成功
+ * @return 序列化后的 engine 字节序列; 失败时返回空 vector
  */
-bool compile(const ModelSource& source, const CompileOutput& saveto,
-             const CompileConfig& config) {
+std::vector<uint8_t> compile(const ModelSource& source, const CompileOutput& saveto,
+                             const CompileConfig& config) {
 
   std::shared_ptr<IBuilder> builder(createInferBuilder(gLogger), destroy_trt_pointer<IBuilder>);
   if (!builder) {
     std::cerr << "Failed to create TensorRT builder" << std::endl;
-    return false;
+    return {};
   }
 
   uint32_t network_flags = 0;
@@ -125,14 +123,14 @@ bool compile(const ModelSource& source, const CompileOutput& saveto,
                                               destroy_trt_pointer<INetworkDefinition>);
   if (!network) {
     std::cerr << "Failed to create network" << std::endl;
-    return false;
+    return {};
   }
 
   std::shared_ptr<nvonnxparser::IParser> parser(nvonnxparser::createParser(*network, gLogger),
                                                 destroy_trt_pointer<nvonnxparser::IParser>);
   if (!parser) {
     std::cerr << "Failed to create ONNX parser" << std::endl;
-    return false;
+    return {};
   }
 
   bool parsed = false;
@@ -148,7 +146,7 @@ bool compile(const ModelSource& source, const CompileOutput& saveto,
       auto* error = parser->getError(i);
       std::cerr << "ONNX Parse Error [" << i << "]: " << error->desc() << " (code: " << static_cast<int>(error->code()) << ")" << std::endl;
     }
-    return false;
+    return {};
   }
 
   std::cout << "========== Model Information ==========" << std::endl;
@@ -192,7 +190,7 @@ bool compile(const ModelSource& source, const CompileOutput& saveto,
                                                  destroy_trt_pointer<IBuilderConfig>);
   if (!builder_config) {
     std::cerr << "Failed to create builder config" << std::endl;
-    return false;
+    return {};
   }
 
   size_t workspace_size = config.max_workspace_size > 0 ? config.max_workspace_size : (2ULL << 30);
@@ -203,13 +201,13 @@ bool compile(const ModelSource& source, const CompileOutput& saveto,
     if (!config.dynamic_batch) {
       std::cerr << "ERROR: Model has dynamic dimensions but dynamic_batch is disabled. "
                 << "Please set dynamic_batch=true in CompileConfig." << std::endl;
-      return false;
+      return {};
     }
 
     nvinfer1::IOptimizationProfile* profile = builder->createOptimizationProfile();
     if (!profile) {
       std::cerr << "Failed to create optimization profile" << std::endl;
-      return false;
+      return {};
     }
 
     for (int i = 0; i < num_inputs; ++i) {
@@ -251,10 +249,10 @@ bool compile(const ModelSource& source, const CompileOutput& saveto,
 
     if (!builder_config->addOptimizationProfile(profile)) {
       std::cerr << "Failed to add optimization profile" << std::endl;
-      return false;
+      return {};
     }
 
-  }  // end if (has_dynamic_shape) 
+  }  // end if (has_dynamic_shape)
 
   std::cout << "Building TensorRT engine (this may take a while)..." << std::endl;
   auto start_time = std::chrono::high_resolution_clock::now();
@@ -263,7 +261,7 @@ bool compile(const ModelSource& source, const CompileOutput& saveto,
                                       destroy_trt_pointer<ICudaEngine>);
   if (!engine) {
     std::cerr << "Engine build failed! Check the logs above for details." << std::endl;
-    return false;
+    return {};
   }
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::high_resolution_clock::now() - start_time).count();
@@ -272,46 +270,141 @@ bool compile(const ModelSource& source, const CompileOutput& saveto,
   std::shared_ptr<IHostMemory> serialized(engine->serialize(), destroy_trt_pointer<IHostMemory>);
   if (!serialized || serialized->size() == 0) {
     std::cerr << "Engine serialization failed" << std::endl;
-    return false;
+    return {};
   }
   std::cout << "Serialized engine size: " << serialized->size() / 1024.0 / 1024.0 << " MB" << std::endl;
+
+  std::vector<uint8_t> engine_bytes(
+      static_cast<const uint8_t*>(serialized->data()),
+      static_cast<const uint8_t*>(serialized->data()) + serialized->size());
 
   if (saveto.type_ == CompileOutputType::File) {
     std::ofstream file(saveto.file_, std::ios::binary);
     if (!file) {
       std::cerr << "Failed to open output file: " << saveto.file_.c_str() << std::endl;
-      return false;
+      return {};
     }
-    file.write(static_cast<const char*>(serialized->data()), serialized->size());
+    file.write(reinterpret_cast<const char*>(engine_bytes.data()), engine_bytes.size());
     std::cout << "Engine saved to: " << saveto.file_.c_str() << std::endl;
   } else {
-    const_cast<CompileOutput&>(saveto).set_data(
-        std::vector<uint8_t>(static_cast<const uint8_t*>(serialized->data()),
-                             static_cast<const uint8_t*>(serialized->data()) + serialized->size()));
+    std::cout << "Engine kept in memory (" << engine_bytes.size() << " bytes)" << std::endl;
   }
-  return true;
+  return engine_bytes;
 }
 
 }  // namespace TRT
 
+static bool LoadConfigFromJson(const std::string& config_file,
+                               std::string* onnx_path,
+                               std::string* engine_path,
+                               TRT::CompileConfig* config) {
+  std::ifstream file(config_file);
+  if (!file.is_open()) {
+    std::cerr << "Could not open config file: " << config_file << std::endl;
+    return false;
+  }
+
+  nlohmann::ordered_json data = nlohmann::ordered_json::parse(file);
+  if (!data.is_object()) {
+    std::cerr << "Config file must be object type." << std::endl;
+    return false;
+  }
+
+  auto read_string = [&data](const std::string& key, std::string* out) -> bool {
+    if (data.find(key) == data.end()) {
+      std::cerr << "Missing config field: " << key << std::endl;
+      return false;
+    }
+    const auto& value = data[key];
+    if (!value.is_string()) {
+      std::cerr << "Config field '" << key << "' must be a string." << std::endl;
+      return false;
+    }
+    *out = value.get<std::string>();
+    return true;
+  };
+
+  if (!read_string("onnx_path", onnx_path)) return false;
+  if (!read_string("engine_path", engine_path)) return false;
+
+  if (data.find("max_workspace_size") != data.end()) {
+    config->max_workspace_size = data["max_workspace_size"].get<size_t>();
+  }
+
+  if (data.find("dynamic_batch") != data.end()) {
+    const auto& dynamic_batch = data["dynamic_batch"];
+    if (!dynamic_batch.is_object()) {
+      std::cerr << "Config field 'dynamic_batch' must be an object." << std::endl;
+      return false;
+    }
+    if (dynamic_batch.find("enable") != dynamic_batch.end()) {
+      config->dynamic_batch = dynamic_batch["enable"].get<bool>();
+    }
+    if (dynamic_batch.find("max_batch_size") != dynamic_batch.end()) {
+      config->max_batch_size = dynamic_batch["max_batch_size"].get<int>();
+    }
+    if (dynamic_batch.find("opt_batch_size") != dynamic_batch.end()) {
+      config->opt_batch_size = dynamic_batch["opt_batch_size"].get<int>();
+    }
+    if (dynamic_batch.find("min_batch_size") != dynamic_batch.end()) {
+      config->min_batch_size = dynamic_batch["min_batch_size"].get<int>();
+    }
+  }
+
+  if (data.find("strict_qdq") != data.end()) {
+    config->strict_qdq = data["strict_qdq"].get<bool>();
+  }
+
+  if (config->min_batch_size > config->opt_batch_size ||
+      config->opt_batch_size > config->max_batch_size) {
+    std::cerr << "Invalid batch sizes: require min_batch_size <= opt_batch_size <= max_batch_size."
+              << std::endl;
+    return false;
+  }
+
+  return true;
+}
+
+static void PrintUsage(const char* program) {
+  std::cerr << "Usage: " << program << " <config.json>" << std::endl;
+  std::cerr << "   or: " << program << " <onnx_path> <out_engine_path> [config_json]" << std::endl;
+}
+
 int main(int argc, char* argv[]) {
-  if (argc < 3) {
-    std::cerr << "Usage: " << argv[0] << " <onnx_path> <out_engine_path>" << std::endl;
-    std::cerr << "  Example: " << argv[0] << " model.onnx model.engine" << std::endl;
+  std::string onnx_path;
+  std::string out_engine_path;
+  TRT::CompileConfig config;
+
+  if (argc == 2) {
+    std::string config_file = argv[1];
+    if (config_file.size() < 5 || config_file.substr(config_file.size() - 5) != ".json") {
+      std::cerr << "Error: argument must be a .json config file." << std::endl;
+      PrintUsage(argv[0]);
+      return 1;
+    }
+    if (!LoadConfigFromJson(config_file, &onnx_path, &out_engine_path, &config)) {
+      return 1;
+    }
+  } else if (argc == 3 || argc == 4) {
+    onnx_path = argv[1];
+    out_engine_path = argv[2];
+    if (argc == 4) {
+      if (!LoadConfigFromJson(argv[3], &onnx_path, &out_engine_path, &config)) {
+        return 1;
+      }
+    } else {
+      // Keep the original hard-coded defaults for the no-config path.
+      config.max_batch_size = 4;
+      config.opt_batch_size = 4;
+      config.min_batch_size = 1;
+    }
+  } else {
+    PrintUsage(argv[0]);
     return 1;
   }
 
-  std::string onnx_path = argv[1];
-  std::string out_engine_path = argv[2];
-
-  TRT::CompileConfig config;
-  config.dynamic_batch = true;
-  config.max_batch_size = 4;
-  config.opt_batch_size = 4;
-  config.min_batch_size = 1;
-
-  config.strict_qdq = true;
-  TRT::compile(TRT::ModelSource(onnx_path), TRT::CompileOutput(out_engine_path), config);
-
-  return 0;
+  auto engine_bytes = TRT::compile(TRT::ModelSource(onnx_path),
+                                   TRT::CompileOutput(out_engine_path),
+                                   config);
+  return engine_bytes.empty() ? 1 : 0;
 }
