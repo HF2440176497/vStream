@@ -25,6 +25,7 @@ class PullHandlerImCUDA : public PullHandlerIm {
   static enum AVPixelFormat get_hw_format(AVCodecContext *ctx, const enum AVPixelFormat *pix_fmts);
   std::shared_ptr<FrameInfo> ProcessFrameCUDA(AVFrame *p_frame, int &ret);
 
+  enum AVPixelFormat hw_pix_fmt_ = AV_PIX_FMT_NONE;
   std::string type_name_ = "cuda";
 };
 

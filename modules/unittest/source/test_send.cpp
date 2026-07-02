@@ -107,7 +107,7 @@ TEST_F(SourceSend, Run) {
 
       cv::Mat image = image_loader.read();
       if (image.empty()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        std::this_thread::sleep_for(std::chrono::milliseconds(4));
         continue;
       }
 
@@ -123,12 +123,12 @@ TEST_F(SourceSend, Run) {
     while (running.load()) {
       s_output_data data = queue_handler_->GetData();
       if (data.result != 0) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        std::this_thread::sleep_for(std::chrono::milliseconds(4));
         continue;
       }
       count++;
       if (count % 2 == 0) {
-        LOGI(T_SEND) << "Receive: " << data;
+        // LOGI(T_SEND) << "Receive: " << data;
         LOGI(T_SEND) << "Received: " << count << "; Send: " << send_count_ << "; frames; id_s: " << data.frame_id_s;
       }
     }

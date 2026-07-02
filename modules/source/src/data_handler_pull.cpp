@@ -3,7 +3,9 @@
 #include "data_source.hpp"
 #include "data_source_param.hpp"
 
+#include <chrono>
 #include <memory>
+#include <thread>
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -200,6 +202,11 @@ int PullHandlerIm::input_format_init() {
 }
 
 void PullHandlerIm::clean_up() {
+  bool expected = false;
+  if (!cleaned_up_.compare_exchange_strong(expected, true)) {
+    return;
+  }
+  LOGI(SOURCE) << "[" << stream_id_ << "]: clean_up start";
   if (pkt_) {
     av_packet_free(&pkt_);
   }
@@ -216,6 +223,7 @@ void PullHandlerIm::clean_up() {
     hw_device_ctx_ = nullptr;
   }
   avformat_network_deinit();
+  LOGI(SOURCE) << "[" << stream_id_ << "]: clean_up done";
 }
 
 bool PullHandlerIm::Open() {
@@ -250,6 +258,8 @@ bool PullHandlerIm::Open() {
 
   ConfigureOutputType();
 
+  closed_.store(false);
+  cleaned_up_.store(false);
   running_.store(true);
   thread_ = std::thread(&PullHandlerIm::Loop, this);
   return true;
@@ -262,11 +272,20 @@ void PullHandlerIm::Stop() {
 }
 
 void PullHandlerIm::Close() {
+  bool expected = false;
+  if (!closed_.compare_exchange_strong(expected, true)) {
+    while (!cleaned_up_.load()) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return;
+  }
+  LOGI(SOURCE) << "[" << stream_id_ << "]: Close start";
   Stop();
   if (thread_.joinable()) {
     thread_.join();
   }
   clean_up();
+  LOGI(SOURCE) << "[" << stream_id_ << "]: Close done";
 }
 
 void PullHandlerIm::Loop() {
@@ -314,6 +333,7 @@ void PullHandlerIm::Loop() {
       controller.Control();
     }
   }
+  LOGI(SOURCE) << "[" << stream_id_ << "]: Loop done";
   OnEndFrame();
 }
 
@@ -330,6 +350,7 @@ std::shared_ptr<FrameInfo> PullHandlerIm::OnDecodeFrame(DecodeFrame* frame) {
   data->timestamp = frame->pts;
   if (!frame->valid) {
     data->flags = static_cast<size_t>(DataFrameFlag::FRAME_FLAG_INVALID);
+    LOGW(SOURCE) << "[" << stream_id_ << "]: OnDecodeFrame: invalid frame.";
     SendFrameInfo(data);
     return nullptr;
   }

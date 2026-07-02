@@ -5,6 +5,7 @@
 #ifndef MODULES_SOURCE_HANDLER_VIDEO_HPP_
 #define MODULES_SOURCE_HANDLER_VIDEO_HPP_
 
+#include <atomic>
 #include <queue>
 #include <string>
 #include <thread>
@@ -86,6 +87,8 @@ class PullHandlerIm : public SourceRender {
  protected:
 #endif
   std::atomic<bool> running_{false};
+  std::atomic<bool> closed_{false};
+  std::atomic<bool> cleaned_up_{false};
   std::thread        thread_;
 
   int         interval_    = 0;

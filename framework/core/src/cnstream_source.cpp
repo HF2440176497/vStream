@@ -31,6 +31,21 @@
 
 namespace cnstream {
 
+SourceModule::~SourceModule() {
+  // Detach all handlers first, so handlers that outlive the module
+  // (e.g., held by user shared_ptr) will not call back into the
+  // already-destroyed module/pipeline in their destructors.
+  {
+    std::unique_lock<std::mutex> lock(mutex_);
+    for (auto &iter : source_map_) {
+      if (iter.second) {
+        iter.second->DetachFromModule();
+      }
+    }
+  }
+  RemoveSources();
+}
+
 // #ifdef VSTREAM_UNIT_TEST
 // 
 // static std::mutex stream_idx_lock;
@@ -196,6 +211,12 @@ int SourceModule::RemoveSource(const std::string &stream_id, bool force) {
     if (iter == source_map_.end()) {
       LOGW(CORE) << "[" << stream_id << "]: source does not exist";
       return 0;  // 认为是成功的
+    }
+    // 在移出 source_map_ 前 detach handler 并主动归还 index，
+    // 防止 handler 被外部 shared_ptr 延后释放时回调进已销毁的 module/pipeline。
+    if (iter->second) {
+      iter->second->DetachFromModule();
+      ReturnStreamIndex(stream_id);
     }
     source_map_.erase(iter);
   }

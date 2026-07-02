@@ -22,8 +22,8 @@
 #include <iostream>
 #include <opencv2/opencv.hpp>
 
-
 static const std::string model_name = "yolov8s_tracing_static_b1_quant_fix";
+static const std::string model_file = "yolov8s_tracing_static_b1_quant_fix.engine";
 
 static const int device_id = 0;
 
@@ -88,7 +88,7 @@ class ModelLoaderTest : public testing::Test {
     ASSERT_EQ(trt_model_loader->GetDeviceId(), device_id);
     ASSERT_EQ(trt_model_loader->GetDeviceType(), DevType::CUDA);
 
-    std::string model_path = model_name;
+    std::string model_path = model_file;
     std::cout << "[ModelLoaderTest] model_path = " << model_path << std::endl;
     
     InferParams params;

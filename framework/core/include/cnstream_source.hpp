@@ -63,7 +63,7 @@ class SourceModule : public Module {
    *
    * @return No return value.
    */
-  virtual ~SourceModule() { RemoveSources(); }
+  virtual ~SourceModule();
   /**
    * @brief Adds one stream to DataSource module. This function should be called after pipeline starts.
    *
@@ -189,10 +189,19 @@ class SourceHandler : private NonCopyable {
    * @return No return value.
    */
   virtual ~SourceHandler() {
-    if (module_) {
+    if (module_ && !detached_.load()) {
       module_->ReturnStreamIndex(stream_id_);
     }
   }
+  /**
+   * @brief Detaches the handler from its source module.
+   *
+   * Called by SourceModule destructor to prevent late destructor callbacks
+   * into a module/pipeline that has already been destroyed.
+   *
+   * @return No return value.
+   */
+  void DetachFromModule() { detached_.store(true); }
   /**
    * @brief Opens a decoder.
    *
@@ -233,7 +242,7 @@ class SourceHandler : private NonCopyable {
    * @note 调用处 handler->SendData(data)
    */
   bool SendData(const std::shared_ptr<FrameInfo> data) {
-    if (this->module_) {
+    if (this->module_ && !detached_.load()) {
       return this->module_->SendData(data);
     }
     return false;
@@ -251,6 +260,7 @@ class SourceHandler : private NonCopyable {
   SourceModule *module_ = nullptr;
   mutable std::string stream_id_;  // 在构造时指定
   uint32_t stream_index_ = INVALID_STREAM_IDX;
+  std::atomic<bool> detached_{false};  // set by SourceModule destructor to disable late callbacks
   ParamRegister param_register_;  // check params from custom params for handler itself
 };
 

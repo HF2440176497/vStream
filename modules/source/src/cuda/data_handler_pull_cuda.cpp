@@ -11,8 +11,6 @@
 
 namespace cnstream {
 
-static enum AVPixelFormat hw_pix_fmt;
-
 bool PullHandlerImCUDA::support_hwdevice() {
   enum AVHWDeviceType type = av_hwdevice_find_type_by_name(type_name_.c_str());
   if (type == AV_HWDEVICE_TYPE_NONE) {
@@ -24,13 +22,18 @@ bool PullHandlerImCUDA::support_hwdevice() {
 }
 
 enum AVPixelFormat PullHandlerImCUDA::get_hw_format(AVCodecContext *ctx, const enum AVPixelFormat *pix_fmts) {
+  auto *self = static_cast<PullHandlerImCUDA*>(ctx->opaque);
+  if (!self) {
+    LOGE(SOURCE) << "Failed to find HW surface format: opaque is null.";
+    return AV_PIX_FMT_NONE;
+  }
   const enum AVPixelFormat *p;
   for (p = pix_fmts; *p != -1; p++) {
-    if (*p == hw_pix_fmt) {
+    if (*p == self->hw_pix_fmt_) {
       return *p;
     }
   }
-  LOGE(SOURCE) << "Failed to find HW surface format.";
+  LOGE(SOURCE) << "[" << self->stream_id_ << "]: Failed to find HW surface format.";
   return AV_PIX_FMT_NONE;
 }
 
@@ -47,7 +50,7 @@ int PullHandlerImCUDA::init_hwdevice_conf() {
         LOGE(SOURCE) << "[" << stream_id_ << "]: " << codec_->name << " AV_PIX_FMT_CUDA pix_fmt not supported";
         return -1;
       }
-      hw_pix_fmt = config->pix_fmt;
+      hw_pix_fmt_ = config->pix_fmt;
       return 0;
     }
   }
@@ -109,6 +112,7 @@ int PullHandlerImCUDA::codec_init() {
 
   codec_ctx_->pkt_timebase = video_stream->time_base;
 
+  codec_ctx_->opaque = this;
   codec_ctx_->get_format = get_hw_format;
   if ((ret = hw_decoder_init()) < 0) {
     LOGE(SOURCE) << "[" << stream_id_ << "]: hw_decoder_init error";
