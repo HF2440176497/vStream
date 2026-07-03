@@ -36,8 +36,7 @@ static std::vector<std::string>      stream_ids_image_queue_ = {stream_id_3_};
 static std::vector<std::string>      stream_ids_send_queue_ = {stream_id_4_};
 
 static std::string test_pipeline_send_json = "pipeline_source_send.json";
-static std::string test_pipeline_send_ocr_json = "OCR/pipeline_source_send_ocr.json";
-// static std::string test_pipeline_send_ocr_json = "pipeline_source_send_ocr.json";
+// static std::string test_pipeline_send_ocr_json = "OCR/pipeline_source_send_ocr.json";
 
 static std::string test_image_path = "OCR/image.jpg";
 static std::string test_image_folder = "OCR/images";
@@ -49,7 +48,7 @@ class SourceSend : public testing::Test {
   virtual void SetUp() {
     pipeline_ = std::make_shared<Pipeline>("pipeline");
     EXPECT_NE(pipeline_, nullptr);
-    EXPECT_TRUE(pipeline_->BuildPipelineByJSONFile(test_pipeline_send_ocr_json));
+    EXPECT_TRUE(pipeline_->BuildPipelineByJSONFile(test_pipeline_send_json));
   }
 
  protected:
@@ -114,7 +113,7 @@ TEST_F(SourceSend, Run) {
       // frame_id_s start from 0
       send_handler_->Send(pts, std::to_string(send_count_), image);
       send_count_++;
-      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+      std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
   });
 

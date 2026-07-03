@@ -188,7 +188,7 @@ class Post_PPOCRv3_rec_Obj : public ObjPostproc {
   std::string model_name_;
 
  private:
-  bool enable_save_ = false;
+  bool enable_save_ = true;
   std::mutex last_save_time_mutex_;
   std::chrono::steady_clock::time_point last_save_time_;
   uint32_t save_duration_ms_ = 500;

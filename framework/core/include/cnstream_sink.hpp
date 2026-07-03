@@ -46,7 +46,10 @@ class SinkModule : public Module {
    */
   virtual ~SinkModule() { RemoveSinks(); }
   /**
-   * @brief Adds one stream to SinkModule. This function should be called after pipeline starts.
+   * @brief Adds one handler for a stream to SinkModule. This function should be called after pipeline starts.
+   *
+   * Multiple handlers may be registered for the same stream_id (e.g. push stream
+   * and message publishing). The same handler pointer cannot be added twice.
    *
    * @param[in] handler The sink handler
    *
@@ -54,13 +57,13 @@ class SinkModule : public Module {
    */
   int AddSink(std::shared_ptr<SinkHandler> handler);
   /**
-   * @brief Gets the handler of the stream.
+   * @brief Gets all handlers registered for the given stream_id.
    *
    * @param[in] stream_id The stream identifier.
    *
-   * @return Returns the handler of the stream.
+   * @return Returns the list of handlers for the stream (empty if none).
    */
-  std::shared_ptr<SinkHandler> GetSinkHandler(const std::string &stream_id);
+  std::vector<std::shared_ptr<SinkHandler>> GetSinkHandlers(const std::string &stream_id);
   /**
    * @brief Removes one stream from SinkModule with given handler.
    *
@@ -112,7 +115,8 @@ class SinkModule : public Module {
     return DispatchData(data);
   }
   std::mutex mutex_;
-  std::map<std::string, std::shared_ptr<SinkHandler>> sink_map_;
+  // Multiple handlers per stream_id are supported (e.g. push + message publish).
+  std::map<std::string, std::vector<std::shared_ptr<SinkHandler>>> sink_map_;
 };  // class SinkModule
 
 /**

@@ -132,12 +132,23 @@ GlogLevelInitializer::GlogLevelInitializer() {
   FLAGS_minloglevel = 0;
 #endif
 
+  // glog's LogMessage::Flush() writes to stderr whenever
+  // IsGoogleLoggingInitialized() is false, regardless of FLAGS_logtostderr.
+  // Mark glog as initialized so the flag below is actually honored.
+  if (!google::IsGoogleLoggingInitialized()) {
+    google::InitGoogleLogging("vstream");
+  }
+
+  // Suppress glog's built-in stderr / logfile output. Only the custom sink runs.
+  FLAGS_logtostderr = false;
+  FLAGS_alsologtostderr = false;
+  FLAGS_stderrthreshold = google::GLOG_FATAL + 1;
+
   static CustomLogSink sink;
   google::AddLogSink(&sink);
   for (int severity = google::GLOG_INFO; severity <= google::GLOG_FATAL; ++severity) {
     google::SetLogDestination(static_cast<google::LogSeverity>(severity), "");
   }
-  FLAGS_logtostderr = false;
 }
 
 GlogLevelInitializer g_glog_level_init;

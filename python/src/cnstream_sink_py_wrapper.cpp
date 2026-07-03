@@ -153,7 +153,7 @@ void SinkModuleWrapper(py::module &m) {
       .def("open", &SinkModule::Open)
       .def("close", &SinkModule::Close)
       .def("add_sink", &SinkModule::AddSink)
-      .def("get_sink_handler", &SinkModule::GetSinkHandler)
+      .def("get_sink_handlers", &SinkModule::GetSinkHandlers, py::arg("stream_id"))
       .def("remove_sink", 
         [](SinkModule *sink, std::shared_ptr<SinkHandler> handler, bool force) {
           return sink->RemoveSink(handler, force);

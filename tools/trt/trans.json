@@ -1,6 +1,6 @@
 {
-    "onnx_path": "vStream.onnx",
-    "engine_path": "vStream.engine",
+    "onnx_path": "PPOCRv3_rec.onnx",
+    "engine_path": "PPOCRv3_rec.engine",
     "dynamic_batch": {
         "enable": true,
         "max_batch_size": 4,

@@ -25,38 +25,73 @@ int SinkModule::AddSink(std::shared_ptr<SinkHandler> handler) {
   }
   std::string stream_id = handler->GetStreamId();
   std::unique_lock<std::mutex> lock(mutex_);
-  if (sink_map_.find(stream_id) != sink_map_.end()) {
-    LOGE(CORE) << "[" << stream_id << "]: " << "Duplicate stream_id";
-    return -1;
+
+  auto it = sink_map_.find(stream_id);
+  if (it != sink_map_.end()) {
+    for (const auto& existing : it->second) {
+      if (existing.get() == handler.get()) {
+        LOGE(CORE) << "[" << stream_id << "]: " << "Duplicate handler";
+        return -1;
+      }
+    }
   }
   LOGI(CORE) << "[" << stream_id << "]: " << "Sink opening...";
   if (handler->Open() != true) {
     LOGE(CORE) << "[" << stream_id << "]: " << "sink Open failed";
     return -1;
   }
-  sink_map_[stream_id] = handler;
+  sink_map_[stream_id].push_back(handler);
   LOGI(CORE) << "Add sink success, stream id : [" << stream_id << "]";
   return 0;
 }
 
-int SinkModule::RemoveSink(std::shared_ptr<SinkHandler> handler, bool force) {
+int SinkModule::RemoveSink(std::shared_ptr<SinkHandler> handler, bool /*force*/) {
   if (!handler) {
     return -1;
   }
-  return RemoveSink(handler->GetStreamId(), force);
-}
-
-std::shared_ptr<SinkHandler> SinkModule::GetSinkHandler(const std::string &stream_id) {
-  std::unique_lock<std::mutex> lock(mutex_);
-  if (sink_map_.find(stream_id) == sink_map_.cend()) {
-    return nullptr;
+  std::string stream_id = handler->GetStreamId();
+  LOGI(CORE) << "Begin to remove sink handler, stream id : [" << stream_id << "]";
+  std::shared_ptr<SinkHandler> target;
+  {
+    std::unique_lock<std::mutex> lock(mutex_);
+    auto it = sink_map_.find(stream_id);
+    if (it != sink_map_.end()) {
+      auto& vec = it->second;
+      for (auto vit = vec.begin(); vit != vec.end(); ++vit) {
+        if (vit->get() == handler.get()) {
+          target = *vit;
+          vec.erase(vit);
+          break;
+        }
+      }
+      if (vec.empty()) {
+        sink_map_.erase(it);
+      }
+    }
   }
-  return sink_map_[stream_id];
+  if (target) {
+    LOGI(CORE) << "[" << stream_id << "]: sink closing...";
+    target->Stop();
+    target->Close();
+    LOGI(CORE) << "[" << stream_id << "]: sink close done";
+  } else {
+    LOGW(CORE) << "[" << stream_id << "]: handler not found";
+  }
+  return 0;
 }
 
-int SinkModule::RemoveSink(const std::string &stream_id, bool force) {
-  LOGI(CORE) << "Begin to remove sink, stream id : [" << stream_id << "]";
-  std::shared_ptr<SinkHandler> handler;
+std::vector<std::shared_ptr<SinkHandler>> SinkModule::GetSinkHandlers(const std::string &stream_id) {
+  std::unique_lock<std::mutex> lock(mutex_);
+  auto it = sink_map_.find(stream_id);
+  if (it == sink_map_.cend()) {
+    return {};
+  }
+  return it->second;
+}
+
+int SinkModule::RemoveSink(const std::string &stream_id, bool /*force*/) {
+  LOGI(CORE) << "Begin to remove sinks, stream id : [" << stream_id << "]";
+  std::vector<std::shared_ptr<SinkHandler>> handlers;
   {
     std::unique_lock<std::mutex> lock(mutex_);
     auto iter = sink_map_.find(stream_id);
@@ -64,31 +99,39 @@ int SinkModule::RemoveSink(const std::string &stream_id, bool force) {
       LOGW(CORE) << "[" << stream_id << "]: sink does not exist";
       return 0;
     }
-    handler = iter->second;
+    handlers = std::move(iter->second);
     sink_map_.erase(iter);
   }
-  if (handler) {
-    LOGI(CORE) << "[" << stream_id << "]: sink closing...";
-    handler->Stop();
-    handler->Close();
-    LOGI(CORE) << "[" << stream_id << "]: sink close done";
+  for (auto& handler : handlers) {
+    if (handler) {
+      LOGI(CORE) << "[" << stream_id << "]: sink closing...";
+      handler->Stop();
+      handler->Close();
+      LOGI(CORE) << "[" << stream_id << "]: sink close done";
+    }
   }
-  LOGI(CORE) << "Finish removing sink, stream id : [" << stream_id << "]";
+  LOGI(CORE) << "Finish removing sinks, stream id : [" << stream_id << "]";
   return 0;
 }
 
-int SinkModule::RemoveSinks(bool force) {
-  LOGI(CORE) << "Begin to remove all sinks, force: " << std::boolalpha << force;
-  std::vector<std::string> stream_ids;
+int SinkModule::RemoveSinks(bool /*force*/) {
+  LOGI(CORE) << "Begin to remove all sinks";
+  std::vector<std::pair<std::string, std::vector<std::shared_ptr<SinkHandler>>>> all;
   {
     std::unique_lock<std::mutex> lock(mutex_);
     for (auto &iter : sink_map_) {
-      stream_ids.push_back(iter.first);
+      all.emplace_back(iter.first, iter.second);
     }
+    sink_map_.clear();
   }
-  for (const auto &stream_id : stream_ids) {
-    LOGD(CORE) << "remove sink stream_id: [" << stream_id << "]";
-    RemoveSink(stream_id, force);
+  for (auto &p : all) {
+    for (auto &h : p.second) {
+      if (h) {
+        LOGD(CORE) << "remove sink stream_id: [" << p.first << "]";
+        h->Stop();
+        h->Close();
+      }
+    }
   }
   LOGI(CORE) << "Finish removing all sinks";
   return 0;
@@ -101,7 +144,7 @@ int SinkModule::DispatchData(const std::shared_ptr<FrameInfo> data) {
   if (!data) {
     return -1;
   }
-  std::shared_ptr<SinkHandler> handler;
+  std::vector<std::shared_ptr<SinkHandler>> handlers;
   {
     std::unique_lock<std::mutex> lock(mutex_);
     auto iter = sink_map_.find(data->stream_id);
@@ -109,12 +152,16 @@ int SinkModule::DispatchData(const std::shared_ptr<FrameInfo> data) {
       LOGW(CORE) << "No sink handler for stream [" << data->stream_id << "]";
       return 0;  // 可能未添加该流的 sink handler
     }
-    handler = iter->second;
+    handlers = iter->second;
   }
-  if (!handler) {
-    return -1;
+  int ret = 0;
+  for (auto& handler : handlers) {
+    if (handler) {
+      int r = handler->Process(data);
+      if (r != 0) ret = r;
+    }
   }
-  return handler->Process(data);
+  return ret;
 }
 
 }  // namespace cnstream

@@ -73,10 +73,10 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release")
 endif()
 
 # Python 路径配置
-set(VSTREAM_PYTHON_ROOT_DIR "/usr/local/python3.12"
-    CACHE PATH "Custom Python root directory (e.g. /usr/local/python3.12). If not set, use system default.")
-set(VSTREAM_PYTHON_EXECUTABLE "/usr/local/bin/python3.12"
-    CACHE FILEPATH "Custom Python executable (e.g. /usr/local/python3.12/bin/python3.12). If not set, use system default.")
+set(VSTREAM_PYTHON_ROOT_DIR "/usr/local/python3.13"
+    CACHE PATH "Custom Python root directory (e.g. /usr/local/python3.13). If not set, use system default.")
+set(VSTREAM_PYTHON_EXECUTABLE "/usr/local/bin/python3.13"
+    CACHE FILEPATH "Custom Python executable (e.g. /usr/local/python3.13/bin/python3.13). If not set, use system default.")
 
 # 静态库 and 动态库输出目录
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${VSTREAM_ROOT_PATH}/lib)

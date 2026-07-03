@@ -67,4 +67,4 @@ if [ -n "${version_mismatch}" ]; then
   printf "%b" "${version_mismatch}"
 fi
 echo "Run 'source /etc/profile.d/vstream.sh' or start a new shell to use vStream."
-echo "Note: Python 3.12 and TensorRT must be provided by the runtime environment."
+echo "Note: Python and TensorRT must be provided by the runtime environment."
