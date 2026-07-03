@@ -85,10 +85,6 @@ int Execute(const std::vector<float*>& cpu_outputs, ModelLoader* model,
 }
 
  private:
-  bool has_save_frame_mat_ = false;
-  std::string save_file_ = "save/test_preproc_save.jpg";
-
- private:
   DECLARE_REFLEX_OBJECT_EX(Pre_YOLO_CPU, cnstream::Preproc);
 };  // class Pre_YOLO_CPU
 

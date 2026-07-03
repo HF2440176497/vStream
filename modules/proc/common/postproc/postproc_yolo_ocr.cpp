@@ -375,8 +375,13 @@ class Post_YOLOv5_CPU_OCR: public Postproc {
     }
 
 #ifdef VSTREAM_UNIT_TEST
-    if (enable_save_ && !has_save_frame_mat_) {
+    if (enable_save_) {
       cv::Mat img = frame->GetImage().clone();  // BGR
+      // 蓝色画原始字符框 (boxes)
+      for (const auto& b : boxes) {
+        cv::rectangle(img, cv::Rect(b.x, b.y, b.w, b.h), cv::Scalar(255, 0, 0), 2);
+      }
+      // 绿色画合并后的文本行框 (results_merge)
       for (const auto& r : results_merge) {
         float x = r[0];
         float y = r[1];
@@ -384,8 +389,10 @@ class Post_YOLOv5_CPU_OCR: public Postproc {
         float h = r[3];
         cv::rectangle(img, cv::Rect(x, y, w, h), cv::Scalar(0, 255, 0), 2);
       }
-      cv::imwrite("save/post_yolo_ocr.jpg", img);
-      has_save_frame_mat_ = true;
+      auto sys_now = std::chrono::system_clock::now();
+      auto timestamp_ms = std::chrono::duration_cast<std::chrono::milliseconds>(sys_now.time_since_epoch()).count();
+      std::string filename = "save/post_yolo_ocr_" + std::to_string(timestamp_ms) + ".jpg";
+      cv::imwrite(filename, img);
     }
 #endif
 
@@ -406,7 +413,6 @@ class Post_YOLOv5_CPU_OCR: public Postproc {
 
  private:
   bool enable_save_ = false;
-  bool has_save_frame_mat_ = false;
 
   DECLARE_REFLEX_OBJECT_EX(Post_YOLOv5_CPU_OCR, cnstream::Postproc);
 };  // class Post_YOLOv5_CPU_OCR

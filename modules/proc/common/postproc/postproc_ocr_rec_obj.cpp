@@ -104,33 +104,28 @@ class Post_PPOCRv3_rec_Obj : public ObjPostproc {
 
     for (int j = 0; j < rows; ++j) {
         int offset = j * cols;
-        if (offset + cols > rows * cols) {
-            break;  // 防止访问越界
-        }
+  
+        const float* row_start = output + offset;
+        const float* row_end = row_start + cols;
 
-        int max_idx = static_cast<int>(PaddlePaddle::Argmax(
-            &v[offset], &v[offset + cols]));
+        // 使用 std::max_element 和 std::distance 找到最大值的索引
+        auto max_it = std::max_element(row_start, row_end);
+        int max_idx = static_cast<int>(std::distance(row_start, max_it));
+        float max_value = *max_it;
 
-        if (max_idx < 0 || max_idx >= static_cast<int>(label_list_.size())) {
-            LOGE(POSTPROC) << "PPOCRv3: max_idx " << max_idx
-                        << " out of range [0, " << label_list_.size() << ")";
-            continue;
-        }
-        float max_value = static_cast<float>(*std::max_element(
-            &v[offset], &v[offset + cols]));
-
-        // LOGD(POSTPROC) << "Step " << j << "; max_idx=" << max_idx 
-        //     << "; max_value=" << max_value 
-        //     << "; last_index=" << last_index;
-
-        // CTC 规则：跳过 blank（索引 0），跳过连续重复字符
         if (max_idx > 0 && !(j > 0 && max_idx == last_index)) {
             score_sum += max_value;
             ++count;
-            str_res += label_list_[max_idx];
+            if (max_idx < static_cast<int>(label_list_.size())) {
+                str_res += label_list_[max_idx];
+            } else {
+                LOGE(POSTPROC) << "max_idx out of range: " << max_idx
+                               << ", label_list size: " << label_list_.size();
+            }
         }
         last_index = max_idx;
     }
+
     if (count == 0) {
         LOGW(POSTPROC) << "no valid character decoded";
         return 0;
@@ -152,7 +147,7 @@ class Post_PPOCRv3_rec_Obj : public ObjPostproc {
     }
   
     if (enable_save_)  {
-      cv::Mat img = frame->GetImage();
+      cv::Mat img = frame->GetImage().clone();
       std::lock_guard<std::mutex> lock(last_save_time_mutex_);
       auto now = std::chrono::steady_clock::now();
       if (save_duration_ms_ > 0) {
@@ -188,7 +183,7 @@ class Post_PPOCRv3_rec_Obj : public ObjPostproc {
   std::string model_name_;
 
  private:
-  bool enable_save_ = true;
+  bool enable_save_ = false;
   std::mutex last_save_time_mutex_;
   std::chrono::steady_clock::time_point last_save_time_;
   uint32_t save_duration_ms_ = 500;

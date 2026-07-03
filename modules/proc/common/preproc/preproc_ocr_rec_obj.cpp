@@ -25,6 +25,7 @@ class Pre_PPOCRv3_rec_Obj : public ObjPreproc {
   }
   /**
    * @brief cpu_outputs 作为前处理的输出，作为 D2H 的输入
+   * @detail 输入保持 BGR 排序，且含有宽度压缩
    */
   virtual int Execute(const std::vector<float*>& cpu_outputs, ModelLoader* model,
                       const FrameInfoPtr& finfo, const std::shared_ptr<InferObject>& pobj) override {
@@ -56,7 +57,7 @@ class Pre_PPOCRv3_rec_Obj : public ObjPreproc {
     cv::Rect rect(x, y, w, h);
     cv::Mat crop_img = img(rect).clone();
 
-    // （可选）宽度压缩
+    // 宽度压缩
     if (crop_img.cols > 3) {
         cv::resize(crop_img, crop_img,
             cv::Size((crop_img.cols/3)*2, crop_img.rows),
@@ -67,11 +68,6 @@ class Pre_PPOCRv3_rec_Obj : public ObjPreproc {
     int resize_w = std::min(int(ceilf(input_h * ratio)), input_w);
     cv::Mat resize_img;
     cv::resize(crop_img, resize_img, cv::Size(resize_w, input_h), 0, 0, cv::INTER_LINEAR);
-
-    // 右侧补边
-    cv::copyMakeBorder(resize_img, resize_img, 0, 0, 0,
-                       input_w - resize_img.cols,
-                       cv::BORDER_CONSTANT, {127,127,127});
 
 #ifdef VSTREAM_UNIT_TEST
     if (enable_save_) {
@@ -91,14 +87,16 @@ class Pre_PPOCRv3_rec_Obj : public ObjPreproc {
     }
 #endif
 
-    // 6. BGR->RGB + float
-    cv::cvtColor(resize_img, resize_img, cv::COLOR_BGR2RGB);
     resize_img.convertTo(resize_img, CV_32FC3, 1.0/255.0);   // 顺便 /255
 
-    // 7. 标准化
-    resize_img = (resize_img - 0.5) / 0.5;
+    cv::subtract(resize_img, cv::Scalar(0.5f, 0.5f, 0.5f), resize_img);
+    cv::divide(resize_img, cv::Scalar(0.5f, 0.5f, 0.5f), resize_img);
 
-    // 8. NCHW 拷贝单个 batch 的输入
+    cv::copyMakeBorder(resize_img, resize_img, 0, 0, 0,
+                    input_w - resize_img.cols,
+                    cv::BORDER_CONSTANT, {0, 0, 0});
+
+    // NCHW 拷贝单个 batch 的输入
     std::vector<cv::Mat> channels(3);
     cv::split(resize_img, channels);
 
