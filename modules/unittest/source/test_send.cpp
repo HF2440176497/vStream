@@ -23,7 +23,7 @@
 namespace cnstream {
 
 static const std::string             source_module_name = "source";
-static const std::string             inference_module_name = "inference_rec";
+static const std::string             inference_module_name = "inference";
 static const std::string             sink_module_name = "sink";
 
 static const std::string             stream_id_1_ = "channel-1";
