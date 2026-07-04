@@ -86,6 +86,9 @@ struct EncoderTask {
   AVPixelFormat src_fmt = AV_PIX_FMT_RGB24;
   int64_t       pts = 0;
   bool          is_eos = false;
+  // 入队时刻，用于 EncodeWorkerLoop 丢弃网络阻塞期间积压的陈旧帧，
+  // 避免阻塞恢复后积压帧以突发方式排空再次打满网络/播放器。
+  std::chrono::steady_clock::time_point enqueue_time{};
 };
 
 static constexpr uint32_t kEncodeQueueSize = 20;
@@ -151,7 +154,6 @@ class PushHandlerIm {
   StreamContext ctx_;
   std::recursive_mutex stream_mtx_;
   int64_t last_pts_ = -1;
-  int64_t pts_count_ = 0;
 
   AVPixelFormat src_pix_fmt_ = AV_PIX_FMT_RGB24;
   int sws_src_width_  = 0;

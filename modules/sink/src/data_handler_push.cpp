@@ -108,13 +108,13 @@ int PushHandlerIm::Process(const std::shared_ptr<FrameInfo> data) {
   task.src_fmt = it->second;
   task.pts     = ComputePts();
   task.is_eos  = false;
+  task.enqueue_time = std::chrono::steady_clock::now();
 
   if (!encode_queue_.Push(task)) {
     LOGW(SINK) << "[DEBUG-B] encode queue full, dropping frame stream_id=" << stream_id_
                << " queue_size=" << encode_queue_.Size();
     return 0;
   }
-  pts_count_++;
 
   return 0;
 }
@@ -373,6 +373,12 @@ bool PushHandlerIm::FlushEncoder() {
 void PushHandlerIm::EncodeWorkerLoop() {
   LOGI(SINK) << "[" << stream_id_ << "]: EncodeWorkerLoop started";
   EncoderTask task;
+  // 陈旧帧丢弃阈值：排队时长超过该阈值的帧视为已过期，直接丢弃。
+  // 作用：网络阻塞恢复后，积压在队列里的旧帧不会以突发方式排空再次打满
+  // 网络/播放器，从而打断“阻塞->积压->突发排空->再阻塞”的自维持循环。
+  // 阈值取 3 个帧间隔，与 ControlFps 的 max_lag 一致。
+  const int64_t stale_threshold_us =
+      static_cast<int64_t>(1000000) / fps_ * 3;
   while (IsRunning()) {
     if (!encode_queue_.WaitAndTryPop(task, std::chrono::milliseconds(100))) {
       if (!IsRunning()) break;
@@ -381,6 +387,15 @@ void PushHandlerIm::EncodeWorkerLoop() {
     if (task.is_eos) {
       FlushEncoder();
       break;
+    }
+    // 丢弃陈旧积压帧(不经过编码/推流，开销极低，可快速清空积压)
+    auto queue_age_us = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - task.enqueue_time).count();
+    if (queue_age_us > stale_threshold_us) {
+      LOGW(SINK) << "[" << stream_id_ << "]: drop stale queued frame pts="
+                 << task.pts << " age_us=" << queue_age_us
+                 << " threshold_us=" << stale_threshold_us;
+      continue;
     }
     std::lock_guard<std::recursive_mutex> lk(stream_mtx_);
     if (!stream_initialized_) {
@@ -427,13 +442,19 @@ void PushHandlerIm::ClearStream() {
 }
 
 int64_t PushHandlerIm::ComputePts() {
+  // 以墙钟生成 PTS：pts = 实际经过时间 * fps。
+  // codec time_base={1,fps_}，故 pts 直接换算回真实秒数。
+  // 这样：
+  //   - 到达率 < fps 时，被接受的帧稀疏到达，PTS 间隔 > 1，反映真实到达速率
+  //     （不会人为把慢速源压缩成 fps 速率播放）；
+  //   - 到达率 > fps 时，ControlFps 已将接受节流到 fps，PTS 间隔 ≈ 1，反映 fps 速率；
+  //   - 网络阻塞期间被 ControlFps 丢弃的帧不进入此函数，PTS 自然体现真实间隙，
+  //     直播播放器可据此感知延迟并追赶。
   auto now = std::chrono::steady_clock::now();
   auto elapsed_us = std::chrono::duration_cast<std::chrono::microseconds>(
       now - push_start_time_).count();
-  // int64_t pts = av_rescale_q(elapsed_us, {1, 1000000}, {1, fps_});
   int64_t pts = std::llround(static_cast<double>(elapsed_us) * fps_ / 1000000.0);
   if (pts <= last_pts_) {
-    LOGW(SINK) << "[" << stream_id_ << "]: pts <= last_pts_ " << pts << " <= " << last_pts_;
     pts = last_pts_ + 1;
   }
   last_pts_ = pts;
@@ -542,7 +563,8 @@ bool PushHandlerIm::ControlFps() {
   // 目标帧间隔 (us)
   const int64_t frame_interval_us = static_cast<int64_t>(1000000) / fps_;
   auto frame_interval = us(frame_interval_us);
-  
+  const int64_t min_spacing_us = frame_interval_us / 2;
+
   if (first_frame_) {
     push_start_time_ = now;
     fps_stat_start_time_ = now;
@@ -566,45 +588,54 @@ bool PushHandlerIm::ControlFps() {
     fps_stat_frame_count_ = 0;
     fps_stat_start_time_ = now;
   }
-  int64_t next_frame_delay_us = std::chrono::duration_cast<us>(
-      last_push_time_ - now).count();
 
   uint32_t queue_size = encode_queue_.Size();
-  if (queue_size + 5 >= kEncodeQueueSize) {
-    LOGW(SINK) << "frame dropped (queue full) stream_id=" << stream_id_
-               << " queue_size=" << queue_size
-               << " next_frame_delay_us=" << next_frame_delay_us;
-    return false;
-  }
-  LOGI(SINK) << "ControlFps check stream_id=" << stream_id_
-             << " next_frame_delay_us=" << next_frame_delay_us;
 
-  if (now < last_push_time_) {
-    LOGW(SINK) << "frame dropped stream_id=" << stream_id_
-               << " wait_remaining_us=" << next_frame_delay_us;
-    return false;
-  }
-  // 接受当前帧，计算下一帧时间点
-  auto ideal_next = last_push_time_ + frame_interval;
-
-  const int64_t min_spacing_us = frame_interval_us / 2;
-  auto earliest_next = now + us(min_spacing_us);
-
+  // 推进下一帧调度时间点(仅在接受路径调用)。
+  // 旧实现的队列满分支直接 return 冻结 last_push_time_，阻塞解除后 now 远大于
+  // last_push_time_ 必然触发 reset 大跳变，reset 后积压帧突发排空再次打满网络，
+  // 形成“阻塞->冻结->reset 突发->再阻塞”的自维持循环。现队列满分支改为漂移到
+  // now，接受路径用本函数维持 fps 节奏并在大间隔后 reset。
   constexpr int kMaxFrameLag = 3;
   auto max_lag = us(frame_interval_us * kMaxFrameLag);
+  auto advance_schedule = [&] {
+    auto ideal_next = last_push_time_ + frame_interval;
+    auto earliest_next = now + us(min_spacing_us);
+    if (now > last_push_time_ + max_lag) {
+      // 大间隔后重置到当前(而非 now+interval)，让上游补偿突发 refill 空队列；
+      // 突发本身由 EncodeWorkerLoop 丢弃陈旧帧来限速。
+      last_push_time_ = now;
+    } else {
+      last_push_time_ = std::max(ideal_next, earliest_next);
+    }
+  };
 
-  if (now > last_push_time_ + max_lag) {
-    int64_t lag_us = std::chrono::duration_cast<us>(now - last_push_time_).count();
-    LOGW(SINK) << "ControlFps reset after gap stream_id=" << stream_id_
-               << " lag_us=" << lag_us;
-    last_push_time_ = now + frame_interval;
-  } else {
-    last_push_time_ = std::max(ideal_next, earliest_next);
+  // 队列接近满：丢帧，并将调度漂移到当前时间。
+  // 漂移到 now(而非累加 interval)的原因：阻塞期间帧仍在到达，若按 advance_schedule
+  // 累加 last_push_time_，它会持续超前于 now；阻塞解除后所有真实到达的帧都被判
+  // “过早”持续丢弃，延迟恢复。漂移到 now 既不冻结(否则解除后必然 reset 跳变)，
+  // 也不超前，保证阻塞一解除下一帧立即“到期”被接受。
+  if (queue_size + 5 >= kEncodeQueueSize) {
+    LOGW(SINK) << "frame dropped (queue full) stream_id=" << stream_id_
+               << " queue_size=" << queue_size;
+    last_push_time_ = now;
+    return false;
   }
-  int64_t new_next_delay_us = std::chrono::duration_cast<us>(last_push_time_ - now).count();
-  LOGI(SINK) << "frame accepted by ControlFps stream_id=" << stream_id_
-             << " next_frame_delay_us=" << new_next_delay_us
-             << " queue_size=" << queue_size;
+
+  // 过早到达：严格丢弃，保证输出不超过 fps 上限。
+  // 无论队列是否为空，只要 now < last_push_time_ 即视为超前于调度，丢弃。
+  // 这样到达率 > fps 时输出严格节流到 fps；到达率 < fps 时帧总是晚到
+  // (now >= last_push_time_)，不会被此分支命中，全部接受。
+  if (now < last_push_time_) {
+    int64_t wait_remaining_us = std::chrono::duration_cast<us>(
+        last_push_time_ - now).count();
+    LOGW(SINK) << "frame dropped stream_id=" << stream_id_
+               << " wait_remaining_us=" << wait_remaining_us;
+    return false;
+  }
+
+  // 接受当前帧并推进调度
+  advance_schedule();
   return true;
 }
 
