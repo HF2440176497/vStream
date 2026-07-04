@@ -602,8 +602,6 @@ bool PushHandlerIm::ControlFps() {
     auto ideal_next = last_push_time_ + frame_interval;
     auto earliest_next = now + us(min_spacing_us);
     if (now > last_push_time_ + max_lag) {
-      // 大间隔后重置到当前(而非 now+interval)，让上游补偿突发 refill 空队列；
-      // 突发本身由 EncodeWorkerLoop 丢弃陈旧帧来限速。
       last_push_time_ = now;
     } else {
       last_push_time_ = std::max(ideal_next, earliest_next);
@@ -611,10 +609,6 @@ bool PushHandlerIm::ControlFps() {
   };
 
   // 队列接近满：丢帧，并将调度漂移到当前时间。
-  // 漂移到 now(而非累加 interval)的原因：阻塞期间帧仍在到达，若按 advance_schedule
-  // 累加 last_push_time_，它会持续超前于 now；阻塞解除后所有真实到达的帧都被判
-  // “过早”持续丢弃，延迟恢复。漂移到 now 既不冻结(否则解除后必然 reset 跳变)，
-  // 也不超前，保证阻塞一解除下一帧立即“到期”被接受。
   if (queue_size + 5 >= kEncodeQueueSize) {
     LOGW(SINK) << "frame dropped (queue full) stream_id=" << stream_id_
                << " queue_size=" << queue_size;
@@ -623,9 +617,6 @@ bool PushHandlerIm::ControlFps() {
   }
 
   // 过早到达：严格丢弃，保证输出不超过 fps 上限。
-  // 无论队列是否为空，只要 now < last_push_time_ 即视为超前于调度，丢弃。
-  // 这样到达率 > fps 时输出严格节流到 fps；到达率 < fps 时帧总是晚到
-  // (now >= last_push_time_)，不会被此分支命中，全部接受。
   if (now < last_push_time_) {
     int64_t wait_remaining_us = std::chrono::duration_cast<us>(
         last_push_time_ - now).count();
