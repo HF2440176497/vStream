@@ -43,6 +43,7 @@ class ThreadSafeQueue {
   bool WaitAndTryPop(T& value, const std::chrono::microseconds rel_time);
 
   bool Push(const T& new_value);
+  void WaitAndPush(const T& new_value);
   void Stop(bool clear_queue = true);
 
   bool Empty() {
@@ -147,6 +148,23 @@ bool ThreadSafeQueue<T>::Push(const T& new_value) {
   lk.unlock();
   notempty_cond_.notify_one();
   return true;
+}
+
+template <typename T>
+void ThreadSafeQueue<T>::WaitAndPush(const T& new_value) {
+  if (!run_) {
+    return;
+  }
+  std::unique_lock<std::mutex> lk(data_m_);
+  if (max_size_ > 0) {
+    notfull_cond_.wait(lk, [this] { return !run_ || q_.size() < max_size_; });
+  }
+  if (!run_) {
+    return;
+  }
+  q_.push(new_value);
+  lk.unlock();
+  notempty_cond_.notify_one();
 }
 
 /**

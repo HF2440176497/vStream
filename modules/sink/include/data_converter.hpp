@@ -144,13 +144,19 @@ inline s_output_data ConvertFrameInfo(const std::shared_ptr<FrameInfo>& frame_in
   data.frame_id_s = frame_info->frame_id_s;
   data.timestamp  = frame_info->timestamp;
 
+  // 跳帧标记：帧被 infer_interval 跳过，未经过推理
+  if (frame_info->collection.HasValue(kSkipFrameTag)) {
+    data.result = output_result::RESULT_SKIPPED;
+    return data;
+  }
+
   // 原始图像
   if (frame_info->collection.HasValue(kDataFrameTag)) {
     auto img_data = frame_info->collection.Get<DataFramePtr>(kDataFrameTag);
     data.image_dict[output_constants::key_original_image] = img_data->GetImage();
   } else {
     LOGE(DATA_CONVERTER) << "ConvertFrameInfo: DataFrame not found in FrameInfo collection.";
-    data.result = -1;
+    data.result = output_result::RESULT_UNKNOWN_ERROR;
     return data;
   }
 
@@ -172,7 +178,7 @@ inline s_output_data ConvertFrameInfo(const std::shared_ptr<FrameInfo>& frame_in
     }
   } else {
     LOGE(DATA_CONVERTER) << "ConvertFrameInfo: InferObjs not found in FrameInfo collection.";
-    data.result = -1;
+    data.result = output_result::RESULT_UNKNOWN_ERROR;
     return data;
   }
 
@@ -183,7 +189,7 @@ inline s_output_data ConvertFrameInfo(const std::shared_ptr<FrameInfo>& frame_in
     data.objects_json.clear();
   }
 
-  data.result = 0;
+  data.result = output_result::RESULT_OK;
   return data;
 }
 

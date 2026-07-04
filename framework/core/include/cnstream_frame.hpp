@@ -42,6 +42,8 @@ namespace cnstream {
 class Module;
 class Pipeline;
 
+inline const std::string kSkipFrameTag = "skip_frame";
+
 /**
  * @enum FrameFlag
  *

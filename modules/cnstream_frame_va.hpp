@@ -349,7 +349,7 @@ struct InferObjs : public NonCopyable {
  */
 struct OneInferData {
   // infer input
-  DataFormat input_fmt_;               /*!< The input image's pixel format.*/
+  DataFormat input_fmt_;                 /*!< The input image's pixel format.*/
   int input_width_;                      /*!< The input image's width.*/
   int input_height_;                     /*!< The input image's height. */
   std::shared_ptr<void> input_cpu_addr_; /*!< The input data's CPU address.*/

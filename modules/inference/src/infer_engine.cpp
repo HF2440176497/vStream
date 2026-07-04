@@ -188,7 +188,7 @@ void InferEngine::ForceBatchingDone() {
 }
 
 // 正常调用：batched_finfos_.size == batch_size_
-// 超时触发：batchsize_ != 1 时存在丢弃风险，obj 模型应保证 batch_size == 1
+// 超时触发：批次不完整时使用 pad 策略，保证已有的帧不丢失
 void InferEngine::BatchingDone() {
   // reset batch_idx
   if (batching_by_obj_) {
@@ -198,13 +198,17 @@ void InferEngine::BatchingDone() {
   }
 
   if (!batched_finfos_.empty() && batched_finfos_.size() != batchsize_) {
-    if (batching_by_obj_) {
-      LOGW(INFER) << "[" << module_name_ << "] obj batch is incomplete ("
-                  << batched_finfos_.size() << "/" << batchsize_ << "), discarding.";
+    // 使用最后一帧重复填充
+    auto last_finfo = batched_finfos_.back();
+    auto last_obj = batching_by_obj_ && !batched_objs_.empty() ? batched_objs_.back() : nullptr;
+    while (batched_finfos_.size() < batchsize_) {
+      auto pad_promise = std::make_shared<std::promise<void>>();
+      auto pad_auto_set_done = std::make_shared<AutoSetDone>(pad_promise, last_finfo.first);
+      batched_finfos_.push_back(std::make_pair(last_finfo.first, pad_auto_set_done));
+      if (batching_by_obj_) {
+        batched_objs_.push_back(last_obj);
+      }
     }
-    batched_finfos_.clear();
-    batched_objs_.clear();
-    return;
   }
 
   // h2d, infer, d2h, post(not obj)

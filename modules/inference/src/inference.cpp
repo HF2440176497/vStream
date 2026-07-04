@@ -378,7 +378,10 @@ int Inference::Process(std::shared_ptr<FrameInfo> data) {
       pctx->engine->ForceBatchingDone();
     }
     // drop_ 重新从 1 计数
-    if (drop_data) pctx->drop_count %= d_ptr_->params_.infer_interval;
+    if (drop_data) {
+      pctx->drop_count %= d_ptr_->params_.infer_interval;
+      data->collection.AddIfNotExists(kSkipFrameTag, true);
+    }
     std::shared_ptr<std::promise<void>> promise = std::make_shared<std::promise<void>>();
     promise->set_value();
     InferEngine::ResultWaitingCard card(promise);

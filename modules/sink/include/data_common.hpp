@@ -13,6 +13,17 @@
 
 namespace cnstream {
 
+namespace output_result {
+
+const int RESULT_OK = 0;
+const int RESULT_UNKNOWN_ERROR = -1;
+const int RESULT_TIMEOUT = -2;
+const int RESULT_NO_INFERENCE = -3;
+const int RESULT_SKIPPED = -4;
+const int RESULT_INFER_FAILED = -5;
+
+}  // namespace output_result
+
 namespace output_constants {
 
 inline const std::string key_result = "result";
@@ -123,7 +134,7 @@ inline std::ostream& operator<<(std::ostream& os, const s_obj_in& obj) {
  * @brief 单帧的输出数据结构
  */
 struct s_output_data {
-  int result = -1;                                            // 结果码
+  int result = output_result::RESULT_UNKNOWN_ERROR;            // 结果码
   uint64_t timestamp = 0;                                     // 时间戳
   std::string frame_id_s;                                     // frame 标识
   std::vector<s_obj_in> objects;                              // 检测对象列表

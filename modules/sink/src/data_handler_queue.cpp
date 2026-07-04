@@ -66,21 +66,19 @@ class QueueHandlerImpl {
     SaveOriFrame(frame_info);
 
     s_output_data data = ConvertFrameInfo(frame_info);
-    if (data.result != 0) {
-      return 0;  // 无推理结果，跳过此帧
-    }
     Push(data);
     return 0;
   }
 
   /**
-   * 直接调用 queue_ 非阻塞式推送
+   * 阻塞式推送，队列满时等待消费者取出数据再入队。
+   * 保证不丢帧，背压传导至上游流水线。
    */
-  bool Push(const s_output_data& data) {
+  void Push(const s_output_data& data) {
     if (!queue_) {
-      return false;
+      return;
     }
-    return queue_->Push(data);
+    queue_->WaitAndPush(data);
   }
 
   bool GetData(s_output_data& data, int wait_ms) {
@@ -89,9 +87,6 @@ class QueueHandlerImpl {
     }
     if (wait_ms < 0) {
       queue_->WaitAndPop(data);
-      if (data.result != 0) {
-        return false;
-      }
       return true;
     } else if (wait_ms == 0) {
       return queue_->TryPop(data);
@@ -104,7 +99,7 @@ class QueueHandlerImpl {
 
   s_output_data GetData(int wait_ms) {
     s_output_data data;
-    data.result = -1;
+    data.result = output_result::RESULT_UNKNOWN_ERROR;
     if (GetData(data, wait_ms)) {
       return data;
     }
