@@ -121,7 +121,7 @@ TEST_F(SourceSend, Run) {
     int count = 0;
     while (running.load()) {
       s_output_data data = queue_handler_->GetData();
-      if (data.result != 0) {
+      if (data.result != output_result::RESULT_OK) {
         std::this_thread::sleep_for(std::chrono::milliseconds(4));
         continue;
       }

@@ -66,7 +66,7 @@ def test_data_structures():
           f"feature={obj_in.feature}, classes={len(obj_in.classes)}")
 
     out_data = vstream.output_data()
-    out_data.result = 0
+    out_data.result = vstream.OutputResult.RESULT_OK
     out_data.timestamp = get_timestamp_ms()
     out_data.frame_id_s = "channel-1"
     out_data.objects = [obj_in]

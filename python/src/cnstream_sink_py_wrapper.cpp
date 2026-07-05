@@ -113,6 +113,15 @@ void SinkModuleWrapper(py::module &m) {
             "model_name", "key_points", "type", "attributes"};
       });
 
+  py::enum_<output_result>(m, "OutputResult")
+      .value("RESULT_OK", output_result::RESULT_OK)
+      .value("RESULT_UNKNOWN_ERROR", output_result::RESULT_UNKNOWN_ERROR)
+      .value("RESULT_TIMEOUT", output_result::RESULT_TIMEOUT)
+      .value("RESULT_NO_INFERENCE", output_result::RESULT_NO_INFERENCE)
+      .value("RESULT_SKIPPED", output_result::RESULT_SKIPPED)
+      .value("RESULT_INFER_FAILED", output_result::RESULT_INFER_FAILED)
+      .export_values();
+
   py::class_<s_output_data>(m, "output_data")
       .def(py::init<>())
       .def_readwrite("result", &s_output_data::result)
