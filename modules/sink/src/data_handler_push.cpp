@@ -24,6 +24,14 @@ bool PushHandlerIm::Open() {
   codec_name_   = GetStrParam(param_set_, key_output_codec).value_or(codec_name_);
   device_id_    = GetIntParam(param_set_, key_output_device_id).value_or(device_id_);
 
+  output_preset_           = GetStrParam(param_set_, key_output_preset);
+  output_tune_             = GetStrParam(param_set_, key_output_tune);
+  output_profile_          = GetStrParam(param_set_, key_output_profile);
+  output_gop_              = GetIntParam(param_set_, key_output_gop);
+  output_timeout_ms_       = GetIntParam(param_set_, key_output_timeout_ms).value_or(output_timeout_ms_);
+  output_tcp_nodelay_      = GetIntParam(param_set_, key_output_tcp_nodelay).value_or(output_tcp_nodelay_);
+  output_send_buffer_size_ = GetIntParam(param_set_, key_output_send_buffer_size).value_or(output_send_buffer_size_);
+
   mark_render_ = GetIntParam(param_set_, key_mark_enable).value_or(0) != 0;
   if (mark_render_) {
     mark_config_.draw_label = GetIntParam(param_set_, key_mark_label).value_or(0) != 0;
@@ -154,10 +162,14 @@ bool PushHandlerIm::InitStream() {
   ctx_.codec_ctx->height     = height_;
   ctx_.codec_ctx->time_base  = {1, fps_};
   ctx_.codec_ctx->framerate  = {fps_, 1};
-  ctx_.codec_ctx->bit_rate   = bitrate_kbps_ * 1000;
-  ctx_.codec_ctx->gop_size   = fps_;
-  ctx_.codec_ctx->max_b_frames = 0;
-  ctx_.codec_ctx->pix_fmt    = kEncoderPixFmt;
+  const int gop_size = output_gop_.value_or(fps_);
+  ctx_.codec_ctx->bit_rate       = bitrate_kbps_ * 1000;
+  ctx_.codec_ctx->rc_min_rate    = bitrate_kbps_ * 1000;
+  ctx_.codec_ctx->rc_max_rate    = bitrate_kbps_ * 1000;
+  ctx_.codec_ctx->rc_buffer_size = bitrate_kbps_ * 1000;
+  ctx_.codec_ctx->gop_size       = gop_size;
+  ctx_.codec_ctx->max_b_frames   = 0;
+  ctx_.codec_ctx->pix_fmt        = kEncoderPixFmt;
   ctx_.stream->time_base = {1, 1000};  // ms
 
   if (!InitDeviceCtx()) {
@@ -167,11 +179,41 @@ bool PushHandlerIm::InitStream() {
   if (ctx_.fmt_ctx->oformat->flags & AVFMT_GLOBALHEADER) {
     ctx_.codec_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
   }
-  auto fps_str = std::to_string(fps_);
+
+  std::string gop_str     = std::to_string(gop_size);
+  std::string bitrate_str = std::to_string(bitrate_kbps_);
   AVDictionary* opts = nullptr;
-  av_dict_set(&opts, "keyint", fps_str.c_str(), 0);
-  av_dict_set(&opts, "min-keyint", fps_str.c_str(), 0);
-  av_dict_set(&opts, "scenecut", "0", 0);  // 关闭场景切换检测，避免生成额外关键帧
+
+  const std::string codec_name = codec->name;
+  if (codec_name == "libx264") {
+    av_dict_set(&opts, "preset", output_preset_.value_or("veryfast").c_str(), 0);
+    av_dict_set(&opts, "tune", output_tune_.value_or("zerolatency").c_str(), 0);
+    av_dict_set(&opts, "profile", output_profile_.value_or("baseline").c_str(), 0);
+    av_dict_set(&opts, "keyint", gop_str.c_str(), 0);
+    av_dict_set(&opts, "min-keyint", gop_str.c_str(), 0);
+    av_dict_set(&opts, "scenecut", "0", 0);  // 关闭场景切换检测，避免生成额外关键帧
+    av_dict_set(&opts, "force-cfr", "1", 0);
+    av_dict_set(&opts, "vbv-maxrate", bitrate_str.c_str(), 0);
+    av_dict_set(&opts, "vbv-bufsize", bitrate_str.c_str(), 0);
+    av_dict_set(&opts, "nal-hrd", "cbr", 0);  // 强制 CBR，暗场/静态画面维持码率
+  } else if (codec_name == "h264_nvenc" || codec_name == "nvenc_h264") {
+    av_dict_set(&opts, "preset", output_preset_.value_or("p4").c_str(), 0);
+    av_dict_set(&opts, "tune", output_tune_.value_or("ll").c_str(), 0);
+    av_dict_set(&opts, "profile", output_profile_.value_or("baseline").c_str(), 0);
+    av_dict_set(&opts, "rc", "cbr", 0);
+    av_dict_set(&opts, "cbr", "1", 0);
+    av_dict_set(&opts, "zerolatency", "1", 0);
+    av_dict_set(&opts, "g", gop_str.c_str(), 0);
+  } else if (codec_name == "h264_rkmpp" || codec_name == "hevc_rkmpp") {
+    av_dict_set(&opts, "rc_mode", "cbr", 0);
+    av_dict_set(&opts, "g", gop_str.c_str(), 0);
+    if (output_profile_) {
+      av_dict_set(&opts, "profile", output_profile_->c_str(), 0);
+    }
+  } else {
+    // 兜底：通用 H.264 编码器仅设置 GOP，避免未知私有选项导致失败
+    av_dict_set(&opts, "g", gop_str.c_str(), 0);
+  }
 
   ret = avcodec_open2(ctx_.codec_ctx, codec, &opts);
   av_dict_free(&opts);
@@ -185,9 +227,17 @@ bool PushHandlerIm::InitStream() {
     return false;
   }
   if (!(ctx_.fmt_ctx->oformat->flags & AVFMT_NOFILE)) {
-    ret = avio_open(&ctx_.fmt_ctx->pb, output_url_.c_str(), AVIO_FLAG_WRITE);
+    AVDictionary* avio_opts = nullptr;
+    av_dict_set(&avio_opts, "timeout", std::to_string(output_timeout_ms_ * 1000).c_str(), 0);
+    av_dict_set(&avio_opts, "tcp_nodelay", std::to_string(output_tcp_nodelay_).c_str(), 0);
+    av_dict_set(&avio_opts, "send_buffer_size", std::to_string(output_send_buffer_size_).c_str(), 0);
+    if (output_url_.find("rtmp://") == 0) {
+      av_dict_set(&avio_opts, "rtmp_buffer", "65536", 0);
+    }
+    ret = avio_open2(&ctx_.fmt_ctx->pb, output_url_.c_str(), AVIO_FLAG_WRITE, nullptr, &avio_opts);
+    av_dict_free(&avio_opts);
     if (ret < 0) {
-      LOGE(SINK) << "[" << stream_id_ << "]: avio_open failed";
+      LOGE(SINK) << "[" << stream_id_ << "]: avio_open2 failed";
       return false;
     }
   }
@@ -336,7 +386,13 @@ bool PushHandlerIm::DrainPackets() {
     if (write_ret < 0) {
       char errbuf[AV_ERROR_MAX_STRING_SIZE];
       av_strerror(write_ret, errbuf, sizeof(errbuf));
-      LOGE(SINK) << "[" << stream_id_ << "] av_interleaved_write_frame error: " << errbuf;
+      last_write_network_error_ = (write_ret == AVERROR(ETIMEDOUT) ||
+                                   write_ret == AVERROR(EIO) ||
+                                   write_ret == AVERROR(ECONNRESET) ||
+                                   write_ret == AVERROR(EPIPE) ||
+                                   write_ret == AVERROR(ECONNREFUSED));
+      LOGE(SINK) << "[" << stream_id_ << "] av_interleaved_write_frame error: " << errbuf
+                 << (last_write_network_error_ ? " (network error)" : "");
       return false;
     }
   }
@@ -350,6 +406,31 @@ bool PushHandlerIm::FlushEncoder() {
     return false;
   }
   return DrainPackets();
+}
+
+bool PushHandlerIm::TryReconnect() {
+  std::lock_guard<std::recursive_mutex> lk(stream_mtx_);
+  auto now = std::chrono::steady_clock::now();
+  auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+      now - last_reconnect_time_).count();
+
+  // 超过较长间隔后重置重连计数，允许新一轮重连
+  if (elapsed_ms >= kReconnectIntervalMs * kMaxReconnectAttempts) {
+    reconnect_attempts_ = 0;
+  }
+
+  if (reconnect_attempts_ >= kMaxReconnectAttempts) {
+    LOGE(SINK) << "[" << stream_id_ << "]: max reconnect attempts reached, stop retrying";
+    return false;
+  }
+
+  reconnect_attempts_++;
+  last_reconnect_time_ = now;
+  LOGI(SINK) << "[" << stream_id_ << "]: reconnect attempt " << reconnect_attempts_
+             << "/" << kMaxReconnectAttempts;
+
+  ClearStream();
+  return InitStream();
 }
 
 // void PushHandlerIm::FlushEncoder() {
@@ -406,6 +487,12 @@ void PushHandlerIm::EncodeWorkerLoop() {
     }
     if (!SendDataFrame(task.frame, task.src_fmt, task.pts)) {
       LOGE(SINK) << "[" << stream_id_ << "]: SendDataFrame failed in worker";
+      if (last_write_network_error_) {
+        last_write_network_error_ = false;
+        if (!TryReconnect()) {
+          LOGE(SINK) << "[" << stream_id_ << "]: TryReconnect failed, will retry on next frame";
+        }
+      }
     }
   }
   LOGI(SINK) << "[" << stream_id_ << "]: EncodeWorkerLoop exited";

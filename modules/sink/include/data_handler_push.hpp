@@ -133,6 +133,7 @@ class PushHandlerIm {
   // void FlushEncoder();
   bool FlushEncoder();
   bool DrainPackets();
+  bool TryReconnect();
 
   void EncodeWorkerLoop();
   int64_t ComputePts();
@@ -150,6 +151,14 @@ class PushHandlerIm {
   int height_ = 480;
   int bitrate_kbps_ = 1000;
   std::string codec_name_;
+
+  std::optional<std::string> output_preset_;
+  std::optional<std::string> output_tune_;
+  std::optional<std::string> output_profile_;
+  std::optional<int>         output_gop_;
+  int output_timeout_ms_        = 10000;
+  int output_tcp_nodelay_       = 1;
+  int output_send_buffer_size_  = 262144;
 
   StreamContext ctx_;
   std::recursive_mutex stream_mtx_;
@@ -181,6 +190,12 @@ class PushHandlerIm {
 
   ThreadSafeQueue<EncoderTask> encode_queue_{kEncodeQueueSize};
   std::thread encode_thread_;
+
+  static constexpr int kMaxReconnectAttempts = 3;
+  static constexpr int64_t kReconnectIntervalMs = 1000;
+  int reconnect_attempts_ = 0;
+  std::chrono::steady_clock::time_point last_reconnect_time_;
+  bool last_write_network_error_ = false;
 };
 
 class PushHandlerImCPU : public PushHandlerIm {

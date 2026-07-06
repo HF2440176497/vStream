@@ -155,6 +155,12 @@ bool DataSink::LoadStreamConf(const std::string& config_dir_path) {
       LOGE(SINK) << "[" << stream_id << "]: [bitrate] " << err_msg;
       return false;
     }
+    if (!checker.IsNum({key_output_gop, key_output_timeout_ms, key_output_tcp_nodelay,
+                        key_output_send_buffer_size},
+                       paramSet, err_msg, false)) {
+      LOGE(SINK) << "[" << stream_id << "]: " << err_msg;
+      return false;
+    }
   }
 
   return true;

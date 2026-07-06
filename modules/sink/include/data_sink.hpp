@@ -27,6 +27,14 @@ inline const std::string key_output_bitrate = "bitrate";
 inline const std::string key_output_codec = "codec";
 inline const std::string key_output_device_id = "device_id";
 
+inline const std::string key_output_preset = "preset";
+inline const std::string key_output_tune = "tune";
+inline const std::string key_output_profile = "profile";
+inline const std::string key_output_gop = "gop";
+inline const std::string key_output_timeout_ms = "timeout_ms";
+inline const std::string key_output_tcp_nodelay = "tcp_nodelay";
+inline const std::string key_output_send_buffer_size = "send_buffer_size";
+
 inline const std::string key_mark_enable = "mark_enable";
 inline const std::string key_mark_label = "mark_label";
 inline const std::string key_mark_score = "mark_score";
