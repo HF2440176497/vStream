@@ -1,5 +1,6 @@
 #include "cnstream_logging.hpp"
 #include <chrono>
+#include <cstdlib>
 #include <ctime>
 #include <filesystem>
 #include <iomanip>
@@ -44,13 +45,36 @@ int64_t GetCurrentMicroseconds() {
   return usec.count() % 1000000;
 }
 
+// Runtime flags. Seeded from the compile-time VSTREAM_LOG_TO_STDERR /
+// VSTREAM_LOG_TO_FILE macros, then overridden by the VSTREAM_LOG_STDERR env
+// var. Unittest builds (VSTREAM_UNIT_TEST defined) always force stderr on so
+// gtest output is visible. The library default is stderr OFF, so importing
+// the pybind .so does not contaminate Python's logging output.
+bool g_log_to_stderr = (VSTREAM_LOG_TO_STDERR != 0);
+bool g_log_to_file   = (VSTREAM_LOG_TO_FILE != 0);
+
+bool ParseBoolEnv(const char* value) {
+  return value != nullptr && value[0] == '1' && value[1] == '\0';
+}
+
+void InitLogFlags() {
+  if (const char* env = std::getenv("VSTREAM_LOG_STDERR")) {
+    g_log_to_stderr = ParseBoolEnv(env);
+  }
+#ifdef VSTREAM_UNIT_TEST
+  g_log_to_stderr = true;
+#endif
+}
+
 }  // anonymous namespace
 
 CustomLogSink::CustomLogSink() {
+  InitLogFlags();
+
   if (VSTREAM_LOG_ROLLING_SIZE_MB > 0) {
     max_size_ = static_cast<size_t>(VSTREAM_LOG_ROLLING_SIZE_MB) * 1024 * 1024;
   }
-  if (VSTREAM_LOG_TO_FILE) {
+  if (g_log_to_file) {
     std::string dir = VSTREAM_LOG_FILE_DIR;
     if (!std::filesystem::exists(dir)) {
       std::filesystem::create_directories(dir);
@@ -88,10 +112,10 @@ void CustomLogSink::send(google::LogSeverity severity,
               << '\n';
   std::string log_line = line_stream.str();
 
-  if (VSTREAM_LOG_TO_STDERR) {
+  if (g_log_to_stderr) {
     EmitToStderr(log_line);
   }
-  if (VSTREAM_LOG_TO_FILE) {
+  if (g_log_to_file) {
     EmitToFile(log_line);
   }
 }

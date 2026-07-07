@@ -36,10 +36,14 @@
 
 
 #ifndef VSTREAM_LOG_TO_STDERR
-#  define VSTREAM_LOG_TO_STDERR  1   // 1:输出  0:不输出
+// Default OFF so the C++ library does not flood stderr and contaminate
+// Python's logging output. Unittest builds force-enable stderr via the
+// VSTREAM_UNIT_TEST define (see cnstream_logging.cpp). Power users can
+// also enable it at runtime by setting the VSTREAM_LOG_STDERR env var.
+#  define VSTREAM_LOG_TO_STDERR  0
 #endif
 #ifndef VSTREAM_LOG_TO_FILE
-#  define VSTREAM_LOG_TO_FILE    1   // 1:输出到文件    0:不输出
+#  define VSTREAM_LOG_TO_FILE    1
 #endif
 #ifndef VSTREAM_LOG_FILE_DIR
 #  define VSTREAM_LOG_FILE_DIR   "./log"  // 文件存放目录

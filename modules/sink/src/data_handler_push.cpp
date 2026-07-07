@@ -128,6 +128,9 @@ int PushHandlerIm::Process(const std::shared_ptr<FrameInfo> data) {
 }
 
 bool PushHandlerIm::InitStream() {
+
+  ClearStream();
+
   AVOutputFormat* fmt = const_cast<AVOutputFormat*>(
       av_guess_format(GetFormatFromUrl(output_url_).c_str(), nullptr, nullptr));
   if (!fmt) {
@@ -185,6 +188,7 @@ bool PushHandlerIm::InitStream() {
   AVDictionary* opts = nullptr;
 
   const std::string codec_name = codec->name;
+
   if (codec_name == "libx264") {
     av_dict_set(&opts, "preset", output_preset_.value_or("veryfast").c_str(), 0);
     av_dict_set(&opts, "tune", output_tune_.value_or("zerolatency").c_str(), 0);
@@ -196,6 +200,7 @@ bool PushHandlerIm::InitStream() {
     av_dict_set(&opts, "vbv-maxrate", bitrate_str.c_str(), 0);
     av_dict_set(&opts, "vbv-bufsize", bitrate_str.c_str(), 0);
     av_dict_set(&opts, "nal-hrd", "cbr", 0);  // 强制 CBR，暗场/静态画面维持码率
+  
   } else if (codec_name == "h264_nvenc" || codec_name == "nvenc_h264") {
     av_dict_set(&opts, "preset", output_preset_.value_or("p4").c_str(), 0);
     av_dict_set(&opts, "tune", output_tune_.value_or("ll").c_str(), 0);
@@ -204,14 +209,16 @@ bool PushHandlerIm::InitStream() {
     av_dict_set(&opts, "cbr", "1", 0);
     av_dict_set(&opts, "zerolatency", "1", 0);
     av_dict_set(&opts, "g", gop_str.c_str(), 0);
+
   } else if (codec_name == "h264_rkmpp" || codec_name == "hevc_rkmpp") {
     av_dict_set(&opts, "rc_mode", "cbr", 0);
     av_dict_set(&opts, "g", gop_str.c_str(), 0);
     if (output_profile_) {
       av_dict_set(&opts, "profile", output_profile_->c_str(), 0);
     }
+    
   } else {
-    // 兜底：通用 H.264 编码器仅设置 GOP，避免未知私有选项导致失败
+    // 通用 H.264 编码器仅设置 GOP，避免未知私有选项导致失败
     av_dict_set(&opts, "g", gop_str.c_str(), 0);
   }
 
@@ -228,12 +235,8 @@ bool PushHandlerIm::InitStream() {
   }
   if (!(ctx_.fmt_ctx->oformat->flags & AVFMT_NOFILE)) {
     AVDictionary* avio_opts = nullptr;
-    av_dict_set(&avio_opts, "timeout", std::to_string(output_timeout_ms_ * 1000).c_str(), 0);
     av_dict_set(&avio_opts, "tcp_nodelay", std::to_string(output_tcp_nodelay_).c_str(), 0);
     av_dict_set(&avio_opts, "send_buffer_size", std::to_string(output_send_buffer_size_).c_str(), 0);
-    if (output_url_.find("rtmp://") == 0) {
-      av_dict_set(&avio_opts, "rtmp_buffer", "65536", 0);
-    }
     ret = avio_open2(&ctx_.fmt_ctx->pb, output_url_.c_str(), AVIO_FLAG_WRITE, nullptr, &avio_opts);
     av_dict_free(&avio_opts);
     if (ret < 0) {
@@ -242,11 +245,11 @@ bool PushHandlerIm::InitStream() {
     }
   }
   ret = avformat_write_header(ctx_.fmt_ctx, nullptr);
-  ctx_.header_written = true;
   if (ret < 0) {
     LOGE(SINK) << "[" << stream_id_ << "]: avformat_write_header failed";
     return false;
   }
+  ctx_.header_written = true;
   if (!InitSwsFrame()) {
     LOGE(SINK) << "[" << stream_id_ << "]: InitSwsFrame failed";
     return false;
