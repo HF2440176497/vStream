@@ -83,6 +83,7 @@ option(VSTREAM_MODULES_BUILD_SINK "build module sink" ON)
 option(VSTREAM_MODULES_BUILD_INFERENCE "build module inference" ON)
 option(VSTREAM_MODULES_BUILD_OSD "build module osd" ON)
 option(VSTREAM_MODULES_BUILD_VA "build stream_va" ON)
+option(VSTREAM_MODULES_BUILD_CONTRIB "build module_contrib (business-specific extension modules)" ON)
 
 set(module_list "")
 if(VSTREAM_MODULES_BUILD_SOURCE)
@@ -168,6 +169,12 @@ list(APPEND proc_common_srcs ${proc_common_pre_src} ${proc_common_post_src} ${pr
 
 list(APPEND srcs ${proc_common_srcs})
 
+# 业务相关性较强的扩展模块（默认编译，可通过 VSTREAM_MODULES_BUILD_CONTRIB=OFF 关闭）
+if(VSTREAM_MODULES_BUILD_CONTRIB)
+  file(GLOB contrib_src ${CMAKE_CURRENT_SOURCE_DIR}/module_contrib/src/*.cpp)
+  list(APPEND srcs ${contrib_src})
+endif()
+
 if (VSTREAM_USE_CUDA)
   set(proc_cuda_srcs "")
   file(GLOB proc_cuda_pre_src ${CMAKE_CURRENT_SOURCE_DIR}/proc/cuda/preproc/*.cpp)
@@ -193,6 +200,13 @@ if(VSTREAM_MODULES_BUILD_VA)
       ${CMAKE_CURRENT_SOURCE_DIR}/${module}/include
     )
   endforeach()
+
+  if(VSTREAM_MODULES_BUILD_CONTRIB)
+    target_include_directories(vstream_va
+     PUBLIC
+      ${CMAKE_CURRENT_SOURCE_DIR}/module_contrib/include
+    )
+  endif()
 
   target_link_libraries(vstream_va
    PUBLIC
@@ -222,6 +236,14 @@ foreach(module ${module_list})
     FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
   )
 endforeach()
+
+# module_contrib 头文件
+if(VSTREAM_MODULES_BUILD_CONTRIB)
+  install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/module_contrib/include/
+    DESTINATION include/vstream/modules/module_contrib
+    FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
+  )
+endif()
 
 # util 头文件
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/util/include/

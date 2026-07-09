@@ -425,6 +425,53 @@ inline constexpr char kInferDataTag[] = "InferData"; /*!< value type in FrameInf
 inline constexpr char kCustomImagesTag[] = "CustomImages"; /*!< value type in FrameInfo::Collection : CustomImagesPtr. */
 
 /**
+ * @brief Collection tag for the derived "model input image".
+ *
+ * 当业务需要为推理生成派生图（如裁剪拼接、传统图像处理增强）时，
+ * 由上游处理模块（如 FrameStitcher）将派生图写入此 tag。Preproc 优先读取此 tag，
+ * 若不存在则回退到 DataFrame::GetImage()，
+ *
+ * value type in FrameInfo::Collection : ModelInputImagePtr.
+ */
+inline constexpr char kModelInputImageTag[] = "ModelInputImage";
+
+
+/**
+ * @struct ModelInputImage
+ * @brief 派生出的模型输入图及其坐标还原元信息。
+ *
+ * 由业务侧处理模块构造并写入 kModelInputImageTag
+ */
+struct ModelInputImage {
+  cv::Mat image;             ///< 派生图（BGR, CV_8UC3）
+
+  ///< 当前帧内容在派生图中的位置（像素坐标）
+  int cur_offset_x = 0;
+  int cur_offset_y = 0;
+  int cur_width = 0;
+  int cur_height = 0;
+
+  ///< 当前帧内容相对原图的缩放
+  float cur_scale_x = 1.0f;
+  float cur_scale_y = 1.0f;
+};
+
+using ModelInputImagePtr = std::shared_ptr<ModelInputImage>;
+
+
+inline cv::Mat GetModelInputImage(const FrameInfoPtr& package) {
+  if (package->collection.HasValue(kModelInputImageTag)) {
+    auto derived = package->collection.Get<ModelInputImagePtr>(kModelInputImageTag);
+    if (derived && !derived->image.empty()) {
+      return derived->image;  // BGR
+    }
+  }
+  DataFramePtr frame = package->collection.Get<DataFramePtr>(kDataFrameTag);
+  return frame->GetImage();  // BGR
+}
+
+
+/**
  * @brief Type classification for InferObject, used to distinguish original detection boxes
  *        from post-processed merged boxes (e.g. OCR text lines).
  */

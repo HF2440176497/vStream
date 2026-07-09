@@ -32,8 +32,7 @@ int Execute(const std::vector<float*>& cpu_outputs, ModelLoader* model,
         LOGE(PREPROC) << "model input shape not supported";
         return -1;
     }
-    DataFramePtr frame = package->collection.Get<DataFramePtr>(cnstream::kDataFrameTag);
-    cv::Mat img = frame->GetImage();  // BGR
+    cv::Mat img = GetModelInputImage(package);  // BGR：优先派生图，回退原图
     
     int img_w = img.cols;
     int img_h = img.rows;
@@ -102,8 +101,7 @@ class Pre_YOLO_CPU_v2: public Preproc {
         LOGE(PREPROC) << "model input shape not supported";
         return -1;
     }
-    DataFramePtr frame = package->collection.Get<DataFramePtr>(cnstream::kDataFrameTag);
-    cv::Mat img = frame->GetImage();  // BGR
+    cv::Mat img = GetModelInputImage(package);  // BGR：优先派生图，回退原图
     
     int img_w = img.cols;
     int img_h = img.rows;

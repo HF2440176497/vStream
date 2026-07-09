@@ -42,7 +42,7 @@ class Pre_PPOCRv3_rec_Obj : public ObjPreproc {
         LOGE(PREPROC) << "Pre_PPOCRv3 Execute: DataFrame is null";
         return -1;
     }
-    cv::Mat img = frame->GetImage();
+    cv::Mat img = GetModelInputImage(finfo);  // 优先派生图，回退原图
     if (img.empty()) return -1;
 
     int input_h = model->get_height();  // 48
