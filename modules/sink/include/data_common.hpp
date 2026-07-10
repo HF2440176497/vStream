@@ -85,7 +85,7 @@ struct s_obj_in {
   std::string model_name;                   // 模型名
   std::vector<std::vector<float>> key_points;  // 关键点结果列表
   std::string type;                         // 对象类型："original"
-  std::vector<std::pair<std::string, s_attr_info>> attributes;  // 属性列表（key -> 属性值）
+  std::unordered_map<std::string, s_attr_info> attributes;  // 属性列表（key -> 属性值）
 };
 
 inline std::ostream& operator<<(std::ostream& os, const s_obj_in& obj) {
@@ -120,9 +120,8 @@ inline std::ostream& operator<<(std::ostream& os, const s_obj_in& obj) {
   os << "], model_name=" << obj.model_name
      << ", type=" << obj.type
      << ", attributes=[";
-  for (size_t i = 0; i < obj.attributes.size(); ++i) {
-    if (i > 0) os << ", ";
-    os << "(" << obj.attributes[i].first << ": " << obj.attributes[i].second << ")";
+  for (const auto& [key, attr] : obj.attributes) {
+    os << key << ": " << attr << ", ";
   }
   os << "]}";
   return os;

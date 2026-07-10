@@ -502,6 +502,7 @@ class Post_YOLOv8_CPU_v2: public Postproc {
       ObjsVec& global_objs = objs_holder->objs_;
       global_objs.insert(global_objs.end(), local_objs.begin(), local_objs.end());
     }
+    LOGU(POSTPROC) << "After NMS, size: " << local_objs.size();
 
 #ifdef VSTREAM_UNIT_TEST
     if (enable_save_) {
@@ -639,7 +640,7 @@ class Post_YOLOv5_CPU: public Postproc {
     TensorShape output_shape = model->OutputShape(output_index);
 
     int num_classes = output_shape.shape(2) - 5;  // 类别数 = 总通道数 - 5
-    int stride = 5 + num_classes;                // 单个检测框的浮点数个数
+    int stride = 5 + num_classes;                 // 单个检测框的浮点数个数
     int box_num = output_shape.shape(1);          // 640x640 输入下通常为 25200
 
     LOGU(POSTPROC) << "YOLOv5 output_shape: " << output_shape
@@ -720,6 +721,7 @@ class Post_YOLOv5_CPU: public Postproc {
       ObjsVec& global_objs = objs_holder->objs_;
       global_objs.insert(global_objs.end(), local_objs.begin(), local_objs.end());
     }
+    LOGU(POSTPROC) << "After NMS, size: " << local_objs.size();
     return 0;
   }
 

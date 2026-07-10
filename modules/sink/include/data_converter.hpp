@@ -70,7 +70,7 @@ inline s_obj_in ConvertInferObject(const std::shared_ptr<InferObject>& src) {
   {
     auto attrs = src->GetAttributes();
     for (const auto& [key, attr] : attrs) {
-      dst.attributes.push_back({key, ConvertInferAttr(attr)});
+      dst.attributes[key] = ConvertInferAttr(attr);
     }
   }
 
