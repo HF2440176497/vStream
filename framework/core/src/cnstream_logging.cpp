@@ -1,4 +1,6 @@
 #include "cnstream_logging.hpp"
+#include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstdlib>
 #include <ctime>
@@ -64,6 +66,36 @@ void InitLogFlags() {
 #ifdef VSTREAM_UNIT_TEST
   g_log_to_stderr = true;
 #endif
+}
+
+// Map a textual level name to glog's FLAGS_v and FLAGS_minloglevel pair.
+// TRACE  -> VLOG(0..2) + INFO
+// DEBUG  -> VLOG(0..1) + INFO
+// INFO   -> no VLOG    + INFO
+// WARN   -> no VLOG    + WARNING
+// ERROR  -> no VLOG    + ERROR
+// FATAL  -> no VLOG    + FATAL
+// Returns true on recognized level.
+bool ParseLogLevel(const char* value, int& v, int& min_level) {
+  if (value == nullptr || value[0] == '\0') return false;
+  std::string s(value);
+  for (auto& c : s) {
+    c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+  }
+  if (s == "TRACE") {
+    v = 2; min_level = google::GLOG_INFO; return true;
+  } else if (s == "DEBUG") {
+    v = 1; min_level = google::GLOG_INFO; return true;
+  } else if (s == "INFO") {
+    v = 0; min_level = google::GLOG_INFO; return true;
+  } else if (s == "WARNING" || s == "WARN") {
+    v = 0; min_level = google::GLOG_WARNING; return true;
+  } else if (s == "ERROR") {
+    v = 0; min_level = google::GLOG_ERROR; return true;
+  } else if (s == "FATAL") {
+    v = 0; min_level = google::GLOG_FATAL; return true;
+  }
+  return false;
 }
 
 }  // anonymous namespace
@@ -149,12 +181,21 @@ void CustomLogSink::RollFileIfNeeded() {
 }
 
 GlogLevelInitializer::GlogLevelInitializer() {
+  // Defaults: show INFO and DEBUG
+  FLAGS_v = 1;
+  FLAGS_minloglevel = google::GLOG_INFO;
 #ifdef VSTREAM_UNIT_TEST
   FLAGS_v = 1;
-  FLAGS_minloglevel = 0;
-#else
-  FLAGS_minloglevel = 0;
 #endif
+
+  // VSTREAM_LOG_LEVEL=TRACE|DEBUG|INFO|WARN|ERROR|FATAL overrides the default.
+  if (const char* env = std::getenv("VSTREAM_LOG_LEVEL")) {
+    int v = 1, min_level = google::GLOG_INFO;
+    if (ParseLogLevel(env, v, min_level)) {
+      FLAGS_v = v;
+      FLAGS_minloglevel = min_level;
+    }
+  }
 
   // glog's LogMessage::Flush() writes to stderr whenever
   // IsGoogleLoggingInitialized() is false, regardless of FLAGS_logtostderr.

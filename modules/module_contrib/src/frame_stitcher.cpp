@@ -1,22 +1,3 @@
-/*************************************************************************
- * Copyright (C) [2019] by Cambricon, Inc. All rights reserved
- *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- *************************************************************************/
 
 #include "frame_stitcher.hpp"
 
@@ -74,7 +55,7 @@ bool FrameStitcher::Open(ModuleParamSet param_set) {
   }
   if (param_set.find(kParamCropRatio) != param_set.end()) {
     try {
-      crop_ratio_ = std::clamp(std::stof(param_set.at(kParamCropRatio)), 0.01f, 0.99f);
+      crop_ratio_ = std::clamp(std::stof(param_set.at(kParamCropRatio)), 0.01f, 1.0f);
     } catch (const std::exception&) {
       LOGE(STITCHER) << "invalid crop_ratio, fallback to " << crop_ratio_;
     }
@@ -118,7 +99,6 @@ int FrameStitcher::Process(std::shared_ptr<FrameInfo> data) {
   }
   const std::string& stream_id = data->GetStreamId();
 
-  // 未启用：不写派生图，Preproc 自动回退原图；但仍缓存上一帧以便随时启用
   if (!enable_) {
     std::lock_guard<std::mutex> lk(cache_mtx_);
     frame_cache_[stream_id] = cur.clone();
@@ -143,7 +123,7 @@ int FrameStitcher::Process(std::shared_ptr<FrameInfo> data) {
   }
 
   auto derived = std::make_shared<ModelInputImage>();
-  derived->image = cur;  // 先占位，下面覆盖；保证失败时也有可读值
+  derived->image = cur;
 
   int cur_w = cur.cols;
   int cur_h = cur.rows;
