@@ -248,10 +248,16 @@ bool PushHandlerIm::InitStream() {
     AVDictionary* avio_opts = nullptr;
     av_dict_set(&avio_opts, "tcp_nodelay", std::to_string(output_tcp_nodelay_).c_str(), 0);
     av_dict_set(&avio_opts, "send_buffer_size", std::to_string(output_send_buffer_size_).c_str(), 0);
+    // 设置连接/读写超时（微秒），避免 avio_open2 在服务器不可达时无限阻塞
+    av_dict_set(&avio_opts, "rw_timeout",
+                std::to_string(static_cast<int64_t>(output_timeout_ms_) * 1000).c_str(), 0);
     ret = avio_open2(&ctx_.fmt_ctx->pb, output_url_.c_str(), AVIO_FLAG_WRITE, nullptr, &avio_opts);
     av_dict_free(&avio_opts);
     if (ret < 0) {
-      LOGE(SINK) << "[" << stream_id_ << "]: avio_open2 failed";
+      char errbuf[AV_ERROR_MAX_STRING_SIZE];
+      av_strerror(ret, errbuf, sizeof(errbuf));
+      LOGE(SINK) << "[" << stream_id_ << "]: avio_open2 failed: " << errbuf
+                 << " (url=" << output_url_ << ", timeout=" << output_timeout_ms_ << "ms)";
       return false;
     }
   }
@@ -495,7 +501,14 @@ void PushHandlerIm::EncodeWorkerLoop() {
     std::lock_guard<std::recursive_mutex> lk(stream_mtx_);
     if (!stream_initialized_) {
       if (!InitStream()) {
-        LOGE(SINK) << "[" << stream_id_ << "]: InitStream failed in worker";
+        LOGE(SINK) << "[" << stream_id_ << "]: InitStream failed in worker, "
+                   << "will retry after " << kReconnectIntervalMs << "ms backoff";
+        // 退避等待，避免对推流服务器高频重连
+        auto retry_deadline = std::chrono::steady_clock::now()
+                            + std::chrono::milliseconds(kReconnectIntervalMs);
+        while (IsRunning() && std::chrono::steady_clock::now() < retry_deadline) {
+          std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
         continue;
       }
     }

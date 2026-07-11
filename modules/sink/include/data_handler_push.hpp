@@ -192,7 +192,7 @@ class PushHandlerIm {
   std::thread encode_thread_;
 
   static constexpr int kMaxReconnectAttempts = 3;
-  static constexpr int64_t kReconnectIntervalMs = 1000;
+  static constexpr int64_t kReconnectIntervalMs = 1600;
   int reconnect_attempts_ = 0;
   std::chrono::steady_clock::time_point last_reconnect_time_;
   bool last_write_network_error_ = false;

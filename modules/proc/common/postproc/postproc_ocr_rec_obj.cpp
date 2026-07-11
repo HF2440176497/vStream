@@ -128,6 +128,7 @@ class Post_PPOCRv3_rec_Obj : public ObjPostproc {
 
     if (count == 0) {
         LOGW(POSTPROC) << "no valid character decoded";
+        pobj->AddAttribute(attribute_keys::key_content, InferAttr());
         return 0;
     }
     float score = score_sum / count;
