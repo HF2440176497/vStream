@@ -1,5 +1,7 @@
 
 #include <algorithm>
+#include <cctype>
+#include <string>
 
 #include "common.hpp"
 #include "obj_filter.hpp"
@@ -11,6 +13,37 @@ namespace cnstream {
 static const std::string key_model_name = "f_model_name";
 static const std::string key_obj_id = "f_obj_id";
 static const std::string key_obj_type = "f_obj_type";
+
+namespace {
+
+// Trim ASCII whitespace from both ends of a string.
+std::string Trim(const std::string& s) {
+  size_t b = 0, e = s.size();
+  while (b < e && std::isspace(static_cast<unsigned char>(s[b]))) ++b;
+  while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1]))) --e;
+  return s.substr(b, e - b);
+}
+
+// Split a comma-separated string into non-empty trimmed tokens.
+// Empty segments (caused by leading/trailing/duplicated commas) are dropped
+// so that inputs like "1, , 2 ,, 3" all parse cleanly to {"1","2","3"}.
+std::vector<std::string> SplitCsv(const std::string& raw) {
+  std::vector<std::string> tokens;
+  size_t start = 0;
+  while (start <= raw.size()) {
+    size_t end = raw.find(',', start);
+    if (end == std::string::npos) end = raw.size();
+    std::string token = Trim(raw.substr(start, end - start));
+    if (!token.empty()) {
+      tokens.push_back(std::move(token));
+    }
+    if (end == raw.size()) break;
+    start = end + 1;
+  }
+  return tokens;
+}
+
+}  // namespace
 
 
 class ObjFilterCommon : public ObjFilter {
@@ -59,54 +92,30 @@ class ObjFilterCommon : public ObjFilter {
   }
 
  private:
-  // Parse a "#a!b!c" style string into a list of integers.
-  // The leading '#' is optional.
+  // Parse a "1,2,3,4" style string into a list of integers.
+  // Whitespace around tokens and extra/leading/trailing commas are tolerated;
+  // tokens that fail to parse as integers are silently skipped.
   static std::vector<int> ParseIntList(const std::string& raw) {
     std::vector<int> result;
-    std::string value = raw;
-    if (!value.empty() && value[0] == '#') {
-      value.erase(0, 1);
-    }
-    size_t start = 0;
-    while (start < value.size()) {
-      size_t end = value.find('!', start);
-      if (end == std::string::npos) {
-        end = value.size();
-      }
-      std::string token = value.substr(start, end - start);
-      if (!token.empty()) {
-        try {
-          result.push_back(std::stoi(token));
-        } catch (const std::exception&) {
-          // ignore invalid integer token
+    for (const std::string& token : SplitCsv(raw)) {
+      try {
+        size_t consumed = 0;
+        int value = std::stoi(token, &consumed);
+        if (consumed == token.size()) {
+          result.push_back(value);
         }
+        // trailing garbage in token -> skip
+      } catch (const std::exception&) {
+        // ignore invalid integer token
       }
-      start = end + 1;
     }
     return result;
   }
 
-  // Parse a "#merged!original" style string into a list of strings.
-  // The leading '#' is optional.
+  // Parse a "merged,original" style string into a list of strings.
+  // Whitespace around tokens and extra/leading/trailing commas are tolerated.
   static std::vector<std::string> ParseStringList(const std::string& raw) {
-    std::vector<std::string> result;
-    std::string value = raw;
-    if (!value.empty() && value[0] == '#') {
-      value.erase(0, 1);
-    }
-    size_t start = 0;
-    while (start < value.size()) {
-      size_t end = value.find('!', start);
-      if (end == std::string::npos) {
-        end = value.size();
-      }
-      std::string token = value.substr(start, end - start);
-      if (!token.empty()) {
-        result.push_back(token);
-      }
-      start = end + 1;
-    }
-    return result;
+    return SplitCsv(raw);
   }
 
  private:

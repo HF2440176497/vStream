@@ -36,6 +36,17 @@ bool PushHandlerIm::Open() {
   if (mark_render_) {
     mark_config_.draw_label = GetIntParam(param_set_, key_mark_label).value_or(0) != 0;
     mark_config_.draw_score = GetIntParam(param_set_, key_mark_score).value_or(0) != 0;
+
+    auto mark_filter = GetStrParam(param_set_, key_mark_filter);
+    if (mark_filter && !mark_filter->empty()) {
+      if (!mark_config_.ParseMarkFilter(*mark_filter)) {
+        LOGE(SINK) << "[" << stream_id_ << "]: invalid mark '" << *mark_filter
+                   << "', mark will be disabled";
+        mark_render_ = false;
+      } else if (!mark_config_.filter_model_ids.empty()) {
+        LOGI(SINK) << "[" << stream_id_ << "]: mark filter enabled, " << *mark_filter;
+      }
+    }
   }
 
   running_.store(true);

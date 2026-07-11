@@ -1,6 +1,8 @@
 #include "mark_render.hpp"
 
+#include <cctype>
 #include <mutex>
+#include <sstream>
 #include <string>
 
 #include "cnstream_logging.hpp"
@@ -19,6 +21,90 @@ std::unique_ptr<MarkRender> MarkRender::Create(DevType device_type) {
   }
 #endif
   return std::make_unique<CpuMarkRender>();
+}
+
+namespace {
+
+std::string Trim(const std::string& s) {
+  size_t b = 0, e = s.size();
+  while (b < e && std::isspace(static_cast<unsigned char>(s[b]))) ++b;
+  while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1]))) --e;
+  return s.substr(b, e - b);
+}
+
+bool ShouldDraw(const MarkConfig& config, const InferObject& obj) {
+  if (config.filter_model_ids.empty()) {
+    return true;  // no filter configured, draw everything
+  }
+  auto it = config.filter_model_ids.find(obj.model_name);
+  if (it == config.filter_model_ids.end()) {
+    return false;
+  }
+  // Empty id-set for a model = wildcard (any id under this model_name is allowed).
+  if (it->second.empty()) {
+    return true;
+  }
+  return it->second.count(obj.id) > 0;
+}
+
+}  // namespace
+
+bool MarkConfig::ParseMarkFilter(const std::string& filter) {
+  filter_model_ids.clear();
+  std::string trimmed = Trim(filter);
+  if (trimmed.empty()) {
+    return true;  // empty filter is a valid no-op
+  }
+
+  std::unordered_map<std::string, std::set<int>> parsed;
+  std::stringstream entries(trimmed);
+  std::string entry;
+  while (std::getline(entries, entry, ';')) {
+    entry = Trim(entry);
+    if (entry.empty()) continue;
+
+    size_t sep = entry.find(':');
+    if (sep == std::string::npos) {
+      LOGE(SINK) << "Mark filter: missing ':' in entry '" << entry << "'";
+      filter_model_ids.clear();
+      return false;
+    }
+    std::string model = Trim(entry.substr(0, sep));
+    std::string ids   = Trim(entry.substr(sep + 1));
+    if (model.empty()) {
+      LOGE(SINK) << "Mark filter: empty model name in entry '" << entry << "'";
+      filter_model_ids.clear();
+      return false;
+    }
+
+    std::set<int> id_set;
+    if (!ids.empty()) {
+      std::stringstream id_stream(ids);
+      std::string id_str;
+      while (std::getline(id_stream, id_str, ',')) {
+        id_str = Trim(id_str);
+        if (id_str.empty()) continue;
+        try {
+          size_t consumed = 0;
+          int id = std::stoi(id_str, &consumed);
+          if (consumed != id_str.size()) {
+            LOGE(SINK) << "Mark filter: trailing chars in id '" << id_str << "'";
+            filter_model_ids.clear();
+            return false;
+          }
+          id_set.insert(id);
+        } catch (const std::exception&) {
+          LOGE(SINK) << "Mark filter: invalid id '" << id_str << "' in entry '" << entry << "'";
+          filter_model_ids.clear();
+          return false;
+        }
+      }
+    }
+    parsed[model] = std::move(id_set);
+  }
+
+  filter_model_ids = std::move(parsed);
+  return true;
 }
 
 bool CpuMarkRender::Render(DataFramePtr frame, const InferObjsPtr& objs,
@@ -46,6 +132,7 @@ bool CpuMarkRender::Render(DataFramePtr frame, const InferObjsPtr& objs,
   std::lock_guard<std::mutex> lk(objs->mutex_);
   for (const auto& obj : objs->objs_) {
     if (!obj) continue;
+    if (!ShouldDraw(config, *obj)) continue;
 
     float x = obj->bbox.x;
     float y = obj->bbox.y;

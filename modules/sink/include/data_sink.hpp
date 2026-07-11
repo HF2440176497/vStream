@@ -38,6 +38,7 @@ inline const std::string key_output_send_buffer_size = "send_buffer_size";
 inline const std::string key_mark_enable = "mark_enable";
 inline const std::string key_mark_label = "mark_label";
 inline const std::string key_mark_score = "mark_score";
+inline const std::string key_mark_filter = "mark_filter";
 
 inline const std::set<std::string> key_supported_formats = {"mp4", "flv"};
 
