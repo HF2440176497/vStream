@@ -98,16 +98,18 @@ cv::Mat DataFrame::GetImage() {
  */
 size_t DataFrame::GetPlaneBytes(int plane_idx) const {
   if (plane_idx < 0 || plane_idx >= GetPlanes()) return 0;
-  switch (fmt_) {
+  const DataFormat fmt = meta_.fmt;
+  const int height = meta_.height;
+  switch (fmt) {
     case DataFormat::PIXEL_FORMAT_BGR24:
     case DataFormat::PIXEL_FORMAT_RGB24:
-      return height_ * stride_[0];
+      return height * meta_.stride[0];
     case DataFormat::PIXEL_FORMAT_YUV420_NV12:
     case DataFormat::PIXEL_FORMAT_YUV420_NV21:
       if (0 == plane_idx)
-        return height_ * stride_[0];
+        return height * meta_.stride[0];
       else if (1 == plane_idx)
-        return std::ceil(1.0 * height_ * stride_[1] / 2);
+        return std::ceil(1.0 * height * meta_.stride[1] / 2);
       else
         LOGF(FRAME) << "plane index wrong.";
         return 0;
@@ -130,8 +132,9 @@ size_t DataFrame::GetBytes() const {
  * 调用处：CopyToSyncMem(dec_frame)
  */
 std::shared_ptr<MemOp> DataFrame::CreateMemOp() {
-  auto device_type = this->ctx_.device_type;
-  int device_id = this->ctx_.device_id;
+  const DevContext& ctx = GetCtx();
+  auto device_type = ctx.device_type;
+  int device_id = ctx.device_id;
   std::shared_ptr<MemOp> memop = MemOpFactory::Instance().CreateMemOp(device_type, device_id);  // inside mutex_ lock
   if (!memop) {
     LOGF(FRAME) << "CreateMemOp: failed to create MemOp from " << static_cast<int>(device_type) << " with device_id " << device_id;
@@ -146,12 +149,14 @@ std::shared_ptr<MemOp> DataFrame::CreateMemOp() {
  * @param stream 同步内存流
  */
 void DataFrame::CopyToSyncMem(DecodeFrame* dec_frame, void* stream) {
-  if (this->ctx_.device_type == DevType::INVALID) {
+  const DevContext& ctx = GetCtx();
+  if (ctx.device_type == DevType::INVALID) {
     LOGF(FRAME) << "DataFrame: device_type is INVALID";
     return;
   }
-  if (DataFormat::PIXEL_FORMAT_RGB24 != this->fmt_ && DataFormat::PIXEL_FORMAT_BGR24 != this->fmt_) {
-    LOGF(FRAME) << "DataFrame: fmt not RGB24 or BGR24, this fmt is " << static_cast<int>(this->fmt_);
+  const DataFormat fmt = GetFmt();
+  if (DataFormat::PIXEL_FORMAT_RGB24 != fmt && DataFormat::PIXEL_FORMAT_BGR24 != fmt) {
+    LOGF(FRAME) << "DataFrame: fmt not RGB24 or BGR24, this fmt is " << static_cast<int>(fmt);
     return;
   }
 
@@ -161,7 +166,7 @@ void DataFrame::CopyToSyncMem(DecodeFrame* dec_frame, void* stream) {
 
   // reuse DecodeFrame plane
   // 计算 plane_bytes 使用的 stride 是 SourceRender::Process 手动对齐的步长
-  if (this->deAllocator_ != nullptr && dec_frame->fmt == this->fmt_) {
+  if (this->deAllocator_ != nullptr && dec_frame->fmt == fmt) {
     for (int i = 0; i < GetPlanes(); i++) {
       const size_t plane_bytes = GetPlaneBytes(i);
       this->data_[i] = memop->CreateSyncedMemory(plane_bytes);
@@ -171,7 +176,7 @@ void DataFrame::CopyToSyncMem(DecodeFrame* dec_frame, void* stream) {
   }
   const size_t bytes = GetPlaneBytes(0);
   this->data_[0] = memop->CreateSyncedMemory(bytes);
-  int ret = memop->ConvertImageFormat(this->data_[0].get(), this->fmt_, dec_frame, stream);
+  int ret = memop->ConvertImageFormat(this->data_[0].get(), fmt, dec_frame, stream);
   if (ret != 0) {
     LOGF(FRAME) << "DataFrame: Format conversion failed with error code: " << ret;
     return;

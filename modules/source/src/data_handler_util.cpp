@@ -16,21 +16,20 @@ int SourceRender::Process(std::shared_ptr<FrameInfo> frame_info, DecodeFrame *de
     return -1;
   }
   if (!dec_frame->valid) return -1;
-  frame->frame_id_ = frame_id;
-  frame->width_ = dec_frame->width;
-  frame->height_ = dec_frame->height;
+
+  DataFrame::Meta meta;
+  meta.frame_id  = frame_id;
+  meta.width     = dec_frame->width;
+  meta.height    = dec_frame->height;
+  meta.fmt       = DataFormat::PIXEL_FORMAT_RGB24;  // dst fmt
+  meta.ctx       = DevContext(dec_frame->device_type, dec_frame->device_id);
+  // RGB24 只需要对齐 plane 0 的步长
+  meta.stride[0] = GetStride_8U_C3(meta.width);
+  frame->SetMeta(std::move(meta));
+
   if (dec_frame->buf_ref) {
     frame->deAllocator_ = std::make_unique<Deallocator>(dec_frame->buf_ref.release());
     dec_frame->buf_ref = nullptr;
-  }
-  frame->ctx_ = DevContext(dec_frame->device_type, dec_frame->device_id);
-
-  // 设置为 RGB 格式，需要手动设置对齐步长
-  frame->fmt_ = DataFormat::PIXEL_FORMAT_RGB24;  // dst fmt
-  for (int i = 0; i < frame->GetPlanes(); ++i) {
-    if (i == 0) {
-      frame->stride_[i] = GetStride_8U_C3(frame->width_);
-    }
   }
   frame->CopyToSyncMem(dec_frame, stream);
   return 0;

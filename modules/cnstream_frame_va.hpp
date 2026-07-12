@@ -40,17 +40,30 @@ inline const std::string key_content = "content";  // 识别结果
  */
 class DataFrame : public NonCopyable {
  public:
+  /**
+   * @brief 不可变帧元数据：由 SourceRender::Process 一次性设置，
+   *        后续所有模块只能通过 const getter 访问，禁止修改。
+   *
+   * 包含帧 ID、像素格式、尺寸、对齐步长和设备上下文。
+   * 任何 DataFrame 内部实现 / 下游模块都应通过 DataFrame 的 const 接口读取，不应直接访问本结构。
+   */
+  struct Meta {
+    DevContext ctx;
+    uint64_t frame_id = static_cast<uint64_t>(-1);
+    DataFormat fmt = DataFormat::INVALID;
+    int width = 0;
+    int height = 0;
+    int stride[FRAME_MAX_PLANES] = {0};
+  };
+
   DataFrame() {
     for (int i = 0; i < FRAME_MAX_PLANES; ++i) {
       data_[i] = nullptr;
     }
-    for (int i = 0; i < FRAME_MAX_PLANES; ++i) {
-      stride_[i] = 0;
-    }
   };
   ~DataFrame() = default;
 
-  int GetPlanes() const { return FormatPlanes(fmt_); }
+  int GetPlanes() const { return FormatPlanes(meta_.fmt); }
 
   size_t GetPlaneBytes(int plane_idx) const;
 
@@ -69,16 +82,17 @@ class DataFrame : public NonCopyable {
   }
 
  public:
-  uint64_t GetFrameId() const { return frame_id_; }
-  DataFormat GetFmt() const { return fmt_; }
-  int GetWidth() const { return width_; }
-  int GetHeight() const { return height_; }
-  int GetStride(int plane_idx) const { return stride_[plane_idx]; }
-  const DevContext& GetCtx() const { return ctx_; }
+  uint64_t GetFrameId() const { return meta_.frame_id; }
+  DataFormat GetFmt() const { return meta_.fmt; }
+  int GetWidth() const { return meta_.width; }
+  int GetHeight() const { return meta_.height; }
+  int GetStride(int plane_idx) const { return meta_.stride[plane_idx]; }
+  const DevContext& GetCtx() const { return meta_.ctx; }
+  const Meta& GetMeta() const { return meta_; }
 
   std::unique_ptr<CNSyncedMemory> data_[FRAME_MAX_PLANES];
   std::unique_ptr<IDataDeallocator> deAllocator_ = nullptr;
-  
+
 #ifdef VSTREAM_UNIT_TEST
  public:
 #else
@@ -87,13 +101,19 @@ class DataFrame : public NonCopyable {
   mutable std::mutex mtx_;  // protect mat_
   cv::Mat mat_;
 
-  DevContext ctx_;
-  uint64_t frame_id_ = -1;
-  DataFormat fmt_ = DataFormat::INVALID;
-  int width_ = 0;
-  int height_ = 0;
-  int stride_[FRAME_MAX_PLANES];
-  
+  Meta meta_;
+  bool meta_set_ = false;
+
+  // Only invoked by SourceRender::Process once.
+  void SetMeta(Meta meta) {
+    if (meta_set_) {
+      LOGW(FRAME) << "DataFrame::SetMeta: meta already set, ignored";
+      return;
+    }
+    meta_ = std::move(meta);
+    meta_set_ = true;
+  }
+
   friend class SourceRender;
 
 #ifdef VSTREAM_UNIT_TEST

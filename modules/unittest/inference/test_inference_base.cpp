@@ -369,9 +369,9 @@ void GetResult(std::shared_ptr<InferObserver> observer) {
         DataFramePtr frame = data->collection.Get<DataFramePtr>(kDataFrameTag);
 
         // 测试时，需要按顺序放入 frame_id = 0, ... framedata
-        EXPECT_EQ(frame->frame_id_, i);
+        EXPECT_EQ(frame->GetFrameId(), i);
         i++;
-        std::cout << "Got data, frame id = " << frame->frame_id_ << std::endl;
+        std::cout << "Got data, frame id = " << frame->GetFrameId() << std::endl;
       } else {
         std::cout << "Got EOS, break" << std::endl;
         break;
