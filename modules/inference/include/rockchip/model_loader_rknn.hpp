@@ -15,6 +15,10 @@
 
 namespace cnstream {
 
+inline constexpr std::string key_want_float = "want_float";
+inline constexpr std::string key_core_mask = "core_mask";
+
+
 class ModelLoaderRknn : public ModelLoader {
  public:
   explicit ModelLoaderRknn(int device_id);
@@ -33,12 +37,15 @@ class ModelLoaderRknn : public ModelLoader {
   bool LoadModel(const std::string& engine_path);
   bool QueryTensorInfo();
   bool ParseInputOutputAttr();
+  bool SetCoreMask(int core_mask);
 
   rknn_context rknn_ctx_ = 0;
   rknn_input_output_num io_num_;
   std::vector<rknn_tensor_attr> input_attrs_;
   std::vector<rknn_tensor_attr> output_attrs_;
-  bool is_quant_ = false;
+  bool is_quant_ = false;        // 模型是否量化（仅作信息记录）
+  bool want_float_ = true;       // RKNN 输出是否转为 float32
+  int core_mask_ = 0;            // RKNN NPU core mask
 
   std::mutex mutex_;
 };
