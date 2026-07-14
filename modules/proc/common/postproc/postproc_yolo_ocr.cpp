@@ -30,6 +30,7 @@ const std::string key_threshold = "threshold";
 const std::string key_interval = "interval";
 const std::string key_max_boxes_num = "max_boxes_num";
 const std::string key_nms_iou_threshold = "nms_iou_threshold";
+const std::string key_enable_save = "enable_save";
 
 float box_iou(float aleft, float atop, float aright, float abottom,
               float bleft, float btop, float bright, float bbottom) {
@@ -180,6 +181,16 @@ class Post_YOLOv5_CPU_OCR: public Postproc {
     if (data.find(postproc_yolo_ocr::key_nms_iou_threshold) != data.end()) {
       nms_iou_threshold_ = data[postproc_yolo_ocr::key_nms_iou_threshold].get<float>();
     }
+
+    if (data.find(postproc_yolo_ocr::key_enable_save) != data.end()) {
+      enable_save_ = data[postproc_yolo_ocr::key_enable_save].get<bool>();
+    }
+    LOGI(POSTPROC) << "item_infos_ size = " << item_infos_.size();
+    for (const auto& kv : item_infos_) {
+      LOGI(POSTPROC) << "  class " << kv.first
+                    << " name=" << kv.second.name
+                    << " threshold=" << kv.second.threshold;
+    }
     return true;
   }
 
@@ -238,7 +249,7 @@ class Post_YOLOv5_CPU_OCR: public Postproc {
 
       float score = obj_conf * cls_conf;
 
-      float class_threshold = 0.0f;
+      float class_threshold = 1.0f;
       if (item_infos_.find(detect_class) != item_infos_.end()) {
         class_threshold = item_infos_[detect_class].threshold;
       }
@@ -376,7 +387,7 @@ class Post_YOLOv5_CPU_OCR: public Postproc {
 
 #ifdef VSTREAM_UNIT_TEST
     if (enable_save_) {
-      cv::Mat img = frame->GetImage().clone();  // BGR
+      cv::Mat img = frame->GetImage().clone();
       // 蓝色画原始字符框 (boxes)
       for (const auto& b : boxes) {
         cv::rectangle(img, cv::Rect(b.x, b.y, b.w, b.h), cv::Scalar(255, 0, 0), 2);
