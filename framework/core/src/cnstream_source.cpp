@@ -101,6 +101,14 @@ int SourceModule::AddSource(std::shared_ptr<SourceHandler> handler) {
     LOGE(CORE) << "handler is null";
     return -1;
   }
+  // Reject AddSource if pipeline is stopping or not running
+  Pipeline* pipeline = GetContainer();
+  if (pipeline && (pipeline->IsStopping() || !pipeline->IsRunning())) {
+    LOGE(CORE) << "[" << handler->GetStreamId() << "]: "
+               << "AddSource rejected, pipeline is "
+               << (pipeline->IsStopping() ? "stopping" : "not running");
+    return -1;
+  }
   // param_set_ set in DataSource::Open from Module custom params
   if (!handler->CheckHandlerParams(param_set_)) {
     LOGE(CORE) << "handler check params failed";
@@ -120,6 +128,12 @@ int SourceModule::AddSource(std::shared_ptr<SourceHandler> handler) {
   if (source_map_.size() >= GetMaxStreamNumber()) {
     LOGW(CORE) << "[" << stream_id << "]: "
                << " doesn't add to pipeline because of maximum limitation: " << GetMaxStreamNumber();
+    return -1;
+  }
+  // Double-check stopping_ after acquiring lock to prevent race
+  if (pipeline && pipeline->IsStopping()) {
+    LOGE(CORE) << "[" << stream_id << "]: "
+               << "AddSource rejected, pipeline is stopping (post-lock check)";
     return -1;
   }
   SetStreamRemoved(stream_id, false);

@@ -57,8 +57,9 @@ void PipelineWrapper(py::module &m) {
       .def("build_pipeline", static_cast<bool (Pipeline::*)(const CNGraphConfig &)>(&Pipeline::BuildPipeline))
       .def("build_pipeline_by_json_file", &Pipeline::BuildPipelineByJSONFile)
       .def("start", &Pipeline::Start)
-      .def("stop", &Pipeline::Stop, py::call_guard<py::gil_scoped_release>())
+      .def("stop", &Pipeline::Stop)
       .def("is_running", &Pipeline::IsRunning)
+      .def("is_stopping", &Pipeline::IsStopping)
       .def("get_data_source",
            [](Pipeline *pipeline, const std::string &module_name) {
               auto* module = pipeline->GetModule(module_name);

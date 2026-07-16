@@ -210,6 +210,14 @@ class Pipeline : private NonCopyable {
    */
   bool IsRunning() const;
   /**
+   * @brief The stopping status of a pipeline.
+   *
+   * @return Returns true if the pipeline is in the process of stopping (Stop() is executing).
+   *         Returns false otherwise. Modules can query this to reject concurrent
+   *         AddSource/AddSink operations during shutdown.
+   */
+  bool IsStopping() const;
+  /**
    * @brief Gets a module in current pipeline by name.
    *
    * @param[in] module_name The module name specified in the module configuration.
@@ -427,6 +435,10 @@ inline bool Pipeline::BuildPipelineByJSONFile(const std::string& config_file) {
 
 inline bool Pipeline::IsRunning() const {
   return running_.load();
+}
+
+inline bool Pipeline::IsStopping() const {
+  return stopping_.load();
 }
 
 inline EventBus* Pipeline::GetEventBus() const {

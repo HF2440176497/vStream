@@ -36,6 +36,7 @@ void SourceModuleWrapper(const py::module &);
 void PipelineWrapper(py::module &);
 void DataHandlerWrapper(const py::module &);
 void SinkModuleWrapper(py::module &);
+void ModelValidatorWrapper(const py::module &);
 
 PYBIND11_MODULE(vstream, m) {
   m.doc() = "vstream python api";
@@ -51,6 +52,7 @@ PYBIND11_MODULE(vstream, m) {
   PipelineWrapper(m);
   DataHandlerWrapper(m);
   SinkModuleWrapper(m);
+  ModelValidatorWrapper(m);
 }
 
 }  // namespace cnstream

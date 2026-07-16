@@ -81,6 +81,25 @@ class DataFrame : public NonCopyable {
     return true;
   }
 
+  /**
+   * @brief Directly set BGR image and metadata. For ModelValidator and testing.
+   * @param image BGR image (CV_8UC3). Data is cloned internally.
+   */
+  void SetImage(const cv::Mat& image) {
+    std::lock_guard<std::mutex> lk(mtx_);
+    if (meta_set_) {
+      LOGW(FRAME) << "DataFrame::SetImage: meta already set, failed";
+      return;
+    }
+    Meta meta;
+    meta.fmt = DataFormat::PIXEL_FORMAT_BGR24;
+    meta.width = image.cols;
+    meta.height = image.rows;
+    meta.stride[0] = static_cast<int>(image.step);
+    SetMeta(meta);
+    mat_ = image.clone();
+  }
+
  public:
   uint64_t GetFrameId() const { return meta_.frame_id; }
   DataFormat GetFmt() const { return meta_.fmt; }
@@ -98,7 +117,7 @@ class DataFrame : public NonCopyable {
 #else
  private:
 #endif
-  mutable std::mutex mtx_;  // protect mat_
+  mutable std::mutex mtx_;  // protect mat_ and meta_
   cv::Mat mat_;
 
   Meta meta_;
@@ -106,6 +125,7 @@ class DataFrame : public NonCopyable {
 
   // Only invoked by SourceRender::Process once.
   void SetMeta(Meta meta) {
+    std::lock_guard<std::mutex> lk(mtx_);
     if (meta_set_) {
       LOGW(FRAME) << "DataFrame::SetMeta: meta already set, ignored";
       return;

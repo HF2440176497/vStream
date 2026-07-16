@@ -59,12 +59,14 @@ Pipeline::Pipeline(const std::string& name) : name_(name) {
 }
 
 Pipeline::~Pipeline() {
+  LOGI(CORE) << "Pipeline [" << GetName() << "] destructor entered, calling Stop()";
   Stop();
   exit_msg_loop_ = true;
   // note: smsg_thread_ not joined in Stop 
   if (smsg_thread_.joinable()) {
     smsg_thread_.join();
   }
+  LOGI(CORE) << "Pipeline [" << GetName() << "] destructor complete";
   event_bus_.reset();
   graph_.reset();  // must release before idxManager_;
   idxManager_.reset();

@@ -15,6 +15,14 @@ int SinkModule::AddSink(std::shared_ptr<SinkHandler> handler) {
     LOGE(CORE) << "handler is null";
     return -1;
   }
+  // Reject AddSink if pipeline is stopping or not running
+  Pipeline* pipeline = GetContainer();
+  if (pipeline && (pipeline->IsStopping() || !pipeline->IsRunning())) {
+    LOGE(CORE) << "[" << handler->GetStreamId() << "]: "
+               << "AddSink rejected, pipeline is "
+               << (pipeline->IsStopping() ? "stopping" : "not running");
+    return -1;
+  }
   if (!handler->CheckHandlerParams(param_set_)) {
     LOGE(CORE) << "handler check params failed";
     return -1;
@@ -25,6 +33,13 @@ int SinkModule::AddSink(std::shared_ptr<SinkHandler> handler) {
   }
   std::string stream_id = handler->GetStreamId();
   std::unique_lock<std::mutex> lock(mutex_);
+
+  // Double-check stopping_ after acquiring lock to prevent race
+  if (pipeline && pipeline->IsStopping()) {
+    LOGE(CORE) << "[" << stream_id << "]: "
+               << "AddSink rejected, pipeline is stopping (post-lock check)";
+    return -1;
+  }
 
   auto it = sink_map_.find(stream_id);
   if (it != sink_map_.end()) {
