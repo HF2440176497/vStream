@@ -42,7 +42,13 @@
 
 namespace cnstream {
 
+// Pipeline 实例计数器，为每个 Pipeline 分配唯一 instance_id，
+// 用于在日志中区分同名的 Pipeline 不同实例
+std::atomic<uint64_t> Pipeline::instance_counter_{0};
+
 Pipeline::Pipeline(const std::string& name) : name_(name) {
+  instance_id_ = instance_counter_.fetch_add(1);
+  LOGI(CORE) << "Pipeline [" << GetName() << "] created, instance_id=" << instance_id_;
   // stream message handle thread
   exit_msg_loop_ = false;
   smsg_thread_ = std::thread(&Pipeline::StreamMsgHandleFunc, this);
@@ -59,14 +65,21 @@ Pipeline::Pipeline(const std::string& name) : name_(name) {
 }
 
 Pipeline::~Pipeline() {
-  LOGI(CORE) << "Pipeline [" << GetName() << "] destructor entered, calling Stop()";
+  // instance_id 让同名的多个对象在日志中可区分。
+  if (IsRunning()) {
+    LOGI(CORE) << "Pipeline [" << GetName() << "] instance_id=" << instance_id_
+               << " destructor entered, pipeline was running, calling Stop()";
+  } else {
+    LOGI(CORE) << "Pipeline [" << GetName() << "] instance_id=" << instance_id_
+               << " destructor entered, pipeline was NOT running, Stop() will be a no-op";
+  }
   Stop();
   exit_msg_loop_ = true;
   // note: smsg_thread_ not joined in Stop 
   if (smsg_thread_.joinable()) {
     smsg_thread_.join();
   }
-  LOGI(CORE) << "Pipeline [" << GetName() << "] destructor complete";
+  LOGI(CORE) << "Pipeline [" << GetName() << "] instance_id=" << instance_id_ << " destructor complete";
   event_bus_.reset();
   graph_.reset();  // must release before idxManager_;
   idxManager_.reset();
@@ -132,7 +145,10 @@ ModuleProfiler* Pipeline::GetModuleProfiler(const std::string& module_name) cons
  */
 bool Pipeline::Start() {
   if (IsRunning()) {
-    LOGW(CORE) << "Pipeline is running, the Pipeline::Start function is called multiple times.";
+    // 同一个对象被重复 Start。注意：这与“多个同名对象各自 Start”不同
+    // 后者不会触发本告警（各自的 running_ 初值为 false）靠 instance_id 可在日志中辨别
+    LOGW(CORE) << "Pipeline [" << GetName() << "] instance_id=" << instance_id_
+               << " is running, Start() called multiple times on the SAME object.";
     return false;
   }
 
@@ -177,12 +193,12 @@ bool Pipeline::Start() {
       threads_.push_back(std::thread(&Pipeline::TaskLoop, this, &node->data, conveyor_idx));
     }
   }
-  LOGI(CORE) << "Pipeline[" << GetName() << "] " << "Start";
+  LOGI(CORE) << "Pipeline[" << GetName() << "] instance_id=" << instance_id_ << " Start";
   return true;
 }
 
 bool Pipeline::Stop() {
-  LOGD(CORE) << "Pipeline [" << GetName() << "] " << "Prepare to stop";
+  LOGD(CORE) << "Pipeline [" << GetName() << "] instance_id=" << instance_id_ << " Prepare to stop";
   bool expected = false;
   if (!stopping_.compare_exchange_strong(expected, true)) {
     // 已经有其他线程在执行 Stop()，等待其完全结束（stopping_ 复位）
@@ -235,7 +251,7 @@ bool Pipeline::Stop() {
   // the callback function will manage the life cycle of a python object.
   // When a circular reference occurs, GC(python) cannot handle it, resulting in a memory leak.
   RegisterFrameDoneCallBack(NULL);
-  LOGI(CORE) << "Pipeline[" << GetName() << "] " << "Stop complete";
+  LOGI(CORE) << "Pipeline[" << GetName() << "] instance_id=" << instance_id_ << " Stop complete";
   stopping_.store(false);
   return true;
 }

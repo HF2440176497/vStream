@@ -343,6 +343,10 @@ class Pipeline : private NonCopyable {
   std::map<std::string, std::unique_ptr<ModuleProfiler>> module_profilers_;
 
   std::string name_;  // pipeline_name
+  
+  // 日志中靠 instance_id 区分到底是哪一个对象在 Start/析构，避免“同名对象互相混淆”的误判。
+  uint64_t instance_id_ = 0;  // 实例唯一 ID
+  static std::atomic<uint64_t> instance_counter_;  // 实例计数器
   std::atomic<bool> running_{false};   // 是否正在运行
   std::atomic<bool> stopping_{false};  // 是否正在停止
   std::unique_ptr<EventBus> event_bus_ = nullptr;

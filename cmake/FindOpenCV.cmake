@@ -17,17 +17,17 @@ if(OpenCV_DIR)
     # find_package 会在 OpenCV_DIR 中查找 cmake 配置文件
     message(STATUS "Looking for OpenCV using config: ${OpenCV_DIR}")
     find_package(OpenCV REQUIRED 
-        COMPONENTS core imgproc highgui features2d imgcodecs videoio
+        COMPONENTS core imgproc features2d imgcodecs videoio
         CONFIG)
 elseif(OpenCV_ROOT_DIR)
     message(STATUS "Looking for OpenCV in: ${OpenCV_ROOT_DIR}")
     find_package(OpenCV REQUIRED 
-        COMPONENTS core imgproc highgui features2d imgcodecs videoio
+        COMPONENTS core imgproc features2d imgcodecs videoio
         PATHS ${OpenCV_ROOT_DIR})
 else()
     message(STATUS "Looking for OpenCV in system paths")
     find_package(OpenCV REQUIRED 
-        COMPONENTS core imgproc highgui features2d imgcodecs videoio)
+        COMPONENTS core imgproc features2d imgcodecs videoio)
 endif()
 
 
