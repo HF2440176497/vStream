@@ -7,6 +7,7 @@
 #include "cnstream_logging.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -31,6 +32,7 @@ const std::string key_interval = "interval";
 const std::string key_max_boxes_num = "max_boxes_num";
 const std::string key_nms_iou_threshold = "nms_iou_threshold";
 const std::string key_enable_save = "enable_save";
+const std::string key_merge_direction = "merge_direction";
 
 float box_iou(float aleft, float atop, float aright, float abottom,
               float bleft, float btop, float bright, float bbottom) {
@@ -123,6 +125,9 @@ class Post_YOLOv5_CPU_OCR: public Postproc {
       float ymax() const { return y + h; }
   };
 
+  // 合并方向：水平（从左到右）或竖直（从上到下）
+  enum class MergeDirection { Horizontal = 0, Vertical = 1 };
+
  public:
   /**
    * @param params 后处理参数 custom_postproc_params
@@ -185,6 +190,23 @@ class Post_YOLOv5_CPU_OCR: public Postproc {
     if (data.find(postproc_yolo_ocr::key_enable_save) != data.end()) {
       enable_save_ = data[postproc_yolo_ocr::key_enable_save].get<bool>();
     }
+    if (data.find(postproc_yolo_ocr::key_merge_direction) != data.end()) {
+      std::string dir_str = data[postproc_yolo_ocr::key_merge_direction].get<std::string>();
+      // 大小写不敏感比较
+      std::transform(dir_str.begin(), dir_str.end(), dir_str.begin(), ::tolower);
+      if (dir_str == "horizontal" || dir_str == "h") {
+        merge_direction_ = MergeDirection::Horizontal;
+      } else if (dir_str == "vertical" || dir_str == "v") {
+        merge_direction_ = MergeDirection::Vertical;
+      } else {
+        LOGE(POSTPROC) << "Invalid merge_direction value: " << dir_str
+                       << ", expected 'horizontal' or 'vertical'. Defaulting to 'horizontal'.";
+        merge_direction_ = MergeDirection::Horizontal;
+      }
+    }
+    LOGI(POSTPROC) << "merge_direction: "
+                   << (merge_direction_ == MergeDirection::Horizontal ? "horizontal" : "vertical")
+                   << ", interval: " << interval_;
     LOGI(POSTPROC) << "item_infos_ size = " << item_infos_.size();
     for (const auto& kv : item_infos_) {
       LOGI(POSTPROC) << "  class " << kv.first
@@ -320,48 +342,49 @@ class Post_YOLOv5_CPU_OCR: public Postproc {
         results_merge.push_back({b.x, b.y, b.w, b.h});
       }
     } else {
-      // 按字符框的水平坐标从左到右排序
+      // 按合并方向排序：水平方向按 x（左到右），竖直方向按 y（上到下）
+      const bool horizontal = (merge_direction_ == MergeDirection::Horizontal);
       std::sort(boxes.begin(), boxes.end(),
-                [](const CharBox& a, const CharBox& b) { return a.x < b.x; });
+                [horizontal](const CharBox& a, const CharBox& b) {
+                  return horizontal ? (a.x < b.x) : (a.y < b.y);
+                });
 
       size_t start = 0;
       while (start < boxes.size()) {
-          size_t end = start + 1;
-          // 向右扩展窗口，直到水平间距超过阈值
-          // 小于 interval_ 间距，合并为一个字符框
-          while (end < boxes.size()) {
-            const CharBox& prev = boxes[end - 1];
-            const CharBox& curr = boxes[end];
-            float horizontal_dis = curr.x - prev.xmax();
-            if (horizontal_dis > interval_) break;
-            ++end;
-          }
+        size_t end = start + 1;
 
-          // 计算 [start, end) 区间内所有框的外接矩形
-          float min_x = boxes[start].x;
-          float min_y = boxes[start].y;
-          float max_x = boxes[start].xmax();
-          float max_y = boxes[start].ymax();
+        // 外接矩形累加器
+        float min_x = boxes[start].x;
+        float min_y = boxes[start].y;
+        float max_x = boxes[start].xmax();
+        float max_y = boxes[start].ymax();
 
-          // 这时 end 定位在第一个不合并的字符框，因此 index 到 end-1
-          for (size_t n = start + 1; n < end; ++n) {
-            min_x = std::min(min_x, boxes[n].x);
-            min_y = std::min(min_y, boxes[n].y);
-            max_x = std::max(max_x, boxes[n].xmax());
-            max_y = std::max(max_y, boxes[n].ymax());
-          }
+        // 当前分组沿合并轴的最远边缘
+        float group_far = horizontal ? max_x : max_y;
 
-          float merged_w = max_x - min_x;
-          float merged_h = max_y - min_y;
+        // 扩展窗口，同时累加外接矩形
+        while (end < boxes.size()) {
+          const CharBox& curr = boxes[end];
+          float gap = horizontal ? (curr.x - group_far) : (curr.y - group_far);
+          if (gap > interval_) break;
 
-          // 过滤掉面积为零或负数的非法框
-          if (merged_w > 0 && merged_h > 0) {
-            results_merge.push_back({min_x, min_y, merged_w, merged_h});
-          }
-          start = end;
+          float curr_far = horizontal ? curr.xmax() : curr.ymax();
+          group_far = std::max(group_far, curr_far);
 
-        }  // end while (start < boxes.size())
+          min_x = std::min(min_x, curr.x);
+          min_y = std::min(min_y, curr.y);
+          max_x = std::max(max_x, curr.xmax());
+          max_y = std::max(max_y, curr.ymax());
+          ++end;
+        }
 
+        float merged_w = max_x - min_x;
+        float merged_h = max_y - min_y;
+        if (merged_w > 0 && merged_h > 0) {
+          results_merge.push_back({min_x, min_y, merged_w, merged_h});
+        }
+        start = end;
+      }  // end while (start < boxes.size())
     }
 
     LOGU(POSTPROC) << "YOLOv5_CPU_OCR results_size: " << results_merge.size();
@@ -417,6 +440,7 @@ class Post_YOLOv5_CPU_OCR: public Postproc {
   };
   std::map<int, ItemInfo> item_infos_;
   float interval_ = 50;  // pixel
+  MergeDirection merge_direction_ = MergeDirection::Horizontal;
 
   int max_boxes_num_ = 200;
   float nms_iou_threshold_ = 0.45f;
