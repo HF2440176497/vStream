@@ -125,7 +125,7 @@ class Post_YOLOv8_CPU: public Postproc {
     }
     config_file_ = GetPathRelativeToTheJSONFile(config_file_, dir_path);
 
-    LOGI(POSTPROC) << "model_name: " << model_name_ << ", post conf file: " << config_file_;
+    LOGI(POSTPROC) << "Init with post conf file: " << config_file_;
     std::ifstream file(config_file_);
     if (!file.is_open()) {
       LOGE(POSTPROC) << "Init Could not open file " << config_file_;
@@ -370,7 +370,7 @@ class Post_YOLOv8_CPU_v2: public Postproc {
     }
     config_file_ = GetPathRelativeToTheJSONFile(config_file_, dir_path);
 
-    LOGI(POSTPROC) << "model_name: " << model_name_ << ", post conf file: " << config_file_;
+    LOGI(POSTPROC) << "Init with post conf file: " << config_file_;
     std::ifstream file(config_file_);
     if (!file.is_open()) {
       LOGE(POSTPROC) << "Init Could not open file " << config_file_;
@@ -576,7 +576,7 @@ class Post_YOLOv5_CPU: public Postproc {
     }
     config_file_ = GetPathRelativeToTheJSONFile(config_file_, dir_path);
 
-    LOGI(POSTPROC) << "model_name: " << model_name_ << ", post conf file: " << config_file_;
+    LOGI(POSTPROC) << "Init with post conf file: " << config_file_;
     std::ifstream file(config_file_);
     if (!file.is_open()) {
       LOGE(POSTPROC) << "Init Could not open file " << config_file_;

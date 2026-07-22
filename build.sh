@@ -58,11 +58,11 @@ usage() {
   # 清理后重新构建
   $0 --clean -t Release
 
-  # 自包含 DEB 打包 (Release, 含工具, 不含测试)
-  $0 -t Release --package --bundle-deps --tools --cpack
-
   # 精简 DEB 打包 (Release, 不含第三方依赖, 由基础镜像提供)
   $0 -t Release --package --no-bundle-deps --cpack
+
+  # 自包含 DEB 打包 (Release)
+  $0 -t Release --package --bundle-deps --tools --cpack
 
   # 只安装到本地前缀, 不打包
   $0 -t Release --install --install-prefix /opt/vstream
@@ -220,7 +220,7 @@ cmake --build "${BUILD_DIR}" --config "${BUILD_TYPE}" --parallel "${JOBS}"
 
 echo ""
 echo "============================================"
-echo "  编译成功完成!"
+echo "  编译完成"
 echo "  构建目录: ${BUILD_DIR}"
 echo "============================================"
 
@@ -229,14 +229,14 @@ if [[ "${RUN_INSTALL}" == "ON" ]]; then
     echo ""
     echo "开始安装到前缀: ${INSTALL_PREFIX} ..."
     cmake --install "${BUILD_DIR}"
-    echo "安装完成。"
+    echo "安装完成"
 fi
 
 # ---------- 打包（可选） ----------
 if [[ "${RUN_CPACK}" == "ON" ]]; then
     echo ""
     echo "开始运行 CPack 生成 DEB 包..."
-    (cd "${BUILD_DIR}" && cpack -G DEB -V)
+    (cd "${BUILD_DIR}" && cpack)
     echo ""
     echo "DEB 包生成完成，位置:"
     ls -lh "${BUILD_DIR}"/*.deb 2>/dev/null || true

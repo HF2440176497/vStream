@@ -1,4 +1,6 @@
+
 #include "model_validator.hpp"
+#include "memop_factory.hpp"
 
 #include <algorithm>
 #include <numeric>
@@ -342,7 +344,7 @@ std::vector<BenchmarkResult> ModelValidator::Benchmark(
       E2EResult tmp = RunE2E(image, preproc_name, postproc_name,
                              preproc_params, postproc_params);
       if (!tmp.error.empty()) {
-        LOGW(MODEL_VALIDATOR) << "Warmup error: " << tmp.error;
+        LOGW(MODEL_VALIDATOR) << "Warmup failed: " << tmp.error;
       }
     }
 
@@ -456,6 +458,9 @@ bool ModelValidator::RunInference() {
   return true;
 }
 
+/**
+ * @brief CPU 后处理
+ */
 bool ModelValidator::RunPostproc(Postproc* postproc, const FrameInfoPtr& frame_info) {
   // Build float* array pointing to cpu_output_bufs_
   std::vector<float*> output_ptrs;

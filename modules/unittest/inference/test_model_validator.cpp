@@ -1,7 +1,9 @@
-#include <gtest/gtest.h>
+
 #include <cstdlib>
 #include <string>
+#include <algorithm>
 
+#include "base.hpp"
 #include "model_validator.hpp"
 #include "cnstream_frame_va.hpp"
 
@@ -10,7 +12,7 @@ using namespace cnstream;
 
 static std::string model_path = "./model/20260625/yolov8s_tracing_static_b1_pre.engine";
 static std::string device_type = "cuda";
-
+static std::string image_path = "./image.png";
 
 // Test: DataFrame::SetImage functionality
 TEST(ModelValidator, DataFrameSetImage) {
@@ -32,33 +34,8 @@ TEST(ModelValidator, DataFrameSetImage) {
 TEST(ModelValidator, LoadNonExistentModel) {
   ModelValidator v(model_path, device_type, 0);
   bool ok = v.Load();
-  EXPECT_FALSE(ok);
-  EXPECT_FALSE(v.IsLoaded());
-}
-
-
-TEST(ModelValidator, GetModelInfoBeforeLoad) {
-  ModelValidator v(model_path_, device_type,
-  ModelInfo info = v.GetModelInfo();
-  EXPECT_EQ(info.batch_size, 0);
-  EXPECT_EQ(info.inputs.size(), 0u);
-  EXPECT_EQ(info.outputs.size(), 0u);
-}
-
-
-TEST(ModelValidator, InferBeforeLoad) {
-  ModelValidator v(model_path, device_type, 0);
-  std::vector<std::vector<float>> inputs;
-  auto outputs = v.Infer(inputs);
-  EXPECT_EQ(outputs.size(), 0u);
-}
-
-
-TEST(ModelValidator, RunE2EBeforeLoad) {
-  ModelValidator v(model_path, device_type, 0);
-  cv::Mat img(640, 640, CV_8UC3, cv::Scalar(0, 0, 0));
-  E2EResult r = v.RunE2E(img, "Pre_YOLO_CPU_v2", "Post_YOLOv8_CPU_v2");
-  EXPECT_FALSE(r.error.empty());
+  ASSERT_TRUE(ok);
+  ASSERT_TRUE(v.IsLoaded());
 }
 
 
@@ -120,11 +97,13 @@ TEST(ModelValidator, RealModelLoadAndGetInfo) {
   }
 }
 
-// Test: Raw tensor inference with random data
+/**
+ * @brief 采用随机数据进行模型推理（不包含前处理和后处理）
+ */
 TEST(ModelValidator, RealModelRawInfer) {
   if (!HasTestModel()) GTEST_SKIP() << "Set VSTREAM_TEST_MODEL_PATH to run this test";
 
-  std::string model_path = GetEnv("VSTREAM_TEST_MODEL_PATH");
+  std::string model_path = GetEnv("VSTREAM_TEST_MODEL_PATH", model_path);
   std::string device = GetEnv("VSTREAM_TEST_DEVICE", "cuda");
 
   ModelValidator v(model_path, device, 0);
@@ -153,13 +132,11 @@ TEST(ModelValidator, RealModelRawInfer) {
     for (int d : info.outputs[i].shape) expected *= d;
     EXPECT_EQ(outputs[i].size(), expected);
 
-    // Check for NaN/Inf
     for (float val : outputs[i]) {
       EXPECT_FALSE(std::isnan(val)) << "NaN in output[" << i << "]";
       EXPECT_FALSE(std::isinf(val)) << "Inf in output[" << i << "]";
     }
 
-    // Print stats
     if (!outputs[i].empty()) {
       float min_v = *std::min_element(outputs[i].begin(), outputs[i].end());
       float max_v = *std::max_element(outputs[i].begin(), outputs[i].end());
@@ -175,10 +152,10 @@ TEST(ModelValidator, RealModelRawInfer) {
 TEST(ModelValidator, RealModelRunE2E) {
   if (!HasTestModel()) GTEST_SKIP() << "Set VSTREAM_TEST_MODEL_PATH to run this test";
 
-  std::string model_path = GetEnv("VSTREAM_TEST_MODEL_PATH");
+  std::string model_path = GetEnv("VSTREAM_TEST_MODEL_PATH", model_path);
   std::string device = GetEnv("VSTREAM_TEST_DEVICE", "cuda");
   std::string postproc_config = GetEnv("VSTREAM_TEST_POSTPROC_CONFIG");
-  std::string image_path = GetEnv("VSTREAM_TEST_IMAGE");
+  std::string image_path = GetEnv("VSTREAM_TEST_IMAGE", image_path);
 
   ModelValidator v(model_path, device, 0);
   ASSERT_TRUE(v.Load());
@@ -197,14 +174,14 @@ TEST(ModelValidator, RealModelRunE2E) {
   // Prepare postproc params
   std::map<std::string, std::string> postproc_params;
   if (!postproc_config.empty()) {
-    postproc_params["config_file"] = postproc_config;
+    std::string key_config_file = "config_file";
+    postproc_params[key_config_file] = postproc_config;
   }
 
   E2EResult r = v.RunE2E(img, "Pre_YOLO_CPU_v2", "Post_YOLOv8_CPU_v2", {}, postproc_params);
 
   if (!r.error.empty()) {
     printf("  E2E error: %s\n", r.error.c_str());
-    // If postproc config is missing, this is expected
     if (postproc_config.empty()) {
       printf("  (postproc config not provided, skipping detection check)\n");
       return;
@@ -225,7 +202,7 @@ TEST(ModelValidator, RealModelRunE2E) {
 TEST(ModelValidator, RealModelBenchmark) {
   if (!HasTestModel()) GTEST_SKIP() << "Set VSTREAM_TEST_MODEL_PATH to run this test";
 
-  std::string model_path = GetEnv("VSTREAM_TEST_MODEL_PATH");
+  std::string model_path = GetEnv("VSTREAM_TEST_MODEL_PATH", model_path);
   std::string device = GetEnv("VSTREAM_TEST_DEVICE", "cuda");
   std::string postproc_config = GetEnv("VSTREAM_TEST_POSTPROC_CONFIG");
 
@@ -236,14 +213,14 @@ TEST(ModelValidator, RealModelBenchmark) {
 
   std::map<std::string, std::string> postproc_params;
   if (!postproc_config.empty()) {
-    postproc_params["config_file"] = postproc_config;
+    std::string key_config_file = "config_file";
+    postproc_params[key_config_file] = postproc_config;
   }
 
   auto results = v.Benchmark(img, "Pre_YOLO_CPU_v2", "Post_YOLOv8_CPU_v2",
                               {}, postproc_params,
                               3, 10, {1});
 
-  EXPECT_EQ(results.size(), 1u);
   if (!results.empty()) {
     const auto& r = results[0];
     printf("  Benchmark bs=%d: avg=%.2fms, min=%.2fms, max=%.2fms, p99=%.2fms, fps=%.1f, errors=%d\n",

@@ -19,6 +19,7 @@ namespace cnstream {
 namespace preproc_resnet_obj {
   
 const std::string key_config_file = "config_file";
+const std::string key_enable_save = "enable_save";
 
 }  // namespace preproc_resnet_obj
 
@@ -29,6 +30,31 @@ class Pre_Resnet_Obj : public ObjPreproc {
  public:
   bool Init(const std::map<std::string, std::string> &params) override {
     params_ = params;
+    if (params_.find(preproc_resnet_obj::key_config_file) != params_.end()) {
+      config_file_ = params_[preproc_resnet_obj::key_config_file];
+    } else {
+      LOGE(PREPROC) << "Init config_file must be in custom_preproc_params.";
+      return false;
+    }
+    std::string dir_path;
+    if (params_.find(CNS_JSON_DIR_PARAM_NAME) != params_.end()) {
+      dir_path = params_[CNS_JSON_DIR_PARAM_NAME];
+    }
+    config_file_ = GetPathRelativeToTheJSONFile(config_file_, dir_path);
+
+    std::ifstream file(config_file_);
+    if (!file.is_open()) {
+      LOGE(PREPROC) << "Init Could not open file " << config_file_;
+      return false;
+    }
+    nlohmann::ordered_json data = nlohmann::ordered_json::parse(file);
+    if (!data.is_object()) {
+      LOGE(PREPROC) << "Init config file must be object type.";
+      return false;
+    }
+    if (data.find(preproc_resnet_obj::key_enable_save) != data.end()) {
+      enable_save_ = data[preproc_resnet_obj::key_enable_save].get<bool>();
+    }
     return true;
   }
 
