@@ -8,12 +8,12 @@
 #include <sstream>
 #include <unordered_map>
 #include <cstring>
+#include <unistd.h>
 
 namespace cnstream {
 
-static enum AVPixelFormat hw_pix_fmt_rk;
-
 bool PullHandlerImRK::support_hwdevice() {
+  precheckDeviceNodes();
   const char* backend_names[] = {"rkmpp", "drm"};
   for (auto name : backend_names) {
     enum AVHWDeviceType type = av_hwdevice_find_type_by_name(name);
@@ -32,7 +32,7 @@ bool PullHandlerImRK::support_hwdevice() {
 
 enum AVPixelFormat PullHandlerImRK::get_hw_format(AVCodecContext *ctx, const enum AVPixelFormat *pix_fmts) {
   for (const enum AVPixelFormat *p = pix_fmts; *p != AV_PIX_FMT_NONE; ++p) {
-    if (*p == hw_pix_fmt_rk) {
+    if (*p == AV_PIX_FMT_DRM_PRIME) {
       return *p;
     }
   }
@@ -56,7 +56,6 @@ int PullHandlerImRK::init_hwdevice_conf() {
                      << " DRM_PRIME pix_fmt not supported";
         return -1;
       }
-      hw_pix_fmt_rk = config->pix_fmt;
       return 0;
     }
   }
@@ -67,7 +66,7 @@ int PullHandlerImRK::hw_decoder_init() {
   int err = 0;
   // rkmpp 后端内部自己 open("/dev/mpp_service"), device 对它无效传 nullptr;
   // drm 后端才需要 DRM 设备节点路径.
-  const char *device = (type_name_ == "rkmpp") ? nullptr : nullptr;
+  const char *device = (type_name_ == "rkmpp") ? nullptr : pickDrmDevice();
   if ((err = av_hwdevice_ctx_create(&hw_device_ctx_, device_type_,
                                      device, nullptr, 0)) < 0) {
     LOGE(SOURCE) << "[" << stream_id_ << "]: Failed to create HW device ("
@@ -78,6 +77,41 @@ int PullHandlerImRK::hw_decoder_init() {
   codec_ctx_->hw_device_ctx = av_buffer_ref(hw_device_ctx_);
   codec_ctx_->pix_fmt       = AV_PIX_FMT_DRM_PRIME;
   return err;
+}
+
+const char* PullHandlerImRK::pickDrmDevice() {
+  static const char* kCandidates[] = {
+    "/dev/dri/renderD128",
+    "/dev/dri/renderD129",
+    "/dev/dri/card0",
+    "/dev/dri/card1",
+    nullptr
+  };
+  for (int i = 0; kCandidates[i]; ++i) {
+    if (access(kCandidates[i], R_OK | W_OK) == 0) {
+      return kCandidates[i];
+    }
+  }
+  return nullptr;
+}
+
+void PullHandlerImRK::precheckDeviceNodes() {
+  const char* paths[] = {
+    "/dev/mpp_service",
+    "/dev/dri/card0",
+    "/dev/dri/card1",
+    "/dev/dri/renderD128",
+    "/dev/dri/renderD129",
+  };
+  for (auto p : paths) {
+    if (access(p, F_OK) == 0) {
+      bool rw = (access(p, R_OK | W_OK) == 0);
+      LOGI(SOURCE) << "[" << stream_id_ << "]: device node " << p
+                   << " (perm: " << (rw ? "rw" : "ro/none") << ")";
+    } else {
+      LOGW(SOURCE) << "[" << stream_id_ << "]: device node " << p << " (not found)";
+    }
+  }
 }
 
 int PullHandlerImRK::codec_init() {
@@ -180,7 +214,9 @@ int PullHandlerImRK::decode_write() {
         // 处理帧（注意：这里是清空过程中产生的帧，可能是之前输入的输出）
         auto data = ProcessFrameRKMPP(drain_frame, ret);
         if (data && module_ && handler_) {
-            handler_->SendData(data);
+          handler_->SendData(data);
+        } else if (!data) {
+          LOGW(SOURCE) << "[" << stream_id_ << "]: ProcessFrameRKMPP failed during drain";
         }
         av_frame_free(&drain_frame);
       } else if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
@@ -223,7 +259,6 @@ int PullHandlerImRK::decode_write() {
     }
     handler_->SendData(data);
   }
-  av_frame_free(&p_frame);
   return 0;
 }
 
@@ -253,6 +288,7 @@ std::shared_ptr<FrameInfo> PullHandlerImRK::ProcessFrameRKMPP(AVFrame *p_frame, 
 
   if (sw_frame_->format != AV_PIX_FMT_NV12) {
     LOGE(SOURCE) << "[" << stream_id_ << "]: sw_frame format=" << sw_frame_->format << " NV12 expected";
+    ret = -1;
     return nullptr;
   }
 

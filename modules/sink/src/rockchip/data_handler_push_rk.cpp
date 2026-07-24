@@ -111,9 +111,6 @@ bool PushHandlerImRK::SendDataFrame(const DataFramePtr& frame, AVPixelFormat src
 }
 
 bool PushHandlerImRK::SendFrameFromCpu(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts) {
-  if (!hw_ctx_initialized_.load()) {
-    hw_ctx_initialized_.store(true);
-  }
   const int src_width  = frame->GetWidth();
   const int src_height = frame->GetHeight();
 
@@ -144,6 +141,17 @@ bool PushHandlerImRK::SendFrameFromCpu(const DataFramePtr& frame, AVPixelFormat 
   ctx_.sw_frame->pts = pts;
 
   // 2. NV12 (CPU) -> DRM_PRIME (硬件帧)
+  // 释放上一帧的硬件缓冲区引用（编码器可能仍持有引用），
+  // 从池中获取新的空闲缓冲区，避免写入编码器正在读取的缓冲区。
+  av_frame_unref(ctx_.hw_frame);
+  ret = av_hwframe_get_buffer(ctx_.hw_frames_ctx, ctx_.hw_frame, 0);
+  if (ret < 0) {
+    char errbuf[AV_ERROR_MAX_STRING_SIZE] = {0};
+    av_strerror(ret, errbuf, sizeof(errbuf));
+    LOGE(SINK) << "[" << stream_id_ << "]: av_hwframe_get_buffer failed: "
+               << errbuf << " (" << ret << ")";
+    return false;
+  }
   ret = av_hwframe_transfer_data(ctx_.hw_frame, ctx_.sw_frame, 0);
   if (ret < 0) {
     char errbuf[AV_ERROR_MAX_STRING_SIZE] = {0};

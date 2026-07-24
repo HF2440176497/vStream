@@ -192,11 +192,21 @@ void InferParamManager::RegisterAll(ParamRegister *pregister) {
   // ASSERT(RegisterParam(pregister, param));
 
   param.name = "infer_interval";
-  param.desc_str = "Optional. Inferencing one frame every [infer_interval] frames.";
+  param.desc_str =
+      "Optional. Inferencing one frame every [infer_interval] frames."
+      " Valid range: [1, UINT32_MAX]. Value `0` is invalid."
+      " Default is 1 (infer every frame).";
   param.default_value = "1";
   param.type = "uint32";
   param.parser = [](const std::string &value, InferParams *param_set) -> bool {
-    return STR2U32(value, &param_set->infer_interval);
+    if (!STR2U32(value, &param_set->infer_interval)) {
+      return false;
+    }
+    if (param_set->infer_interval == 0) {
+      LOGE(INFER) << "Parse [infer_interval] failed. value must be >= 1, but got [" << value << "].";
+      return false;
+    }
+    return true;
   };
   ASSERT(RegisterParam(pregister, param));
 

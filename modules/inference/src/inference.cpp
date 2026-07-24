@@ -377,7 +377,7 @@ int Inference::Process(std::shared_ptr<FrameInfo> data) {
       // minimize batch_timeout delay
       pctx->engine->ForceBatchingDone();
     }
-    // drop_ 重新从 1 计数
+    // drop_count 重新从 1 计数
     if (drop_data) {
       pctx->drop_count %= d_ptr_->params_.infer_interval;
       data->collection.AddIfNotExists(kSkipFrameTag, true);

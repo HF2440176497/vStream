@@ -144,12 +144,6 @@ inline s_output_data ConvertFrameInfo(const std::shared_ptr<FrameInfo>& frame_in
   data.frame_id_s = frame_info->frame_id_s;
   data.timestamp  = frame_info->timestamp;
 
-  // 跳帧标记：帧被 infer_interval 跳过，未经过推理
-  if (frame_info->collection.HasValue(kSkipFrameTag)) {
-    data.result = output_result::RESULT_SKIPPED;
-    return data;
-  }
-
   // 原始图像
   if (frame_info->collection.HasValue(kDataFrameTag)) {
     auto img_data = frame_info->collection.Get<DataFramePtr>(kDataFrameTag);
@@ -177,7 +171,8 @@ inline s_output_data ConvertFrameInfo(const std::shared_ptr<FrameInfo>& frame_in
       }
     }
   } else {
-    LOGE(DATA_CONVERTER) << "ConvertFrameInfo: InferObjs not found in FrameInfo collection.";
+    LOGE(DATA_CONVERTER) << "ConvertFrameInfo: invariant violated — kInferObjsTag missing"
+                         << " (timestamp=" << data.timestamp << ").";
     data.result = output_result::RESULT_UNKNOWN_ERROR;
     return data;
   }

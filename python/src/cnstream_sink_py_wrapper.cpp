@@ -117,16 +117,12 @@ void SinkModuleWrapper(py::module &m) {
       .value("RESULT_OK", output_result::RESULT_OK)
       .value("RESULT_UNKNOWN_ERROR", output_result::RESULT_UNKNOWN_ERROR)
       .value("RESULT_TIMEOUT", output_result::RESULT_TIMEOUT)
-      .value("RESULT_NO_INFERENCE", output_result::RESULT_NO_INFERENCE)
-      .value("RESULT_SKIPPED", output_result::RESULT_SKIPPED)
       .value("RESULT_INFER_FAILED", output_result::RESULT_INFER_FAILED)
       .def("__repr__", [](const output_result& e) {
         switch (e) {
             case output_result::RESULT_OK:            return "RESULT.OK";
             case output_result::RESULT_UNKNOWN_ERROR: return "RESULT.UNKNOWN_ERROR";
             case output_result::RESULT_TIMEOUT:       return "RESULT.TIMEOUT";
-            case output_result::RESULT_NO_INFERENCE:  return "RESULT.NO_INFERENCE";
-            case output_result::RESULT_SKIPPED:       return "RESULT.SKIPPED";
             case output_result::RESULT_INFER_FAILED:  return "RESULT.INFER_FAILED";
             default:                                  return "RESULT.UNKNOWN";
         }
@@ -135,8 +131,6 @@ void SinkModuleWrapper(py::module &m) {
   m.attr("RESULT_OK") = output_result::RESULT_OK;
   m.attr("RESULT_UNKNOWN_ERROR") = output_result::RESULT_UNKNOWN_ERROR;
   m.attr("RESULT_TIMEOUT") = output_result::RESULT_TIMEOUT;
-  m.attr("RESULT_NO_INFERENCE") = output_result::RESULT_NO_INFERENCE;
-  m.attr("RESULT_SKIPPED") = output_result::RESULT_SKIPPED;
   m.attr("RESULT_INFER_FAILED") = output_result::RESULT_INFER_FAILED;
 
   py::class_<s_output_data>(m, "output_data")

@@ -17,9 +17,7 @@ enum class output_result : int {
   RESULT_OK = 0,
   RESULT_UNKNOWN_ERROR = -1,
   RESULT_TIMEOUT = -2,
-  RESULT_NO_INFERENCE = -3,
-  RESULT_SKIPPED = -4,
-  RESULT_INFER_FAILED = -5,
+  RESULT_INFER_FAILED = -3,
 };
 
 namespace output_constants {

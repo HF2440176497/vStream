@@ -239,6 +239,17 @@ bool PushHandlerIm::InitStream() {
     LOGE(SINK) << "[" << stream_id_ << "]: avcodec_open2 failed";
     return false;
   }
+  // 检查 SPS/PPS extradata（RTMP/FLV 推流关键）：
+  // 硬件编码器有时不在 extradata 中生成 SPS/PPS，
+  // 需从首包 side_data 提取，否则服务器无法建立解码上下文。
+  if (ctx_.codec_ctx->extradata && ctx_.codec_ctx->extradata_size > 0) {
+    LOGI(SINK) << "[" << stream_id_ << "]: SPS/PPS extradata: "
+               << ctx_.codec_ctx->extradata_size << " bytes";
+  } else {
+    LOGW(SINK) << "[" << stream_id_ << "]: extradata is empty, "
+               << "Hardware encoder may not have generated SPS/PPS, "
+               << "RTMP/FLV streaming may fail.";
+  }
   ret = avcodec_parameters_from_context(ctx_.stream->codecpar, ctx_.codec_ctx);
   if (ret < 0) {
     LOGE(SINK) << "[" << stream_id_ << "]: avcodec_parameters_from_context failed";

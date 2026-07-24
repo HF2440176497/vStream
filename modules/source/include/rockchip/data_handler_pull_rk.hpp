@@ -23,6 +23,8 @@ class PullHandlerImRK : public PullHandlerIm {
   int hw_decoder_init();
   static enum AVPixelFormat get_hw_format(AVCodecContext *ctx, const enum AVPixelFormat *pix_fmts);
   std::shared_ptr<FrameInfo> ProcessFrameRKMPP(AVFrame *p_frame, int &ret);
+  static const char* pickDrmDevice();
+  void precheckDeviceNodes();
 
   std::string type_name_ = "rkmpp";
   AVFrame *sw_frame_ = nullptr;  // hw(DRM_PRIME) -> sw(NV12) 中转帧
