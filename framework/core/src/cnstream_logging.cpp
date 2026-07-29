@@ -10,6 +10,8 @@
 #include <sstream>
 #include <thread>
 #include <unistd.h>
+#include <fcntl.h>
+#include <sys/file.h>
 
 namespace cnstream {
 namespace logging {
@@ -98,6 +100,58 @@ bool ParseLogLevel(const char* value, int& v, int& min_level) {
   return false;
 }
 
+// 判断字符串是否为 YYYY-MM-DD 格式的日期目录名
+bool IsDateDir(const std::string& name) {
+  if (name.size() != 10) return false;
+  for (int i : {0, 1, 2, 3, 5, 6, 8, 9}) {
+    if (!std::isdigit(static_cast<unsigned char>(name[i]))) return false;
+  }
+  return name[4] == '-' && name[7] == '-';
+}
+
+// 将 YYYY-MM-DD 目录名转换为 time_t（当天 00:00:00），失败返回 false
+bool ParseDateDir(const std::string& name, std::time_t& out) {
+  if (!IsDateDir(name)) return false;
+  std::tm tm = {};
+  std::istringstream iss(name);
+  iss >> std::get_time(&tm, "%Y-%m-%d");
+  if (iss.fail()) return false;
+  out = std::mktime(&tm);
+  return out != static_cast<std::time_t>(-1);
+}
+
+// 清理过期的日志日期目录：删除早于 retention_days 天的 YYYY-MM-DD 子目录
+void CleanupExpiredLogs(const std::string& log_dir, int retention_days) {
+  if (retention_days <= 0) return;
+
+  std::error_code ec;
+  if (!std::filesystem::exists(log_dir, ec)) return;
+
+  std::time_t now = std::time(nullptr);
+  std::time_t cutoff = now - static_cast<std::time_t>(retention_days) * 24 * 60 * 60;
+
+  for (auto it = std::filesystem::directory_iterator(log_dir, ec);
+       it != std::filesystem::directory_iterator(); ++it) {
+    if (ec) {
+      std::cerr << "Failed to open dir " << log_dir << ": " << ec.message() << std::endl;
+      break;
+    }
+    if (!it->is_directory()) continue;
+
+    std::string dirname = it->path().filename().string();
+    std::time_t dir_time;
+    if (!ParseDateDir(dirname, dir_time)) continue;
+
+    if (dir_time < cutoff) {
+      std::filesystem::remove_all(it->path(), ec);
+      if (ec) {
+        std::cerr << "Failed to remove dir " << it->path() << ": " << ec.message() << std::endl;
+        ec.clear();
+      }
+    }
+  }
+}
+
 }  // anonymous namespace
 
 CustomLogSink::CustomLogSink() {
@@ -108,13 +162,24 @@ CustomLogSink::CustomLogSink() {
   }
   if (g_log_to_file) {
     std::string dir = VSTREAM_LOG_FILE_DIR;
-    if (!std::filesystem::exists(dir)) {
-      std::filesystem::create_directories(dir);
+
+    // 按日期创建子目录: <log_dir>/YYYY-MM-DD/
+    std::time_t now = std::time(nullptr);
+    std::tm tm_time;
+    localtime_r(&now, &tm_time);
+    std::ostringstream date_dir;
+    date_dir << dir << "/" << std::put_time(&tm_time, "%Y-%m-%d");
+    std::string full_dir = date_dir.str();
+
+    if (!std::filesystem::exists(full_dir)) {
+      std::filesystem::create_directories(full_dir);
     }
+
+    // 文件名: vstream_<Unix时间戳>_<PID>.out
     std::ostringstream fname;
-    fname << dir << "/vstream_"
-          << getpid() << "_"
-          << time(nullptr) << ".out";
+    fname << full_dir << "/vstream_"
+          << now << "_"
+          << getpid() << ".out";
     file_path_ = fname.str();
     file_stream_.open(file_path_, std::ios::app);
     if (!file_stream_.is_open()) {
@@ -208,6 +273,33 @@ GlogLevelInitializer::GlogLevelInitializer() {
   FLAGS_logtostderr = false;
   FLAGS_alsologtostderr = false;
   FLAGS_stderrthreshold = google::GLOG_FATAL + 1;
+
+  // 清理过期日志：在创建 sink 之前执行，删除超过保留期的日期目录
+  int retention_days = VSTREAM_LOG_RETENTION_DAYS;
+  if (const char* env = std::getenv("VSTREAM_LOG_RETENTION_DAYS")) {
+    char* end = nullptr;
+    long val = std::strtol(env, &end, 10);
+    if (end != env && val >= 0) {
+      retention_days = static_cast<int>(val);
+    }
+  }
+  if (retention_days > 0) {
+    std::string log_dir = VSTREAM_LOG_FILE_DIR;
+    // 确保日志根目录存在（锁文件需要在此目录创建）
+    if (!std::filesystem::exists(log_dir)) {
+      std::filesystem::create_directories(log_dir);
+    }
+    // 使用文件锁避免多进程同时启动时的并发清理冲突
+    std::string lock_path = log_dir + "/.cleanup.lock";
+    int fd = open(lock_path.c_str(), O_CREAT | O_RDWR, 0644);
+    if (fd >= 0) {
+      if (flock(fd, LOCK_EX | LOCK_NB) == 0) {
+        CleanupExpiredLogs(log_dir, retention_days);
+        flock(fd, LOCK_UN);
+      }
+      close(fd);
+    }
+  }
 
   static CustomLogSink sink;
   google::AddLogSink(&sink);

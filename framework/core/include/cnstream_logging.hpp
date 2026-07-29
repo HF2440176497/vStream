@@ -51,6 +51,9 @@
 #ifndef VSTREAM_LOG_ROLLING_SIZE_MB
 #  define VSTREAM_LOG_ROLLING_SIZE_MB  100  // 按大小滚动，单位MB，0表示不滚动
 #endif
+#ifndef VSTREAM_LOG_RETENTION_DAYS
+#  define VSTREAM_LOG_RETENTION_DAYS  7    // 日志保留天数，0表示不自动清理
+#endif
 
 #include <fstream>
 #include <mutex>
