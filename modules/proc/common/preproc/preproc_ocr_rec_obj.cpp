@@ -7,6 +7,7 @@
 #include "cnstream_frame.hpp"
 #include "cnstream_frame_va.hpp"
 #include "cnstream_logging.hpp"
+#include "proc/common/debug_image_saver.hpp"
 
 #include <algorithm>
 #include <nlohmann/json.hpp>
@@ -70,24 +71,12 @@ class Pre_PPOCRv3_rec_Obj : public ObjPreproc {
     cv::resize(crop_img, resize_img, cv::Size(resize_w, input_h), 0, 0, cv::INTER_LINEAR);
 
 #ifdef VSTREAM_UNIT_TEST
-    if (enable_save_) {
-      std::lock_guard<std::mutex> lock(last_save_time_mutex_);
-      auto now = std::chrono::steady_clock::now();
-      if (save_duration_ms_ > 0) {
-        if (last_save_time_.time_since_epoch().count() == 0 ||
-            std::chrono::duration_cast<std::chrono::milliseconds>(now - last_save_time_).count() >= save_duration_ms_) {
-
-            auto sys_now = std::chrono::system_clock::now();
-            auto timestamp_ms = std::chrono::duration_cast<std::chrono::milliseconds>(sys_now.time_since_epoch()).count();
-            std::string filename = "save/pre_ocr_rec_" +  std::to_string(timestamp_ms) + ".jpg";
-            cv::imwrite(filename, resize_img);
-            last_save_time_ = now;
-        }
-      }
+    if (debug_saver_.enable()) {
+      debug_saver_.MaybeSave("pre_ocr_rec", resize_img);
     }
 #endif
 
-    resize_img.convertTo(resize_img, CV_32FC3, 1.0/255.0);   // 顺便 /255
+    resize_img.convertTo(resize_img, CV_32FC3, 1.0/255.0);
 
     cv::subtract(resize_img, cv::Scalar(0.5f, 0.5f, 0.5f), resize_img);
     cv::divide(resize_img, cv::Scalar(0.5f, 0.5f, 0.5f), resize_img);
@@ -115,10 +104,7 @@ class Pre_PPOCRv3_rec_Obj : public ObjPreproc {
   std::string model_name_;
 
 private:
-  bool enable_save_ = false;
-  std::mutex last_save_time_mutex_;
-  std::chrono::steady_clock::time_point last_save_time_;
-  uint32_t save_duration_ms_ = 500;
+  cnstream::DebugImageSaver debug_saver_{false, 500};
 
   DECLARE_REFLEX_OBJECT_EX(Pre_PPOCRv3_rec_Obj, cnstream::ObjPreproc);
 };  // class Pre_PPOCRv3_rec_Obj

@@ -6,6 +6,7 @@
 #include "cnstream_frame.hpp"
 #include "cnstream_frame_va.hpp"
 #include "cnstream_logging.hpp"
+#include "proc/common/debug_image_saver.hpp"
 
 #include "affine_trans.hpp"
 
@@ -16,12 +17,12 @@ using json = nlohmann::json;
 
 namespace cnstream {
 
-namespace preproc_resnet_obj {
-  
-const std::string key_config_file = "config_file";
-const std::string key_enable_save = "enable_save";
+namespace {
 
-}  // namespace preproc_resnet_obj
+inline constexpr const char* key_config_file = "config_file";
+inline constexpr const char* key_enable_save = "enable_save";
+
+}  // namespace
 
 /**
  * @brief ResNet CPU 前处理
@@ -30,8 +31,8 @@ class Pre_Resnet_Obj : public ObjPreproc {
  public:
   bool Init(const std::map<std::string, std::string> &params) override {
     params_ = params;
-    if (params_.find(preproc_resnet_obj::key_config_file) != params_.end()) {
-      config_file_ = params_[preproc_resnet_obj::key_config_file];
+    if (params_.find(key_config_file) != params_.end()) {
+      config_file_ = params_[key_config_file];
     } else {
       LOGE(PREPROC) << "Init config_file must be in custom_preproc_params.";
       return false;
@@ -52,8 +53,8 @@ class Pre_Resnet_Obj : public ObjPreproc {
       LOGE(PREPROC) << "Init config file must be object type.";
       return false;
     }
-    if (data.find(preproc_resnet_obj::key_enable_save) != data.end()) {
-      enable_save_ = data[preproc_resnet_obj::key_enable_save].get<bool>();
+    if (data.find(key_enable_save) != data.end()) {
+      debug_saver_.Configure(data[key_enable_save].get<bool>(), 1000);
     }
     return true;
   }
@@ -100,19 +101,8 @@ class Pre_Resnet_Obj : public ObjPreproc {
 
 
 #ifdef VSTREAM_UNIT_TEST
-    if (enable_save_) {
-      std::lock_guard<std::mutex> lock(last_save_time_mutex_);
-      auto now = std::chrono::steady_clock::now();
-      if (save_duration_ms_ > 0) {
-        if (last_save_time_.time_since_epoch().count() == 0 ||
-            std::chrono::duration_cast<std::chrono::milliseconds>(now - last_save_time_).count() >= save_duration_ms_) {
-            auto sys_now = std::chrono::system_clock::now();
-            auto timestamp_ms = std::chrono::duration_cast<std::chrono::milliseconds>(sys_now.time_since_epoch()).count();
-            std::string filename = "save/pre_resnet_" + std::to_string(timestamp_ms) + ".jpg";
-            cv::imwrite(filename, img);
-            last_save_time_ = now;
-        }
-      }
+    if (debug_saver_.enable()) {
+      debug_saver_.MaybeSave("pre_resnet", img);
     }
 #endif
 
@@ -181,10 +171,7 @@ private:
   std::string model_name_;
 
  private:
-  bool enable_save_ = false;
-  std::mutex last_save_time_mutex_;
-  std::chrono::steady_clock::time_point last_save_time_;
-  uint32_t save_duration_ms_ = 1000;
+  cnstream::DebugImageSaver debug_saver_;
 
   DECLARE_REFLEX_OBJECT_EX(Pre_Resnet_Obj, cnstream::ObjPreproc);
 };  // class Pre_Resnet_Obj

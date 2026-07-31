@@ -5,6 +5,7 @@
 #include "cnstream_frame.hpp"
 #include "cnstream_frame_va.hpp"
 #include "cnstream_logging.hpp"
+#include "proc/common/debug_image_saver.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -20,19 +21,23 @@ using json = nlohmann::json;
 
 namespace cnstream {
 
-namespace postproc_yolo_ocr {
-  
-const std::string key_config_file = "config_file";
+namespace {
 
-const std::string key_classes = "classes";
-const std::string key_name = "name";
-const std::string key_threshold = "threshold";
+inline constexpr const char* key_config_file = "config_file";
 
-const std::string key_interval = "interval";
-const std::string key_max_boxes_num = "max_boxes_num";
-const std::string key_nms_iou_threshold = "nms_iou_threshold";
-const std::string key_enable_save = "enable_save";
-const std::string key_merge_direction = "merge_direction";
+inline constexpr const char* key_classes = "classes";
+inline constexpr const char* key_name = "name";
+inline constexpr const char* key_threshold = "threshold";
+
+inline constexpr const char* key_merge_interval = "merge_interval";
+inline constexpr const char* key_max_boxes_num = "max_boxes_num";
+inline constexpr const char* key_nms_iou_threshold = "nms_iou_threshold";
+inline constexpr const char* key_enable_save = "enable_save";
+inline constexpr const char* key_merge_direction = "merge_direction";
+
+}  // namespace
+
+namespace {
 
 float box_iou(float aleft, float atop, float aright, float abottom,
               float bleft, float btop, float bright, float bbottom) {
@@ -107,7 +112,7 @@ void fast_nms(ObjsVec& objs, int max_boxes, float threshold) {
   }
   objs.resize(keep_idx);
 }
-}  // namespace postproc_yolo_ocr
+}  // namespace
 
 /**
  * @brief YOLOv5 后处理类
@@ -134,8 +139,8 @@ class Post_YOLOv5_CPU_OCR: public Postproc {
    */
   bool Init(const std::map<std::string, std::string> &params) override {
     params_ = params;
-    if (params_.find(postproc_yolo_ocr::key_config_file) != params_.end()) {
-      config_file_ = params_[postproc_yolo_ocr::key_config_file];
+    if (params_.find(key_config_file) != params_.end()) {
+      config_file_ = params_[key_config_file];
     } else {
       LOGE(POSTPROC) << "Init config_file must be in custom_postproc_params.";
       return false;
@@ -158,8 +163,8 @@ class Post_YOLOv5_CPU_OCR: public Postproc {
       return false;
     }
 
-    if (data.find(postproc_yolo_ocr::key_classes) != data.end()) {
-      const auto& classes = data[postproc_yolo_ocr::key_classes];
+    if (data.find(key_classes) != data.end()) {
+      const auto& classes = data[key_classes];
       if (!classes.is_object()) {
         LOGE(POSTPROC) << "Invalid classes format in conf file.";
         return false;
@@ -177,21 +182,22 @@ class Post_YOLOv5_CPU_OCR: public Postproc {
         item_infos_[std::stoi(key)] = info;
       }
     }
-    if (data.find(postproc_yolo_ocr::key_interval) != data.end()) {
-      interval_ = data[postproc_yolo_ocr::key_interval].get<float>();
+    if (data.find(key_merge_interval) != data.end()) {
+      interval_ = data[key_merge_interval].get<float>();
     }
-    if (data.find(postproc_yolo_ocr::key_max_boxes_num) != data.end()) {
-      max_boxes_num_ = data[postproc_yolo_ocr::key_max_boxes_num].get<int>();
+    if (data.find(key_max_boxes_num) != data.end()) {
+      max_boxes_num_ = data[key_max_boxes_num].get<int>();
     }
-    if (data.find(postproc_yolo_ocr::key_nms_iou_threshold) != data.end()) {
-      nms_iou_threshold_ = data[postproc_yolo_ocr::key_nms_iou_threshold].get<float>();
+    if (data.find(key_nms_iou_threshold) != data.end()) {
+      nms_iou_threshold_ = data[key_nms_iou_threshold].get<float>();
     }
 
-    if (data.find(postproc_yolo_ocr::key_enable_save) != data.end()) {
-      enable_save_ = data[postproc_yolo_ocr::key_enable_save].get<bool>();
+    if (data.find(key_enable_save) != data.end()) {
+      debug_saver_.Configure(
+          data[key_enable_save].get<bool>(), 500);
     }
-    if (data.find(postproc_yolo_ocr::key_merge_direction) != data.end()) {
-      std::string dir_str = data[postproc_yolo_ocr::key_merge_direction].get<std::string>();
+    if (data.find(key_merge_direction) != data.end()) {
+      std::string dir_str = data[key_merge_direction].get<std::string>();
       // 大小写不敏感比较
       std::transform(dir_str.begin(), dir_str.end(), dir_str.begin(), ::tolower);
       if (dir_str == "horizontal" || dir_str == "h") {
@@ -314,7 +320,7 @@ class Post_YOLOv5_CPU_OCR: public Postproc {
     }  // end for
 
     // LOGU(POSTPROC) << "YOLOv5_CPU_OCR candidates: " << local_objs.size();
-    postproc_yolo_ocr::fast_nms(local_objs, max_boxes_num_, nms_iou_threshold_);
+    fast_nms(local_objs, max_boxes_num_, nms_iou_threshold_);
 
     {
       InferObjsPtr objs_holder = package->collection.Get<InferObjsPtr>(cnstream::kInferObjsTag);
@@ -409,24 +415,19 @@ class Post_YOLOv5_CPU_OCR: public Postproc {
     }
 
 #ifdef VSTREAM_UNIT_TEST
-    if (enable_save_) {
+    if (debug_saver_.enable()) {
       cv::Mat img = frame->GetImage().clone();
-      // 蓝色画原始字符框 (boxes)
-      for (const auto& b : boxes) {
-        cv::rectangle(img, cv::Rect(b.x, b.y, b.w, b.h), cv::Scalar(255, 0, 0), 2);
-      }
-      // 绿色画合并后的文本行框 (results_merge)
-      for (const auto& r : results_merge) {
-        float x = r[0];
-        float y = r[1];
-        float w = r[2];
-        float h = r[3];
-        cv::rectangle(img, cv::Rect(x, y, w, h), cv::Scalar(0, 255, 0), 2);
-      }
-      auto sys_now = std::chrono::system_clock::now();
-      auto timestamp_ms = std::chrono::duration_cast<std::chrono::milliseconds>(sys_now.time_since_epoch()).count();
-      std::string filename = "save/post_yolo_ocr_" + std::to_string(timestamp_ms) + ".jpg";
-      cv::imwrite(filename, img);
+      debug_saver_.MaybeSave("post_yolo_ocr", img, "",
+          [&boxes, &results_merge](cv::Mat& canvas) {
+            // 蓝色画原始字符框 (boxes)
+            for (const auto& b : boxes) {
+              cv::rectangle(canvas, cv::Rect(b.x, b.y, b.w, b.h), cv::Scalar(255, 0, 0), 2);
+            }
+            // 绿色画合并后的文本行框 (results_merge)
+            for (const auto& r : results_merge) {
+              cv::rectangle(canvas, cv::Rect(r[0], r[1], r[2], r[3]), cv::Scalar(0, 255, 0), 2);
+            }
+          });
     }
 #endif
 
@@ -447,7 +448,7 @@ class Post_YOLOv5_CPU_OCR: public Postproc {
   std::string model_name_;  ///< The name of the model.
 
  private:
-  bool enable_save_ = false;
+  cnstream::DebugImageSaver debug_saver_;
 
   DECLARE_REFLEX_OBJECT_EX(Post_YOLOv5_CPU_OCR, cnstream::Postproc);
 };  // class Post_YOLOv5_CPU_OCR

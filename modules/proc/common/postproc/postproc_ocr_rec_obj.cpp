@@ -8,6 +8,7 @@
 #include "cnstream_frame.hpp"
 #include "cnstream_frame_va.hpp"
 #include "cnstream_logging.hpp"
+#include "proc/common/debug_image_saver.hpp"
 
 #include <nlohmann/json.hpp>
 #include <algorithm>
@@ -18,19 +19,21 @@
 
 namespace cnstream {
 
-namespace postproc_ocr_rec_obj {
+namespace {
 
-const std::string key_config_file = "config_file";
-const std::string key_label_path = "label_path";
+inline constexpr const char* key_config_file = "config_file";
+inline constexpr const char* key_label_path = "label_path";
+inline constexpr const char* key_enable_save = "enable_save";
+inline constexpr const char* key_save_interval_ms = "save_interval_ms";
 
-}  // namespace postproc_ocr_rec_obj
+}  // namespace
 
 class Post_PPOCRv3_rec_Obj : public ObjPostproc {
  public:
   bool Init(const std::map<std::string, std::string> &params) override {
     params_ = params;
-    if (params_.find(postproc_ocr_rec_obj::key_config_file) != params_.end()) {
-      config_file_ = params_[postproc_ocr_rec_obj::key_config_file];
+    if (params_.find(key_config_file) != params_.end()) {
+      config_file_ = params_[key_config_file];
     } else {
       LOGE(POSTPROC) << "Init config_file must be in custom_postproc_params.";
       return false;
@@ -52,12 +55,20 @@ class Post_PPOCRv3_rec_Obj : public ObjPostproc {
       LOGE(POSTPROC) << "Init config file must be object type.";
       return false;
     }
-    if (data.find(postproc_ocr_rec_obj::key_label_path) == data.end()) {
+    if (data.find(key_label_path) == data.end()) {
       LOGE(POSTPROC) << "Init label_path must be in config file.";
       return false;
     }
-    label_path_ = data[postproc_ocr_rec_obj::key_label_path].get<std::string>();
+    label_path_ = data[key_label_path].get<std::string>();
     LOGI(POSTPROC) << "PPOCRv3 label_path: " << label_path_;
+
+    if (data.find(key_enable_save) != data.end()) {
+      int interval_ms = 500;
+      if (data.find(key_save_interval_ms) != data.end()) {
+        interval_ms = data[key_save_interval_ms].get<int>();
+      }
+      debug_saver_.Configure(data[key_enable_save].get<bool>(), interval_ms);
+    }
 
     if (!label_path_.empty()) {
         label_list_ = PaddlePaddle::ReadDict(label_path_);
@@ -147,26 +158,15 @@ class Post_PPOCRv3_rec_Obj : public ObjPostproc {
         return -1;
     }
   
-    if (enable_save_)  {
+    if (debug_saver_.enable())  {
       cv::Mat img = frame->GetImage().clone();
-      std::lock_guard<std::mutex> lock(last_save_time_mutex_);
-      auto now = std::chrono::steady_clock::now();
-      if (save_duration_ms_ > 0) {
-        if (last_save_time_.time_since_epoch().count() == 0 ||
-            std::chrono::duration_cast<std::chrono::milliseconds>(now - last_save_time_).count() >= save_duration_ms_) {
-
-              cv::rectangle(img, cv::Rect(pobj->bbox.x, pobj->bbox.y, pobj->bbox.w, pobj->bbox.h),
-                            cv::Scalar(0, 255, 0), 2);
-              cv::putText(img, str_res,
-                          cv::Point(pobj->bbox.x, std::max(pobj->bbox.y - 5, 15.0f)),
-                          cv::FONT_HERSHEY_SIMPLEX, 2.0, cv::Scalar(0, 255, 0), 2);
-            
-            auto sys_now = std::chrono::system_clock::now();
-            auto timestamp_ms = std::chrono::duration_cast<std::chrono::milliseconds>(sys_now.time_since_epoch()).count();
-            std::string filename = "save/post_ocr_rec_" +  std::to_string(timestamp_ms) + ".jpg";
-            cv::imwrite(filename, img);
-            last_save_time_ = now;
-        }
+      cv::Rect bbox_roi(pobj->bbox.x, pobj->bbox.y, pobj->bbox.w, pobj->bbox.h);
+      cv::Rect safe_roi = bbox_roi & cv::Rect(0, 0, img.cols, img.rows);
+      if (safe_roi.width > 0 && safe_roi.height > 0) {
+        debug_saver_.MaybeSave("post_ocr_rec_crop", img, str_res,
+            [safe_roi](cv::Mat& canvas) {
+              canvas = canvas(safe_roi).clone();
+            });
       }
     }
 #endif
@@ -184,10 +184,7 @@ class Post_PPOCRv3_rec_Obj : public ObjPostproc {
   std::string model_name_;
 
  private:
-  bool enable_save_ = false;
-  std::mutex last_save_time_mutex_;
-  std::chrono::steady_clock::time_point last_save_time_;
-  uint32_t save_duration_ms_ = 500;
+  cnstream::DebugImageSaver debug_saver_;
 
   DECLARE_REFLEX_OBJECT_EX(Post_PPOCRv3_rec_Obj, cnstream::ObjPostproc);
 };  // class Post_PPOCRv3_rec_Obj

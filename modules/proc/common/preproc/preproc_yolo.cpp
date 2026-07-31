@@ -159,8 +159,6 @@ class Pre_YOLO_CPU_v2: public Preproc {
   }
 
  private:
-  uint32_t save_duration_ms_ = 1000;
-
   DECLARE_REFLEX_OBJECT_EX(Pre_YOLO_CPU_v2, cnstream::Preproc);
 };
 IMPLEMENT_REFLEX_OBJECT_EX(Pre_YOLO_CPU_v2, cnstream::Preproc);

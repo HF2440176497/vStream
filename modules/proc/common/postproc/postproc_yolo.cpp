@@ -7,6 +7,7 @@
 #include "cnstream_frame.hpp"
 #include "cnstream_frame_va.hpp"
 #include "cnstream_logging.hpp"
+#include "proc/common/debug_image_saver.hpp"
 
 #include <algorithm>
 #include <iostream>
@@ -20,17 +21,21 @@ using json = nlohmann::json;
 
 namespace cnstream {
 
-namespace postproc_yolo {
-  
-const std::string key_config_file = "config_file";
+namespace {
 
-const std::string key_classes = "classes";
-const std::string key_name = "name";
-const std::string key_threshold = "threshold";
+inline constexpr const char* key_config_file = "config_file";
 
-const std::string key_max_boxes_num = "max_boxes_num";
-const std::string key_nms_iou_threshold = "nms_iou_threshold";
-const std::string key_enable_save = "enable_save";
+inline constexpr const char* key_classes = "classes";
+inline constexpr const char* key_name = "name";
+inline constexpr const char* key_threshold = "threshold";
+
+inline constexpr const char* key_max_boxes_num = "max_boxes_num";
+inline constexpr const char* key_nms_iou_threshold = "nms_iou_threshold";
+inline constexpr const char* key_enable_save = "enable_save";
+
+}  // namespace
+
+namespace {
 
 float box_iou(float aleft, float atop, float aright, float abottom,
               float bleft, float btop, float bright, float bbottom) {
@@ -101,7 +106,7 @@ void fast_nms(ObjsVec& objs, int max_boxes, float threshold) {
   }
   objs.resize(keep_idx);
 }
-}  // namespace postproc_yolo
+}  // namespace
 
 
 class Post_YOLOv8_CPU: public Postproc {
@@ -113,8 +118,8 @@ class Post_YOLOv8_CPU: public Postproc {
    */
   bool Init(const std::map<std::string, std::string> &params) override {
     params_ = params;
-    if (params_.find(postproc_yolo::key_config_file) != params_.end()) {
-      config_file_ = params_[postproc_yolo::key_config_file];
+    if (params_.find(key_config_file) != params_.end()) {
+      config_file_ = params_[key_config_file];
     } else {
       LOGE(POSTPROC) << "Init config_file must be in custom_postproc_params.";
       return false;
@@ -137,8 +142,8 @@ class Post_YOLOv8_CPU: public Postproc {
       return false;
     }
 
-    if (data.find(postproc_yolo::key_classes) != data.end()) {
-      const auto& classes = data[postproc_yolo::key_classes];
+    if (data.find(key_classes) != data.end()) {
+      const auto& classes = data[key_classes];
       if (!classes.is_object()) {
         LOGE(POSTPROC) << "Invalid classes format in conf file.";
         return false;
@@ -157,11 +162,11 @@ class Post_YOLOv8_CPU: public Postproc {
       }
     }
 
-    if (data.find(postproc_yolo::key_max_boxes_num) != data.end()) {
-      max_boxes_num_ = data[postproc_yolo::key_max_boxes_num].get<int>();
+    if (data.find(key_max_boxes_num) != data.end()) {
+      max_boxes_num_ = data[key_max_boxes_num].get<int>();
     }
-    if (data.find(postproc_yolo::key_nms_iou_threshold) != data.end()) {
-      nms_iou_threshold_ = data[postproc_yolo::key_nms_iou_threshold].get<float>();
+    if (data.find(key_nms_iou_threshold) != data.end()) {
+      nms_iou_threshold_ = data[key_nms_iou_threshold].get<float>();
     }
 
     return true;
@@ -266,7 +271,7 @@ class Post_YOLOv8_CPU: public Postproc {
       std::lock_guard<std::mutex> objs_mutex(objs_holder->mutex_);
       objs.push_back(obj);
     }
-    postproc_yolo::fast_nms(objs, max_boxes_num_, 0.5f);
+    fast_nms(objs, max_boxes_num_, nms_iou_threshold_);
 
     return 0;
   }
@@ -288,7 +293,7 @@ class Post_YOLOv8_CPU: public Postproc {
 
 IMPLEMENT_REFLEX_OBJECT_EX(Post_YOLOv8_CPU, cnstream::Postproc);
 
-namespace postproc_yolo {
+namespace {
 
 float box_iou_v2(float aleft, float atop, float aright, float abottom, float a_area,
                  float bleft, float btop, float bright, float bbottom, float b_area) {
@@ -351,15 +356,15 @@ void fast_nms_class(ObjsVec& objs, int max_boxes, float threshold) {
     }
     objs.resize(keep_idx);
 }
-}  // namespace postproc_yolo
+}  // namespace
 
 
 class Post_YOLOv8_CPU_v2: public Postproc {
  public:
   bool Init(const std::map<std::string, std::string> &params) override {
     params_ = params;
-    if (params_.find(postproc_yolo::key_config_file) != params_.end()) {
-      config_file_ = params_[postproc_yolo::key_config_file];
+    if (params_.find(key_config_file) != params_.end()) {
+      config_file_ = params_[key_config_file];
     } else {
       LOGE(POSTPROC) << "Init config_file must be in custom_postproc_params.";
       return false;
@@ -382,8 +387,8 @@ class Post_YOLOv8_CPU_v2: public Postproc {
       return false;
     }
 
-    if (data.find(postproc_yolo::key_classes) != data.end()) {
-      const auto& classes = data[postproc_yolo::key_classes];
+    if (data.find(key_classes) != data.end()) {
+      const auto& classes = data[key_classes];
       if (!classes.is_object()) {
         LOGE(POSTPROC) << "Invalid classes format in conf file.";
         return false;
@@ -402,11 +407,11 @@ class Post_YOLOv8_CPU_v2: public Postproc {
       }
     }
 
-    if (data.find(postproc_yolo::key_max_boxes_num) != data.end()) {
-      max_boxes_num_ = data[postproc_yolo::key_max_boxes_num].get<int>();
+    if (data.find(key_max_boxes_num) != data.end()) {
+      max_boxes_num_ = data[key_max_boxes_num].get<int>();
     }
-    if (data.find(postproc_yolo::key_nms_iou_threshold) != data.end()) {
-      nms_iou_threshold_ = data[postproc_yolo::key_nms_iou_threshold].get<float>();
+    if (data.find(key_nms_iou_threshold) != data.end()) {
+      nms_iou_threshold_ = data[key_nms_iou_threshold].get<float>();
     }
     return true;
   }
@@ -495,7 +500,7 @@ class Post_YOLOv8_CPU_v2: public Postproc {
       obj->model_name = model_name_;
       local_objs.push_back(obj);
     }
-    postproc_yolo::fast_nms(local_objs, max_boxes_num_, nms_iou_threshold_);
+    fast_nms(local_objs, max_boxes_num_, nms_iou_threshold_);
     {
       InferObjsPtr objs_holder = package->collection.Get<InferObjsPtr>(cnstream::kInferObjsTag);
       std::lock_guard<std::mutex> lock(objs_holder->mutex_);
@@ -505,24 +510,15 @@ class Post_YOLOv8_CPU_v2: public Postproc {
     LOGU(POSTPROC) << "After NMS, size: " << local_objs.size();
 
 #ifdef VSTREAM_UNIT_TEST
-    if (enable_save_) {
-      std::lock_guard<std::mutex> lock(last_save_time_mutex_);
-      auto now = std::chrono::steady_clock::now();
-      if (save_duration_ms_ > 0) {
-        if (last_save_time_.time_since_epoch().count() == 0 ||
-            std::chrono::duration_cast<std::chrono::milliseconds>(now - last_save_time_).count() >= save_duration_ms_) {
-            cv::Mat img = frame->GetImage().clone();
+    if (debug_saver_.enable()) {
+      cv::Mat img = frame->GetImage().clone();
+      debug_saver_.MaybeSave("post_yolo", img, "",
+          [&local_objs](cv::Mat& canvas) {
             for (auto& obj : local_objs) {
-                cv::rectangle(img, cv::Rect(obj->bbox.x, obj->bbox.y, obj->bbox.w, obj->bbox.h),
-                              cv::Scalar(0, 255, 0), 2);
+              cv::rectangle(canvas, cv::Rect(obj->bbox.x, obj->bbox.y, obj->bbox.w, obj->bbox.h),
+                            cv::Scalar(0, 255, 0), 2);
             }
-            auto sys_now = std::chrono::system_clock::now();
-            auto timestamp_ms = std::chrono::duration_cast<std::chrono::milliseconds>(sys_now.time_since_epoch()).count();
-            std::string filename = "save/post_yolo_" + std::to_string(timestamp_ms) + ".jpg";
-            cv::imwrite(filename, img);
-            last_save_time_ = now;
-        }
-      }
+          });
     }
 #endif
 
@@ -540,11 +536,8 @@ class Post_YOLOv8_CPU_v2: public Postproc {
   int max_boxes_num_ = 100;
   float nms_iou_threshold_ = 0.45f;
 
-private:
-  bool enable_save_ = false;
-  std::mutex last_save_time_mutex_;
-  std::chrono::steady_clock::time_point last_save_time_;
-  uint32_t save_duration_ms_ = 1000;
+ private:
+  cnstream::DebugImageSaver debug_saver_;
 
   DECLARE_REFLEX_OBJECT_EX(Post_YOLOv8_CPU_v2, cnstream::Postproc);
 };  // class Post_YOLOv8_CPU_v2
@@ -564,8 +557,8 @@ class Post_YOLOv5_CPU: public Postproc {
    */
   bool Init(const std::map<std::string, std::string> &params) override {
     params_ = params;
-    if (params_.find(postproc_yolo::key_config_file) != params_.end()) {
-      config_file_ = params_[postproc_yolo::key_config_file];
+    if (params_.find(key_config_file) != params_.end()) {
+      config_file_ = params_[key_config_file];
     } else {
       LOGE(POSTPROC) << "Init config_file must be in custom_postproc_params.";
       return false;
@@ -588,8 +581,8 @@ class Post_YOLOv5_CPU: public Postproc {
       return false;
     }
 
-    if (data.find(postproc_yolo::key_classes) != data.end()) {
-      const auto& classes = data[postproc_yolo::key_classes];
+    if (data.find(key_classes) != data.end()) {
+      const auto& classes = data[key_classes];
       if (!classes.is_object()) {
         LOGE(POSTPROC) << "Invalid classes format in conf file.";
         return false;
@@ -607,15 +600,16 @@ class Post_YOLOv5_CPU: public Postproc {
         item_infos_[std::stoi(key)] = info;
       }
     }
-    if (data.find(postproc_yolo::key_max_boxes_num) != data.end()) {
-      max_boxes_num_ = data[postproc_yolo::key_max_boxes_num].get<int>();
+    if (data.find(key_max_boxes_num) != data.end()) {
+      max_boxes_num_ = data[key_max_boxes_num].get<int>();
     }
-    if (data.find(postproc_yolo::key_nms_iou_threshold) != data.end()) {
-      nms_iou_threshold_ = data[postproc_yolo::key_nms_iou_threshold].get<float>();
+    if (data.find(key_nms_iou_threshold) != data.end()) {
+      nms_iou_threshold_ = data[key_nms_iou_threshold].get<float>();
     }
 
-    if (data.find(postproc_yolo::key_enable_save) != data.end()) {
-      enable_save_ = data[postproc_yolo::key_enable_save].get<bool>();
+    if (data.find(key_enable_save) != data.end()) {
+      debug_saver_.Configure(
+          data[key_enable_save].get<bool>(), 1000);
     }
     LOGI(POSTPROC) << "item_infos_ size = " << item_infos_.size();
     for (const auto& kv : item_infos_) {
@@ -724,7 +718,7 @@ class Post_YOLOv5_CPU: public Postproc {
       local_objs.push_back(obj);
     }  // end for
 
-    postproc_yolo::fast_nms(local_objs, max_boxes_num_, nms_iou_threshold_);
+    fast_nms(local_objs, max_boxes_num_, nms_iou_threshold_);
     {
       InferObjsPtr objs_holder = package->collection.Get<InferObjsPtr>(cnstream::kInferObjsTag);
       std::lock_guard<std::mutex> lock(objs_holder->mutex_);
@@ -734,15 +728,15 @@ class Post_YOLOv5_CPU: public Postproc {
     LOGU(POSTPROC) << "After NMS, size: " << local_objs.size();
 
 #ifdef VSTREAM_UNIT_TEST
-    if (enable_save_) {
+    if (debug_saver_.enable()) {
       cv::Mat img = frame->GetImage().clone();
-      for (const auto& b : local_objs) {
-        cv::rectangle(img, cv::Rect(b->bbox.x, b->bbox.y, b->bbox.w, b->bbox.h), cv::Scalar(255, 0, 0), 2);
-      }
-      auto sys_now = std::chrono::system_clock::now();
-      auto timestamp_ms = std::chrono::duration_cast<std::chrono::milliseconds>(sys_now.time_since_epoch()).count();
-      std::string filename = "save/post_yolo_" + std::to_string(timestamp_ms) + ".jpg";
-      cv::imwrite(filename, img);
+      debug_saver_.MaybeSave("post_yolo", img, "",
+          [&local_objs](cv::Mat& canvas) {
+            for (const auto& b : local_objs) {
+              cv::rectangle(canvas, cv::Rect(b->bbox.x, b->bbox.y, b->bbox.w, b->bbox.h),
+                            cv::Scalar(255, 0, 0), 2);
+            }
+          });
     }
 #endif
 
@@ -761,7 +755,7 @@ class Post_YOLOv5_CPU: public Postproc {
   float nms_iou_threshold_ = 0.45f;
   
  private:
-  bool enable_save_ = false;
+  cnstream::DebugImageSaver debug_saver_;
 
   DECLARE_REFLEX_OBJECT_EX(Post_YOLOv5_CPU, cnstream::Postproc);
 };  // class Post_YOLOv5_CPU

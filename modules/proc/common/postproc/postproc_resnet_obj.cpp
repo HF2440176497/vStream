@@ -17,21 +17,21 @@
 
 namespace cnstream {
 
-namespace postproc_resnet_obj {
-  
-const std::string key_config_file = "config_file";
-const std::string key_classes = "classes";
-const std::string key_name = "name";
+namespace {
 
-}  // namespace postproc_resnet_obj
+inline constexpr const char* key_config_file = "config_file";
+inline constexpr const char* key_classes = "classes";
+inline constexpr const char* key_name = "name";
+
+}  // namespace
 
 class Post_Resnet_Obj : public ObjPostproc {
  public:
   bool Init(const std::map<std::string, std::string> &params) override {
 
     params_ = params;
-    if (params_.find(postproc_resnet_obj::key_config_file) != params_.end()) {
-      config_file_ = params_[postproc_resnet_obj::key_config_file];
+    if (params_.find(key_config_file) != params_.end()) {
+      config_file_ = params_[key_config_file];
     } else {
       LOGE(POSTPROC) << "Init config_file must be in custom_postproc_params.";
       return false;
@@ -54,8 +54,8 @@ class Post_Resnet_Obj : public ObjPostproc {
       return false;
     }
 
-    if (data.find(postproc_resnet_obj::key_classes) != data.end()) {
-      const auto& classes = data[postproc_resnet_obj::key_classes];
+    if (data.find(key_classes) != data.end()) {
+      const auto& classes = data[key_classes];
       if (!classes.is_object()) {
         LOGE(POSTPROC) << "Invalid classes format in conf file.";
         return false;
