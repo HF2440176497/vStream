@@ -6,7 +6,7 @@
 if(UNIX)
     message(STATUS "=== Setting up library paths for Ubuntu ===")
 
-    set(CMAKE_CUDA_ARCHITECTURES "89")
+    set(CMAKE_CUDA_ARCHITECTURES "86;89;120")
 
     # FFmpeg
     if(NOT DEFINED FFMPEG_ROOT_DIR)
