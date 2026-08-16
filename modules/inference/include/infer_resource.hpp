@@ -27,6 +27,7 @@
 
 #include "cnstream_frame_va.hpp"
 #include "exception.hpp"
+#include "model_loader.hpp"
 #include "queuing_server.hpp"
 #include "tensor.hpp"
 
@@ -34,6 +35,7 @@ namespace cnstream {
 
 class ModelLoader;
 
+// 资源基类：组合 QueuingServer 的 slot 排队语义与 ModelLoader 句柄
 template <typename RetT>
 class InferResource : public QueuingServer {
  public:
@@ -41,17 +43,9 @@ class InferResource : public QueuingServer {
   virtual ~InferResource() {}
   virtual void Init() {}
   virtual void Destroy() {}
-  RetT WaitResourceByTicket(QueuingTicket* pticket) {
-    WaitByTicket(pticket);
-    return value_;
-  }
-  // InferResource 相当于帮助我们保管 value_，等待唤醒后才能够操作 value_
-
-  RetT GetDataDirectly() const { return value_; }
 
  protected:
   ModelLoader* model_ = nullptr;
-  RetT value_;
 };  // class InferResource
 
 struct IOResValue {
@@ -67,6 +61,10 @@ struct IOResValue {
   // size == input/output tensor num
   std::vector<std::shared_ptr<void>> ptrs {};  // RAII 内存，在 Resource 析构时自动释放
   std::vector<IOResData> datas {};
+
+  void* stream = nullptr;  // slot 绑定的执行流
+                           // 异步流水线模式，WaitResourceByTicket 时由 ModelLoader 查询填充；
+                           // 同流串行保证 H2D/infer/D2H 读写顺序；未启用异步时为 nullptr，各 stage 回退 GetStream()
 };  // struct IOResValue
 
 // InferResource 规定获取 value_ 的接口
@@ -75,19 +73,36 @@ CNSTREAM_REGISTER_EXCEPTION(IOResource);
 
 // IOResource: 通过 Allocate 分配内存，通过 Deallocate 释放内存
 // 子类定义封装 IOResValue 的获取和析构方法
+// 池化：values_ 为 N 份 buffer（N = 资源池深度，默认 1），由 QueuingServer 的 slot 机制分配
 class IOResource : public InferResource<IOResValue> {
  public:
   IOResource(ModelLoader* model);
   virtual ~IOResource();
 
-  void Init() override { value_ = Allocate(model_); }
-  void Destroy() override { Deallocate(model_, value_); }
+  void Init() override;
+  void Destroy() override;
+
+  // 设置资源池深度（须在 Init 之前调用），默认 1 与原始单 buffer 语义等价
+  void SetResPoolSize(uint32_t n) { res_pool_size_ = n < 1 ? 1 : n; }
+  uint32_t GetResPoolSize() const { return res_pool_size_; }
+
+  // 等待票据被服务后，返回该票据绑定 slot 对应的 buffer 及其执行流；
+  // 同一 run 的各阶段取到同一 slot（chain 转交），不同 run 取到不同 slot
+  IOResValue WaitResourceByTicket(QueuingTicket* pticket) {
+    WaitByTicket(pticket);
+    const int slot = pticket->Slot();
+    IOResValue value = values_[slot];
+    value.stream = model_ ? model_->GetSlotStream(slot) : nullptr;
+    return value;
+  }
 
  protected:
   virtual IOResValue Allocate(ModelLoader* model) = 0;
   virtual void Deallocate(ModelLoader* model, const IOResValue& value) = 0;
 
  protected:
+  std::vector<IOResValue> values_;  // 池化 buffer，长度 == res_pool_size_
+  uint32_t res_pool_size_ = 1;
   std::shared_ptr<MemOp> memop_ = nullptr;  // 平台相关的内存操作接口
 };  // class IOResource
 

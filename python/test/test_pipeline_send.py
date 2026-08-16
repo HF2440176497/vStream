@@ -93,6 +93,12 @@ def test_send_queue_pipeline():
     running = True
     send_count = 0
     receive_count = 0
+    # 用于校验 monotonic increasing 的 timestamp 列表
+    received_timestamps = []
+
+    def is_monotonic_increasing(values):
+        """校验列表中相邻元素严格递增。"""
+        return all(values[i] < values[i + 1] for i in range(len(values) - 1))
 
     def send_thread():
         nonlocal send_count
@@ -103,7 +109,7 @@ def test_send_queue_pipeline():
             if ok != 0:
                 print(f"Warning: send returned {ok}")
             send_count += 1
-            time.sleep(0.2)
+            time.sleep(0.1)
 
     def receive_thread():
         nonlocal receive_count
@@ -114,19 +120,24 @@ def test_send_queue_pipeline():
                 time.sleep(0.01)
                 continue
             receive_count += 1
+
+            # 直接访问 timestamp，缺失则抛 AttributeError；并加入列表用于单调性校验
+            timestamp = data.timestamp
+            received_timestamps.append(timestamp)
+
             if receive_count % 2 == 0:
                 print(f'receive {data}')
                 print(f"Received {receive_count} frames, send_count: {send_count}")
 
-                # 检查并保存 data 顶层成员（防御式获取）
+                # 检查并保存 data 顶层成员（直接访问，缺失则抛 AttributeError）
                 data_members = [m for m in dir(data) if not m.startswith('_')]
                 print(f"data members: {data_members}")
 
-                result = getattr(data, 'result', None)
-                timestamp = getattr(data, 'timestamp', None)
-                frame_id_s = getattr(data, 'frame_id_s', None)
-                objects_json = getattr(data, 'objects_json', None)
-                objects = getattr(data, 'objects', [])
+                result = data.result
+                timestamp = data.timestamp
+                frame_id_s = data.frame_id_s
+                objects_json = data.objects_json
+                objects = data.objects
                 print(f"  result={result}, timestamp={timestamp}, frame_id_s={frame_id_s}")
                 print(f"  objects count={len(objects)}, objects_json={objects_json}")
 
@@ -176,6 +187,14 @@ def test_send_queue_pipeline():
     t_recv.join()
 
     print(f"Total sent: {send_count}, total received: {receive_count}")
+
+    # 校验 receive_thread 收集到的 timestamp 列表是否单调递增
+    print(f"Received timestamps count: {len(received_timestamps)}")
+    assert is_monotonic_increasing(received_timestamps), (
+        f"received_timestamps is not monotonically increasing: "
+        f"{received_timestamps[:5]}...{received_timestamps[-5:]}"
+    )
+    print("received_timestamps is monotonically increasing: OK")
 
     pipeline.stop()
     print("Pipeline stopped")

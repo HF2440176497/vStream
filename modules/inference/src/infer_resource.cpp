@@ -42,6 +42,21 @@ IOResource::IOResource(ModelLoader* model)
 
 IOResource::~IOResource() {}
 
+void IOResource::Init() {
+  values_.assign(res_pool_size_, IOResValue());
+  for (uint32_t i = 0; i < res_pool_size_; ++i) {
+    values_[i] = Allocate(model_);
+  }
+  SetPoolSize(res_pool_size_);
+}
+
+void IOResource::Destroy() {
+  for (uint32_t i = 0; i < values_.size(); ++i) {
+    Deallocate(model_, values_[i]);
+  }
+  values_.clear();
+}
+
 CpuInputResource::CpuInputResource(ModelLoader* model)
     : IOResource(model) {
   memop_ = MemOpFactory::Instance().CreateMemOp(DevType::CPU, -1);

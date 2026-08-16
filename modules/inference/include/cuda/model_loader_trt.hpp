@@ -17,6 +17,7 @@
 #include <vector>
 #include <map>
 #include <mutex>
+#include <deque>
 
 #include "model_loader.hpp"
 
@@ -29,6 +30,17 @@ struct TrtDeleter {
       delete ptr;
     }
   }
+};
+
+/**
+ * @brief 异步执行 slot：独立的执行上下文 + 执行流 + 完成事件
+ * 同一 slot 上的任务在流上天然串行；不同 slot 之间可并发执行
+ */
+struct TrtAsyncSlot {
+  nvinfer1::IExecutionContext* context = nullptr;
+  cudaStream_t stream = nullptr;
+  cudaEvent_t event = nullptr;
+  std::mutex mtx;  // 保护该 slot 上下文的地址设置 + enqueue（多引擎共享 loader 时串行化）
 };
 
 /**
@@ -50,6 +62,13 @@ class ModelLoaderTrt : public ModelLoader {
 
   bool RunSync(std::vector<std::shared_ptr<void>> inputs, std::vector<std::shared_ptr<void>> outputs) override;
 
+  bool EnableAsyncInfer(int slot_num) override;
+  void* GetSlotStream(int slot) const override;
+  void* RunAsync(const std::vector<std::shared_ptr<void>>& inputs,
+                 const std::vector<std::shared_ptr<void>>& outputs,
+                 void* stream) override;
+  void SyncEvent(void* event) override;
+
   void* GetStream() const override { return static_cast<void*>(stream_); }
 
   nvinfer1::IExecutionContext* CreateExecutionContext();
@@ -63,12 +82,20 @@ class ModelLoaderTrt : public ModelLoader {
   bool LoadEngine(const std::string& engine_path);
   bool ParseBindings();
 
+  bool ApplyInputShapes(nvinfer1::IExecutionContext* context);
+  TrtAsyncSlot* FindSlotByStream(void* stream);
+  void DestroyAsyncSlots();          // 需在 async_mtx_ 保护下调用
+  void DestroyAsyncSlotsLocked();    // 需在 async_mtx_ 保护下调用
+
   ModelLoaderTrt::Logger logger_;
   std::unique_ptr<nvinfer1::IRuntime, TrtDeleter> runtime_ = nullptr;
   std::unique_ptr<nvinfer1::ICudaEngine, TrtDeleter> engine_ = nullptr;
   std::unique_ptr<nvinfer1::IExecutionContext, TrtDeleter> context_ = nullptr;
   cudaStream_t stream_ = nullptr;
   std::mutex mutex_;
+
+  std::deque<TrtAsyncSlot> async_slots_;  // 异步执行 slot 池（EnableAsyncInfer 创建）
+  std::mutex async_mtx_;                  // 保护 async_slots_
 
 };  // end of ModelLoaderTrt
 

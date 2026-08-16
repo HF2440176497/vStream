@@ -43,7 +43,9 @@ std::vector<std::shared_ptr<InferTask>> H2DBatchingDoneStage::BatchingDone(const
   std::vector<InferTaskSptr> tasks;
   InferTaskSptr task;
 
-  QueuingTicket cpu_input_res_ticket = cpu_input_res_->PickUpNewTicket();
+  // cpu_input: 链式票据，延续本批预处理共享票据的 run（读写同一份 cpu buffer）
+  // net_input: 新 run，从空闲池取本批专属的 device buffer
+  QueuingTicket cpu_input_res_ticket = cpu_input_res_->PickUpNewTicket(false, true);
   QueuingTicket net_input_res_ticket = net_input_res_->PickUpNewTicket();
 
   task = std::make_shared<InferTask>([cpu_input_res_ticket, net_input_res_ticket, this, finfos]() -> int {
@@ -62,27 +64,35 @@ std::vector<std::shared_ptr<InferTask>> H2DBatchingDoneStage::BatchingDone(const
       LOGU(H2D) << "bidx: " << bidx << "; [" << finfos[bidx].first->stream_id << "], ts: " << finfos[bidx].first->timestamp;
     }
 
+    // slot 执行流（异步模式）：后续 infer 在同一流上排队，天然保证读序；
+    // 未启用异步时回退模型默认流
+    void* infer_stream = net_value.stream ? net_value.stream : model_->GetStream();
     for (int i = 0; i < model_->InputNum(); i++) {
       void* src_cpu = cpu_value.ptrs[i].get();
       void* dst_net = net_value.ptrs[i].get();
       auto input_data_type = model_->InputDataType(i);
       size_t data_size = net_value.datas[i].shape.DataCount() * data_type_size(input_data_type);
-      
+
       // cpu shape 与 net shape 应该一致
       // LOGU(H2D) << " index: " << i << "; cpu shape: " << cpu_value.datas[i].shape << "; net shape:" << net_value.datas[i].shape << std::endl;
       // LOGU(H2D) << " index: " << i << "; count:" << net_value.datas[i].shape.DataCount() << ", data_size: " << data_size << std::endl;
 
-      void* infer_stream = model_->GetStream();
       memop_->CopyFromHostAsync(dst_net, src_cpu, data_size, infer_stream);
     }
-  
-    this->cpu_input_res_->DeallingDone();
-    this->net_input_res_->DeallingDone();
+
+    // cpu buffer 仍在被 GPU 拷贝读取，必须等拷贝完成才能释放 cpu_input 票据，
+    // 否则下一批次预处理复用同一 slot 的 cpu buffer 会产生数据竞争。
+    // net_input 票据随之在拷贝完成后才转交 Infer（链式）：推理提交虽晚一个拷贝时长，
+    // 但其 RunAsync 与 H2D 排在同一 slot 流上，GPU 执行顺序不变；
+    // 批间重叠由其他 slot 承担（本批拷贝期间，下一批的 H2D 已在其他 slot 流上执行）
+    memop_->SyncStream(infer_stream);
+    this->cpu_input_res_->DeallingDone(cir_ticket);
+    this->net_input_res_->DeallingDone(mir_ticket);
     return 0;
   });
   tasks.push_back(task);
   return tasks;
-} 
+}
 
 
 InferBatchingDoneStage::InferBatchingDoneStage(ModelLoader* model,
@@ -100,7 +110,9 @@ std::vector<std::shared_ptr<InferTask>> InferBatchingDoneStage::BatchingDone(con
   std::vector<InferTaskSptr> tasks;
   InferTaskSptr task;
 
-  QueuingTicket input_res_ticket = input_res_->PickUpNewTicket();
+  // input: 链式票据，延续 H2D（CUDA）或预处理共享票据（CPU）的 run，同一 slot buffer
+  // output: 新 run，本批专属输出 buffer
+  QueuingTicket input_res_ticket = input_res_->PickUpNewTicket(false, true);
   QueuingTicket output_res_ticket = output_res_->PickUpNewTicket();
   task = std::make_shared<InferTask>([input_res_ticket, output_res_ticket, this, finfos]() -> int {
     QueuingTicket ir_ticket = input_res_ticket;
@@ -124,7 +136,16 @@ std::vector<std::shared_ptr<InferTask>> InferBatchingDoneStage::BatchingDone(con
     if (!dump_resized_image_dir_.empty()) {
       // dump_resized_image(net_input_value, dump_resized_image_dir_);
     }
-    model_->RunSync(input_value.ptrs, output_value.ptrs);
+
+    // 推理提交到 input slot 执行流：与 H2D 同流串行，无需额外同步即保证读序；
+    // 等待本批完成期间，其他 slot 上的批次可继续 H2D/推理（批间重叠）。
+    // 未启用异步的平台（RKNN/CPU）RunAsync 回退 RunSync 并返回 nullptr
+    void* slot_stream = input_value.stream ? input_value.stream : model_->GetStream();
+    void* event = model_->RunAsync(input_value.ptrs, output_value.ptrs, slot_stream);
+    if (event) {
+      // 推理完成才释放票据：输入 buffer 不再被读取、输出 buffer 已写就绪
+      model_->SyncEvent(event);
+    }
 
     if (profiler_) {
       for (const auto& finfo : finfos) {
@@ -132,8 +153,8 @@ std::vector<std::shared_ptr<InferTask>> InferBatchingDoneStage::BatchingDone(con
       }
     }
 
-    this->input_res_->DeallingDone();
-    this->output_res_->DeallingDone();
+    this->input_res_->DeallingDone(ir_ticket);
+    this->output_res_->DeallingDone(or_ticket);
     return 0;
   });
   tasks.push_back(task);
@@ -144,7 +165,9 @@ std::vector<std::shared_ptr<InferTask>> InferBatchingDoneStage::BatchingDone(con
 std::vector<std::shared_ptr<InferTask>> D2HBatchingDoneStage::BatchingDone(const BatchingDoneInput& finfos) {
   std::vector<InferTaskSptr> tasks;
   InferTaskSptr task;
-  QueuingTicket net_output_res_ticket = net_output_res_->PickUpNewTicket();
+  // net_output: 链式票据，延续本批 Infer 的 run（同一 slot 输出 buffer）
+  // cpu_output: 新 run，本批专属 cpu 输出 buffer
+  QueuingTicket net_output_res_ticket = net_output_res_->PickUpNewTicket(false, true);
   QueuingTicket cpu_output_res_ticket = cpu_output_res_->PickUpNewTicket();
   task = std::make_shared<InferTask>([net_output_res_ticket, cpu_output_res_ticket, this, finfos]() -> int {
     QueuingTicket mor_ticket = net_output_res_ticket;
@@ -161,18 +184,20 @@ std::vector<std::shared_ptr<InferTask>> D2HBatchingDoneStage::BatchingDone(const
       LOGU(D2H) << "bidx: " << bidx << "; [" << finfos[bidx].first->stream_id << "], ts: " << finfos[bidx].first->timestamp;
     }
 
+    // Infer 阶段释放票据前已 SyncEvent，输出数据就绪；
+    // 用 net_output slot 流拷贝，可与其他 slot 上的推理并行
+    void* d2h_stream = net_output_value.stream ? net_output_value.stream : model_->GetStream();
     for (int i = 0; i < model_->OutputNum(); i++) {
       void* src_net = net_output_value.ptrs[i].get();
       void* dst_cpu = cpu_output_value.ptrs[i].get();
       auto output_data_type = model_->OutputDataType(i);
       size_t data_size = net_output_value.datas[i].shape.DataCount() * data_type_size(output_data_type);
-      void* infer_stream = model_->GetStream();
-      memop_->CopyToHostAsync(dst_cpu, src_net, data_size, infer_stream);
+      memop_->CopyToHostAsync(dst_cpu, src_net, data_size, d2h_stream);
     }
-    memop_->SyncStream(model_->GetStream());
+    memop_->SyncStream(d2h_stream);
 
-    this->net_output_res_->DeallingDone();
-    this->cpu_output_res_->DeallingDone();
+    this->net_output_res_->DeallingDone(mor_ticket);
+    this->cpu_output_res_->DeallingDone(cor_ticket);
     return 0;
   });
   tasks.push_back(task);
@@ -205,8 +230,9 @@ std::vector<std::shared_ptr<InferTask>> PostprocessingBatchingDoneStage::Batchin
     auto finfo = finfos[bidx];
     QueuingTicket cpu_output_res_ticket;
     if (0 == bidx) {
-      // 对于第一个元素
-      cpu_output_res_ticket = cpu_output_res->PickUpNewTicket(true);
+      // 链式票据：延续本批 D2H 的 run，读 D2H 写入的同一份 cpu buffer；
+      // 首帧取新共享票据，同批其余帧共享之
+      cpu_output_res_ticket = cpu_output_res->PickUpNewTicket(true, true);
     } else {
       cpu_output_res_ticket = cpu_output_res->PickUpTicket(true);
     }
@@ -226,10 +252,10 @@ std::vector<std::shared_ptr<InferTask>> PostprocessingBatchingDoneStage::Batchin
           if (!cnstream::IsStreamRemoved(finfo.first->stream_id)) {
             this->postprocessor_->Execute(cpu_outputs, this->model_, finfo.first);
           }
-          cpu_output_res->DeallingDone();
+          cpu_output_res->DeallingDone(cor_ticket);
           return 0;
         });  // task
-    
+
     tasks.push_back(task);
   }  // end for bidx
   return tasks;
@@ -238,8 +264,9 @@ std::vector<std::shared_ptr<InferTask>> PostprocessingBatchingDoneStage::Batchin
 
 std::vector<std::shared_ptr<InferTask>> PostprocessingBatchingDoneStage::BatchingDone(
     const BatchingDoneInput& finfos, const std::shared_ptr<NetOutputResource>& net_output_res) {
-  
-  QueuingTicket net_output_res_ticket = net_output_res->PickUpNewTicket(false);
+
+  // 链式票据：延续本批 Infer 的 run，直接读 device 输出 buffer
+  QueuingTicket net_output_res_ticket = net_output_res->PickUpNewTicket(false, true);
 
   std::vector<InferTaskSptr> tasks;
   InferTaskSptr task = std::make_shared<InferTask>([net_output_res_ticket, net_output_res, this, finfos]() -> int {
@@ -254,7 +281,7 @@ std::vector<std::shared_ptr<InferTask>> PostprocessingBatchingDoneStage::Batchin
     for (const auto& it : finfos) batched_finfos.push_back(it.first);
 
     this->postprocessor_->Execute(net_outputs, this->model_, batched_finfos);
-    net_output_res->DeallingDone();
+    net_output_res->DeallingDone(mor_ticket);
     return 0;
   });
   tasks.push_back(task);
@@ -283,7 +310,8 @@ std::vector<std::shared_ptr<InferTask>> ObjPostprocessingBatchingDoneStage::ObjB
     auto obj = objs[bidx];
     QueuingTicket cpu_output_res_ticket;
     if (0 == bidx) {
-      cpu_output_res_ticket = cpu_output_res->PickUpNewTicket(true);
+      // 链式票据：延续本批 D2H 的 run，读 D2H 写入的同一份 cpu buffer
+      cpu_output_res_ticket = cpu_output_res->PickUpNewTicket(true, true);
     } else {
       cpu_output_res_ticket = cpu_output_res->PickUpTicket(true);
     }
@@ -298,7 +326,7 @@ std::vector<std::shared_ptr<InferTask>> ObjPostprocessingBatchingDoneStage::ObjB
           if (!cnstream::IsStreamRemoved(finfo.first->stream_id)) {
             this->postprocessor_->Execute(cpu_outputs, this->model_, finfo.first, obj);
           }
-          cpu_output_res->DeallingDone();
+          cpu_output_res->DeallingDone(cor_ticket);
           return 0;
         });
     tasks.push_back(task);
@@ -310,7 +338,8 @@ std::vector<std::shared_ptr<InferTask>> ObjPostprocessingBatchingDoneStage::ObjB
     const BatchingDoneInput& finfos, const std::vector<std::shared_ptr<InferObject>>& objs,
     const std::shared_ptr<NetOutputResource>& net_output_res) {
   std::vector<InferTaskSptr> tasks;
-  QueuingTicket net_output_res_ticket = net_output_res->PickUpNewTicket(false);
+  // 链式票据：延续本批 Infer 的 run，直接读 device 输出 buffer
+  QueuingTicket net_output_res_ticket = net_output_res->PickUpNewTicket(false, true);
   InferTaskSptr task =
       std::make_shared<InferTask>([net_output_res_ticket, net_output_res, this, finfos, objs]() -> int {
         QueuingTicket mor_ticket = net_output_res_ticket;
@@ -330,7 +359,7 @@ std::vector<std::shared_ptr<InferTask>> ObjPostprocessingBatchingDoneStage::ObjB
         }
 
         this->postprocessor_->Execute(net_outputs, this->model_, batched_objs);
-        net_output_res->DeallingDone();
+        net_output_res->DeallingDone(mor_ticket);
         return 0;
       });
   tasks.push_back(task);

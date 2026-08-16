@@ -151,6 +151,7 @@ bool ModelLoaderTrt::Init(const std::string& engine_path, const InferParams& par
 
 ModelLoaderTrt::~ModelLoaderTrt() {
   CudaDeviceGuard guard(device_id_);
+  DestroyAsyncSlots();
   if (stream_) {
     CHECK_CUDA_RUNTIME(cudaStreamDestroy(stream_));
     stream_ = nullptr;
@@ -338,6 +339,156 @@ bool ModelLoaderTrt::RunSync(std::vector<std::shared_ptr<void>> inputs, std::vec
     return false;
   }
   return CHECK_CUDA_RUNTIME(cudaStreamSynchronize(stream_));
+}
+
+// 为新建的执行上下文应用优化 profile 输入形状，与 ParseBindings 中主上下文的处理一致
+bool ModelLoaderTrt::ApplyInputShapes(nvinfer1::IExecutionContext* context) {
+  if (!context || !engine_) return false;
+  for (auto& input_name : input_names_) {
+    auto dims = engine_->getTensorShape(input_name.c_str());
+    for (int j = 0; j < dims.nbDims; ++j) {
+      if (dims.d[j] == -1) {
+        auto opt_profile_index = context->getOptimizationProfile();
+        auto opt_dims = engine_->getProfileShape(input_name.c_str(),
+                                                 opt_profile_index,
+                                                 nvinfer1::OptProfileSelector::kOPT);
+        if (!context->setInputShape(input_name.c_str(), opt_dims)) {
+          LOGF(MODEL) << "setInputShape failed for tensor: " << input_name;
+          return false;
+        }
+        break;
+      }
+    }
+  }
+  return true;
+}
+
+bool ModelLoaderTrt::EnableAsyncInfer(int slot_num) {
+  if (slot_num <= 0 || !engine_) return false;
+  std::lock_guard<std::mutex> lk(async_mtx_);
+  // 多个 InferEngine 共享同一 loader：已启用且 slot 数足够则直接复用
+  if (static_cast<int>(async_slots_.size()) >= slot_num) return true;
+  if (!async_slots_.empty()) {
+    LOGW(MODEL) << "EnableAsyncInfer: " << async_slots_.size() << " slots already in use, requested "
+                << slot_num << "; fallback to sync path";
+    return false;
+  }
+
+  DestroyAsyncSlotsLocked();
+  CudaDeviceGuard guard(device_id_);
+
+  // TrtAsyncSlot 含互斥量不可移动，用 deque 增长（vector 扩容需移动元素，编译期即失败）
+  std::deque<TrtAsyncSlot> slots;
+  auto cleanup = [&slots]() {
+    for (auto& s : slots) {
+      if (s.stream) cudaStreamDestroy(s.stream);
+      if (s.event) cudaEventDestroy(s.event);
+      if (s.context) delete s.context;
+    }
+    slots.clear();
+  };
+  for (int i = 0; i < slot_num; ++i) {
+    slots.emplace_back();
+    TrtAsyncSlot& slot = slots.back();
+    slot.context = engine_->createExecutionContext();  // engine_ 已绑定模型，slot.context 手动管理释放
+    if (!slot.context) {
+      LOGE(MODEL) << "EnableAsyncInfer: create execution context failed, slot: " << i;
+      cleanup();
+      return false;
+    }
+    if (!ApplyInputShapes(slot.context)) {
+      cleanup();
+      return false;
+    }
+    if (!CHECK_CUDA_RUNTIME(cudaStreamCreate(&slot.stream)) ||
+        !CHECK_CUDA_RUNTIME(cudaEventCreate(&slot.event))) {
+      cleanup();
+      return false;
+    }
+  }
+  async_slots_ = std::move(slots);
+  LOGI(MODEL) << "EnableAsyncInfer: " << async_slots_.size() << " slots created";
+  return true;
+}
+
+void ModelLoaderTrt::DestroyAsyncSlots() {
+  std::lock_guard<std::mutex> lk(async_mtx_);
+  DestroyAsyncSlotsLocked();
+}
+
+void ModelLoaderTrt::DestroyAsyncSlotsLocked() {
+  for (auto& slot : async_slots_) {
+    if (slot.stream) {
+      cudaStreamSynchronize(slot.stream);
+      cudaStreamDestroy(slot.stream);
+    }
+    if (slot.event) {
+      cudaEventDestroy(slot.event);
+    }
+    if (slot.context) {
+      delete slot.context;
+    }
+  }
+  async_slots_.clear();
+}
+
+void* ModelLoaderTrt::GetSlotStream(int slot) const {
+  if (slot < 0 || slot >= static_cast<int>(async_slots_.size())) return nullptr;
+  return static_cast<void*>(async_slots_[slot].stream);
+}
+
+TrtAsyncSlot* ModelLoaderTrt::FindSlotByStream(void* stream) {
+  if (!stream) return nullptr;
+  for (auto& slot : async_slots_) {
+    if (static_cast<void*>(slot.stream) == stream) return &slot;
+  }
+  return nullptr;
+}
+
+/**
+ * @brief 异步推理：将推理提交到 slot 执行流后立即返回，不阻塞调用线程
+ * @note 每个 slot 拥有独立 IExecutionContext，不同 slot 的推理可并发
+ *       同一 slot 由 slot 互斥 + 事件同步保证上下文上无并发执行
+ */
+void* ModelLoaderTrt::RunAsync(const std::vector<std::shared_ptr<void>>& inputs,
+                               const std::vector<std::shared_ptr<void>>& outputs,
+                               void* stream) {
+  TrtAsyncSlot* slot = FindSlotByStream(stream);
+  if (!slot) {
+    RunSync(inputs, outputs);
+    return nullptr;
+  }
+
+  std::lock_guard<std::mutex> slot_lk(slot->mtx);
+  // 等待该 slot 上一次异步推理完成
+  cudaEventSynchronize(slot->event);
+
+  CudaDeviceGuard guard(device_id_);
+  if (inputs.size() != input_names_.size() || outputs.size() != output_names_.size()) {
+    LOGF(MODEL) << "Tensor mismatch: inputs " << inputs.size() << " vs " << input_names_.size()
+                << ", outputs " << outputs.size() << " vs " << output_names_.size();
+    return nullptr;
+  }
+  for (int i = 0; i < inputs.size(); ++i) {
+    slot->context->setInputTensorAddress(input_names_[i].c_str(), inputs[i].get());
+  }
+  for (int i = 0; i < outputs.size(); ++i) {
+    slot->context->setOutputTensorAddress(output_names_[i].c_str(), outputs[i].get());
+  }
+  if (!slot->context->enqueueV3(slot->stream)) {
+    auto code = cudaGetLastError();
+    LOGF(MODEL) << "async execute fail, code: " << code
+                << ", message: " << cudaGetErrorName(code) << ", " << cudaGetErrorString(code);
+    return nullptr;
+  }
+  CHECK_CUDA_RUNTIME(cudaEventRecord(slot->event, slot->stream));
+  return static_cast<void*>(slot->event);
+}
+
+void ModelLoaderTrt::SyncEvent(void* event) {
+  if (!event) return;
+  CudaDeviceGuard guard(device_id_);
+  CHECK_CUDA_RUNTIME(cudaEventSynchronize(static_cast<cudaEvent_t>(event)));
 }
 
 nvinfer1::IExecutionContext* ModelLoaderTrt::CreateExecutionContext() {

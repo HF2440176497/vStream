@@ -7,110 +7,127 @@
  *
  *     http://www.apache.org/licenses/LICENSE-2.0
  *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *************************************************************************/
 
-#include <iostream>
 #include "queuing_server.hpp"
 
-
-/**
- * @brief 从队列中取出一个 ticket
- * @param reserve 是否保留当前 ticket, 保留后, 后续 PickUpTicket 会返回该 ticket
- */
-QueuingTicket QueuingServer::PickUpTicket(bool reserve) {
+QueuingTicket QueuingServer::PickUpTicket(bool reserve, bool chain) {
   std::lock_guard<std::mutex> lk(mtx_);
-  QueuingTicket ticket;
-  if (reserved_) {
-    // last ticket reserved, return it.
-    ticket = reserved_ticket_;
-  } else {
-    // create new ticket.
-    tickets_q_.push(QueuingTicketRoot());
-    ticket = tickets_q_.back().root.get_future().share();
-    if (tickets_q_.size() == 1) {  // only one ticket, call at once
-      Call();
+  // 上一张票据仍被保留且未出队：共享之（同一 run 的多持有者）
+  if (reserved_ && reserved_node_ && reserved_node_->in_queue) {
+    if (reserved_node_->released) {
+      // 复活：批内先到帧的任务已全部释放（holders 归零），但节点被前序未释放节点
+      // 堵在队列中尚未出队。本帧共享该节点后必须撤销 released 标记，否则节点
+      // 轮转到队首时会被提前出队、slot 被转交 H2D，而本帧预处理任务尚未写完该 buffer
+      reserved_node_->released = false;
     }
+    reserved_node_->holders++;  // 每次取票配对一次 DeallingDone
+    if (!reserve) {
+      // 本共享组的最后一次取票，关闭保留状态
+      reserved_ = false;
+    }
+    return QueuingTicket(reserved_node_);
   }
+
+  auto node = std::make_shared<Node>();
+  node->chain = chain;
+  node->in_queue = true;
+  node->holders = 1;
+  tickets_q_.push_back(node);
   if (reserve) {
-    // reserve current ticket for next pick up.
-    reserved_ticket_ = ticket;
-    tickets_q_.back().reserved_time++;
+    reserved_node_ = node;
     reserved_ = true;
-  } else {
-    // do not reserve the current ticket
-    reserved_ = false;
-    // tickets_q_.back().reserved_time = 0;
   }
-  return ticket;
+  ServeLocked();
+  return QueuingTicket(node);
 }
 
-
-QueuingTicket QueuingServer::PickUpNewTicket(bool reserve) {
+QueuingTicket QueuingServer::PickUpNewTicket(bool reserve, bool chain) {
   std::lock_guard<std::mutex> lk(mtx_);
-  QueuingTicket ticket;
-  if (reserved_) {
-    // last ticket reserved, clean it.
-    if (0 == tickets_q_.back().reserved_time) {
-      if (static_cast<int>(tickets_q_.size()) != 1) {
-          std::cout << "Internel error" << std::endl;
+  // 新票据终结当前共享组；旧票据的持有计数由其真实持有者的 DeallingDone 消化
+  reserved_ = false;
+  reserved_node_.reset();
+
+  auto node = std::make_shared<Node>();
+  node->chain = chain;
+  node->in_queue = true;
+  node->holders = 1;
+  tickets_q_.push_back(node);
+  if (reserve) {
+    reserved_node_ = node;
+    reserved_ = true;
+  }
+  ServeLocked();
+  return QueuingTicket(node);
+}
+
+void QueuingServer::DeallingDone(const QueuingTicket& ticket) {
+  if (!ticket.Valid()) return;
+  std::lock_guard<std::mutex> lk(mtx_);
+  Node* node = ticket.node_.get();
+  if (!node->in_queue || node->holders == 0) return;  // 重复/无效释放
+  if (--node->holders == 0) {
+    node->released = true;
+  }
+  ServeLocked();
+}
+
+void QueuingServer::SetPoolSize(size_t n) {
+  std::lock_guard<std::mutex> lk(mtx_);
+  free_slots_.clear();
+  for (size_t i = 0; i < n; ++i) {
+    free_slots_.push_back(static_cast<int>(i));
+  }
+}
+
+/**
+ * @brief 出队已释放的队首节点，并按 FIFO 顺序唤醒可服务的节点
+ *
+ * 出队规则：队首连续 released 的节点依次弹出；弹出的 slot
+ *  - 若其直接后继是 chain 票据 → 转交给后继（同 run 下一阶段继续用同一 buffer）
+ *  - 否则归还空闲池，供后续新 run 使用
+ *
+ * 唤醒规则：从队首扫描，跳过已服务节点；
+ *  - chain 节点需其前驱已释放出队并完成 slot 转交（slot >= 0）
+ *  - 非 chain 节点需空闲池有 slot
+ * 遇到不可服务节点即停止，保证唤醒顺序与取票顺序一致（FIFO）
+ */
+void QueuingServer::ServeLocked() {
+  // holders == 0 双重确认：防御"复活后 released 未复位"类缺陷导致提前出队
+  while (!tickets_q_.empty() && tickets_q_.front()->released && tickets_q_.front()->holders == 0) {
+    std::shared_ptr<Node> node = tickets_q_.front();
+    tickets_q_.pop_front();
+    node->in_queue = false;
+    if (node == reserved_node_) {
+      reserved_ = false;
+      reserved_node_.reset();
+    }
+    if (!tickets_q_.empty() && tickets_q_.front()->chain) {
+      tickets_q_.front()->slot = node->slot;  // 同 run：slot 转交
+      if (node->slot < 0) {
+        // 前驱未被服务即释放（异常路径）：后继的链式期待落空，退化为独立 run
+        tickets_q_.front()->chain = false;
       }
-      tickets_q_.pop();
-    } else {
-      tickets_q_.back().reserved_time--;
-    }
-    reserved_ = false;  // 清空上次状态
-  }
-  // create new ticket.
-  tickets_q_.push(QueuingTicketRoot());
-  ticket = tickets_q_.back().root.get_future().share();
-  if (tickets_q_.size() == 1) {
-    // only one ticket, call at once
-    Call();
-  }
-  if (reserve) {
-    // reserve current ticket for next pick up.
-    reserved_ticket_ = ticket;
-    tickets_q_.back().reserved_time++;
-    reserved_ = true;
-  }
-  return ticket;
-}
-
-/**
- * @brief 减少队首元素的保留计数
- * 如果队首元素的保留计数减为0，则从队列中移除该元素
- */
-void QueuingServer::DeallingDone() {
-  std::lock_guard<std::mutex> lk(mtx_);
-  if (!tickets_q_.empty()) {
-    if (0 == tickets_q_.front().reserved_time) {
-      tickets_q_.pop();
-      Call();
-    } else {
-      tickets_q_.front().reserved_time--;
+    } else if (node->slot >= 0) {
+      free_slots_.push_back(node->slot);
     }
   }
-}
 
-void QueuingServer::WaitByTicket(QueuingTicket* pticket) { pticket->get(); }
-
-/**
- * @brief 设置队首 ticket 已处理 相当于唤醒
- * provider 完成生产
- */
-void QueuingServer::Call() {
-  if (!tickets_q_.empty()) {
-    QueuingTicketRoot& ticket_root = tickets_q_.front();
-    ticket_root.root.set_value();
+  for (auto& node : tickets_q_) {
+    if (node->served) continue;
+    if (node->chain) {
+      if (node->slot < 0) break;  // 前驱未释放，等待其出队转交
+    } else {
+      if (free_slots_.empty()) break;  // 空闲 slot 耗尽，等待在途 run 释放
+      node->slot = free_slots_.front();
+      free_slots_.pop_front();
+    }
+    node->served = true;
+    node->served_pr.set_value();
   }
 }
-

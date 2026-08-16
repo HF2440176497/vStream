@@ -49,11 +49,15 @@ InferEngine::InferEngine(const InferOptions& options)
                 << batchsize_ << ". This may cause objects to be discarded.";
   }
 
+  StageAssemble();
+
+  // 异步流水线下，需按池深度扩容线程池
+  const uint32_t async_depth = input_res_ ? input_res_->GetResPoolSize() : 1;
+  const uint32_t extra_threads = async_depth > 1 ? async_depth : 0;
   thread_pool_ = std::make_shared<InferThreadPool>();
   thread_pool_->SetErrorHandleFunc(error_func_);
-  thread_pool_->Init(batchsize_ * 3 + 4);
+  thread_pool_->Init(batchsize_ * 3 + 4 + extra_threads);
 
-  StageAssemble();
   timeout_helper_.SetTimeout(batching_timeout_);
 
   running_ = true;
@@ -182,9 +186,12 @@ InferEngine::ResultWaitingCard InferEngine::FeedData(std::shared_ptr<FrameInfo> 
  * TODO: 简便起见，强制提交时 需要长度满足 batchsize_
  */
 void InferEngine::ForceBatchingDone() {
+  timeout_helper_.LockOperator();
   if (batched_finfos_.size() == batchsize_) {
     BatchingDone();
+    timeout_helper_.Reset(nullptr);
   }
+  timeout_helper_.UnlockOperator();
 }
 
 // 正常调用：batched_finfos_.size == batch_size_

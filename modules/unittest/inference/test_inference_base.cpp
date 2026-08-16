@@ -23,7 +23,7 @@
 #include <opencv2/opencv.hpp>
 
 static const std::string model_name = "yolov8s_tracing_static_b1_quant_fix";
-static const std::string model_file = "yolov8s_tracing_static_b1_quant_fix.engine";
+static const std::string model_file = "model/20260625/yolov8s_tracing_static_b1_quant_fix.engine";
 
 static const int device_id = 0;
 
@@ -488,33 +488,5 @@ static const char *g_postproc_name = "PostREFLEX";
 static constexpr int g_device_id = 0;
 static const std::string g_channel_id = "channel_1";
 
-/**
- * 单独创建一个 Inference 模块，每次处理单个 FrameInfo
- */
-TEST(InferenceBaseTest, Demo) {
-
-  std::map<std::string, ClassInfo<ReflexObject>>& obj_map = check_reflex_map();
-  for (auto it = obj_map.begin(); it != obj_map.end(); it++) {
-    std::string name = it->first;
-    std::cout << "REFLEX: obj_map name = " << name << std::endl;
-  }
-
-  std::shared_ptr<Module> infer = std::make_shared<Inference>("test_inference");
-  std::shared_ptr<InferObserver> observer = std::make_shared<InferObserver>();
-  infer->SetObserver(reinterpret_cast<IModuleObserver *>(observer.get()));
-  // std::thread th = std::thread(&GetResult, observer);
-  ModuleParamSet param;
-  param["model_name"] = model_name;
-  param["preproc_name"] = g_preproc_name;
-  param["postproc_name"] = g_postproc_name;
-  param["device_type"] = "cuda";
-  param["device_id"] = std::to_string(g_device_id);
-  param["batching_timeout"] = "3000";
-
-  ASSERT_TRUE(infer->Open(param));
-  ASSERT_NE(std::dynamic_pointer_cast<Inference>(infer), nullptr);
-
-  ASSERT_NO_THROW(infer->Close());
-}
 
 }  // namespace cnstream

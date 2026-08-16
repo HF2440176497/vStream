@@ -93,6 +93,41 @@ class ModelLoader {
 
   virtual bool RunSync(std::vector<std::shared_ptr<void>> inputs, std::vector<std::shared_ptr<void>> outputs) = 0;
 
+  /**
+   * @brief 启用异步推理流水线（平台可选实现）
+   * @param slot_num 执行 slot 数量（与推理资源池深度一致）
+   * @return false 表示平台不支持（如 RKNN），调用方应维持 RunSync 串行链路
+   * @note 支持的平台会为每个 slot 创建独立的执行上下文与执行流；
+   *       同一 loader 被多个 InferEngine 共享时须可重入（已启用且 slot 数足够则直接返回 true）
+   */
+  virtual bool EnableAsyncInfer(int slot_num) { (void)slot_num; return false; }
+
+  /**
+   * @brief 查询 slot 绑定的执行流（EnableAsyncInfer 成功后有效）
+   * @return 未启用异步或 slot 越界时返回 nullptr，调用方应回退 GetStream()
+   */
+  virtual void* GetSlotStream(int slot) const { (void)slot; return nullptr; }
+
+  /**
+   * @brief 异步推理：将推理任务提交到 stream 并立即返回
+   * @param stream GetSlotStream 返回的 slot 执行流，为 nullptr 时回退同步语义
+   * @return 完成事件句柄，供后续阶段同步；返回 nullptr 表示已同步完成（回退路径）
+   * @note 基类默认实现为同步 RunSync
+   */
+  virtual void* RunAsync(const std::vector<std::shared_ptr<void>>& inputs,
+                         const std::vector<std::shared_ptr<void>>& outputs,
+                         void* stream) {
+    (void)stream;
+    RunSync(inputs, outputs);
+    return nullptr;
+  }
+
+  /**
+   * @brief 等待 RunAsync 返回的事件完成（阻塞至推理结束）
+   * @note 仅在 RunAsync 返回非空事件后调用；基类默认空实现
+   */
+  virtual void SyncEvent(void* event) { (void)event; }
+
 #ifdef VSTREAM_UNIT_TEST
  public:
 #else

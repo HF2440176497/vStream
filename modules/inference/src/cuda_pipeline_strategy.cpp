@@ -15,6 +15,11 @@
 
 namespace cnstream {
 
+namespace {
+// 异步流水线 slot 深度
+constexpr int kAsyncSlotDepth = 3;
+}  // namespace
+
 PipelineConfig CudaPipelineStrategy::Build(ModelLoader* model, const InferOptions& options) {
   PipelineConfig config;
 
@@ -27,10 +32,23 @@ PipelineConfig CudaPipelineStrategy::Build(ModelLoader* model, const InferOption
     return config;
   }
 
+  // 平台支持时启用异步流水线：为每个 slot 创建独立执行上下文与执行流；
+  // 未启用时池深为 1，票据语义退化为单 buffer 串行，行为与改造前一致。
+  // 拓扑统一为 H2D -> Infer -> D2H -> Post
+  
+  // const bool async_infer = false;
+  const bool async_infer = model->EnableAsyncInfer(kAsyncSlotDepth);
+  const uint32_t res_pool_size = async_infer ? kAsyncSlotDepth : 1;
+
   config.cpu_input_res = std::make_shared<CpuInputResource>(model);
   config.cpu_output_res = std::make_shared<CpuOutputResource>(model);
   config.net_input_res = std::make_shared<NetInputResource>(model);
   config.net_output_res = std::make_shared<NetOutputResource>(model);
+
+  config.cpu_input_res->SetResPoolSize(res_pool_size);
+  config.net_input_res->SetResPoolSize(res_pool_size);
+  config.net_output_res->SetResPoolSize(res_pool_size);
+  config.cpu_output_res->SetResPoolSize(res_pool_size);
 
   config.cpu_input_res->Init();
   config.cpu_output_res->Init();
@@ -53,11 +71,14 @@ PipelineConfig CudaPipelineStrategy::Build(ModelLoader* model, const InferOption
                                                         config.cpu_input_res);
   }
 
+  // H2D：cpu_input 链式接入预处理 run，net_input 开启新 run
   auto h2d_stage = std::make_shared<H2DBatchingDoneStage>(model, batchsize,
                                                           config.cpu_input_res, config.net_input_res);
   h2d_stage->SetProfiler(options.profiler());
   config.batching_done_stages.push_back(h2d_stage);
 
+  // Infer：input 链式接入 H2D run，output 开启新 run；
+  // 内部 RunAsync 提交至 slot 流 + SyncEvent 等待，平台未启用时回退 RunSync
   auto infer_stage = std::make_shared<InferBatchingDoneStage>(model, batchsize,
                                                               config.net_input_res, config.net_output_res);
   infer_stage->SetProfiler(options.profiler());
@@ -65,7 +86,7 @@ PipelineConfig CudaPipelineStrategy::Build(ModelLoader* model, const InferOption
   infer_stage->SetSavingInputData(options.saving_infer_input(), options.module_name());
   config.batching_done_stages.push_back(infer_stage);
 
-  // D2H：（若后处理在 CPU）
+  // D2H：net_output 链式接入 Infer run，cpu_output 开启新 run（后处理在 CPU 时）
   if (!postproc_on_device) {
     auto d2h_stage = std::make_shared<D2HBatchingDoneStage>(model, batchsize,
                                                             config.net_output_res, config.cpu_output_res);

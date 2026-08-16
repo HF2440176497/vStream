@@ -45,7 +45,7 @@ std::shared_ptr<InferTask> IOObjBatchingStage::Batching(std::shared_ptr<FrameInf
     QueuingTicket t = ticket;
     IOResValue value = this->output_res_->WaitResourceByTicket(&t);
     this->ProcessOneObject(finfo, obj, bidx, value);
-    this->output_res_->DeallingDone();
+    this->output_res_->DeallingDone(t);
     return 0;
   });
   task->task_msg = "infer task.";

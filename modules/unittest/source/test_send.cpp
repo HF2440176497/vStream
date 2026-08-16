@@ -38,9 +38,8 @@ static std::vector<std::string>      stream_ids_send_queue_ = {stream_id_4_};
 static std::string test_pipeline_send_json = "pipeline_source_send.json";
 // static std::string test_pipeline_send_ocr_json = "OCR/pipeline_source_send_ocr.json";
 
-static std::string test_image_path = "OCR/image.jpg";
-static std::string test_image_folder = "OCR/images";
-// static std::string test_image_path = "image.png";
+static std::string test_image_path = "image.jpg";
+static std::string test_image_folder = "images";
 
 class SourceSend : public testing::Test {
 

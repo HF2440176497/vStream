@@ -36,7 +36,7 @@ std::shared_ptr<InferTask> IOBatchingStage::Batching(std::shared_ptr<FrameInfo> 
 // #endif
 
     this->ProcessOneFrame(finfo, bidx, value);
-    this->output_res_->DeallingDone();
+    this->output_res_->DeallingDone(t);
     return 0;
   });
 

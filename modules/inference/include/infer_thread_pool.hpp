@@ -21,6 +21,7 @@
 #ifndef INFER_THREAD_POOL_HPP_
 #define INFER_THREAD_POOL_HPP_
 
+#include <atomic>
 #include <functional>
 #include <mutex>
 #include <queue>
@@ -54,7 +55,7 @@ class InferThreadPool {
   std::mutex mtx_;
   std::condition_variable q_push_cond_;
   std::condition_variable q_pop_cond_;
-  volatile bool running_ = false;
+  std::atomic<bool> running_{false};
   std::function<void(const std::string& err_msg)> error_func_ = nullptr;
 };  // class InferThreadPool
 

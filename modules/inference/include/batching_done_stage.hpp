@@ -120,6 +120,13 @@ class H2DBatchingDoneStage : public BatchingDoneStage {
 };  // class H2DBatchingDoneStage
 
 
+/**
+ * @brief 推理阶段（分离式异步流水线）
+ * 通过 RunAsync 将推理提交到 slot 执行流（H2D 拷贝已在该流上排队，天然保序），
+ * 随后 SyncEvent 等待本批次推理完成再释放资源票据——释放时输出数据已就绪，
+ * 下游 D2H/Post 可安全读取；等待期间其他 slot 上的批次可继续 H2D/推理，
+ * 形成跨批次重叠。平台未启用异步时 RunAsync 回退 RunSync，行为与串行链路一致。
+ */
 class InferBatchingDoneStage : public BatchingDoneStage {
  public:
   InferBatchingDoneStage(ModelLoader* model,
