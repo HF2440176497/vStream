@@ -30,6 +30,7 @@
 #include "inference.hpp"
 #include "infer_engine.hpp"
 #include "infer_trans_data_helper.hpp"
+#include "infer_trace.hpp"
 
 namespace cnstream {
 
@@ -83,9 +84,23 @@ void InferTransDataHelper::Loop() {
     card.WaitForCall();  // TODO: 有可能会阻塞
 
     if (infer_) {
-      if (!finfo->IsEos() && infer_->GetProfiler()) {
-        infer_->GetProfiler()->RecordProcessEnd(kINFERENCE_PROFILER_NAME,
-            std::make_pair(finfo->stream_id, finfo->timestamp));
+      if (!finfo->IsEos()) {
+
+#ifdef VSTREAM_UNIT_TEST
+        auto it = last_out_ts_.find(finfo->stream_id);
+        const bool monotonic =
+            it == last_out_ts_.end() || finfo->timestamp > it->second;
+        if (!monotonic) {
+          LOGW(TRANS) << "NON-MONOTONIC stream=" << finfo->stream_id
+                      << "; ts=" << finfo->timestamp;
+        }
+        last_out_ts_[finfo->stream_id] = finfo->timestamp;
+#endif
+
+        if (infer_->GetProfiler()) {
+          infer_->GetProfiler()->RecordProcessEnd(kINFERENCE_PROFILER_NAME,
+              std::make_pair(finfo->stream_id, finfo->timestamp));
+        }
       }
       infer_->TransmitData(finfo);
     }

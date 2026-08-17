@@ -16,8 +16,9 @@
 namespace cnstream {
 
 namespace {
-// 异步流水线 slot 深度
+
 constexpr int kAsyncSlotDepth = 3;
+
 }  // namespace
 
 PipelineConfig CudaPipelineStrategy::Build(ModelLoader* model, const InferOptions& options) {

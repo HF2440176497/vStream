@@ -22,6 +22,8 @@
 #include <chrono>
 #include <iostream>
 
+#include "infer_trace.hpp"
+
 namespace cnstream {
 
 
@@ -220,9 +222,15 @@ void InferEngine::BatchingDone() {
 
   // h2d, infer, d2h, post(not obj)
   if (!batched_finfos_.empty()) {
+
+    // 准备提交整个批次（H2D/INFER/D2H/POST）
+    INFERTRACE("BATCH-SUBMIT") << "bt=" << batched_finfos_[0].first->timestamp
+                            << " frames=" << batched_finfos_.size()
+                            << " streams=" << batched_finfos_[0].first->stream_id;
+
     for (auto& stage : batching_done_stages_) {
 
-      // note: 查看各派生类的实现 tasks 长度 == 1，一个 batch 提交为一个 task
+      // tasks size == 1，一个 batch 提交为一个 task
       auto tasks = stage->BatchingDone(batched_finfos_);
       thread_pool_->SubmitTask(tasks);
     }

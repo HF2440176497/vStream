@@ -141,11 +141,12 @@ void ModelValidator::AllocateBuffers() {
     auto data_type = model_loader_->InputDataType(i);
     size_t elem_count = static_cast<size_t>(shape.DataCount());
     size_t dsize = static_cast<size_t>(data_type_size(data_type));
-    size_t batch_size = elem_count / shape.N();
+    size_t batch_size = shape.N();
     size_t byte_size = elem_count * dsize;
 
     if (batch_size != 1) {
       LOGE(MODEL_VALIDATOR) << "Batch size must be 1 for image validation";
+      LOGE(MODEL_VALIDATOR) << "  shape: " << shape << ", elem_count=" << elem_count << ", batch_size=" << shape.N();
       return;
     }
     
@@ -164,11 +165,12 @@ void ModelValidator::AllocateBuffers() {
     auto data_type = model_loader_->OutputDataType(i);
     size_t elem_count = static_cast<size_t>(shape.DataCount());
     size_t dsize = static_cast<size_t>(data_type_size(data_type));
-    size_t batch_size = elem_count / shape.N();
+    size_t batch_size = shape.N();
     size_t byte_size = elem_count * dsize;
-
+    
     if (batch_size != 1) {
       LOGE(MODEL_VALIDATOR) << "Batch size must be 1 for image validation";
+      LOGE(MODEL_VALIDATOR) << "  shape: " << shape << ", elem_count=" << elem_count << ", batch_size=" << shape.N();
       return;
     }
 

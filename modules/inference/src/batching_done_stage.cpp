@@ -32,6 +32,7 @@
 #include "infer_task.hpp"
 #include "postproc.hpp"
 #include "queuing_server.hpp"
+#include "infer_trace.hpp"
 
 #include "batching_done_stage.hpp"
 #include "cnstream_frame_va.hpp"
@@ -56,6 +57,12 @@ std::vector<std::shared_ptr<InferTask>> H2DBatchingDoneStage::BatchingDone(const
     IOResValue cpu_value = this->cpu_input_res_->WaitResourceByTicket(&cir_ticket);
     IOResValue net_value = this->net_input_res_->WaitResourceByTicket(&mir_ticket);
 
+    const uint64_t bt = finfos[0].first->timestamp;
+    INFERTRACE("H2D") << "bt=" << bt
+                    << " cpu_slot=" << cir_ticket.Slot() << " cpu_buf=" << cpu_value.ptrs[0].get()
+                    << " net_slot=" << mir_ticket.Slot() << " net_buf=" << net_value.ptrs[0].get();
+                    // " frame_ts=[" << finfos.front().first->timestamp << ".." << finfos.back().first->timestamp << "]";
+
 #ifdef VSTREAM_UNIT_TEST
     assert(finfos.size() == batchsize_);
 #endif
@@ -67,6 +74,8 @@ std::vector<std::shared_ptr<InferTask>> H2DBatchingDoneStage::BatchingDone(const
     // slot 执行流（异步模式）：后续 infer 在同一流上排队，天然保证读序；
     // 未启用异步时回退模型默认流
     void* infer_stream = net_value.stream ? net_value.stream : model_->GetStream();
+    const int64_t t0 = cnstream::trace::NowUs();
+
     for (int i = 0; i < model_->InputNum(); i++) {
       void* src_cpu = cpu_value.ptrs[i].get();
       void* dst_net = net_value.ptrs[i].get();
@@ -86,6 +95,9 @@ std::vector<std::shared_ptr<InferTask>> H2DBatchingDoneStage::BatchingDone(const
     // 但其 RunAsync 与 H2D 排在同一 slot 流上，GPU 执行顺序不变；
     // 批间重叠由其他 slot 承担（本批拷贝期间，下一批的 H2D 已在其他 slot 流上执行）
     memop_->SyncStream(infer_stream);
+
+    INFERTRACE("H2D-DONE") << "bt=" << bt << " net_slot=" << mir_ticket.Slot()
+                         << " cost_us=" << (cnstream::trace::NowUs() - t0);
     this->cpu_input_res_->DeallingDone(cir_ticket);
     this->net_input_res_->DeallingDone(mir_ticket);
     return 0;
@@ -120,6 +132,11 @@ std::vector<std::shared_ptr<InferTask>> InferBatchingDoneStage::BatchingDone(con
     IOResValue input_value = this->input_res_->WaitResourceByTicket(&ir_ticket);
     IOResValue output_value = this->output_res_->WaitResourceByTicket(&or_ticket);
 
+    const uint64_t bt = finfos[0].first->timestamp;
+    INFERTRACE("INFER") << "bt=" << bt
+                      << " slot_in=" << ir_ticket.Slot() << " in_buf=" << input_value.ptrs[0].get()
+                      << " slot_out=" << or_ticket.Slot() << " out_buf=" << output_value.ptrs[0].get();
+
 #ifdef VSTREAM_UNIT_TEST
     assert(finfos.size() == batchsize_);
 #endif
@@ -141,11 +158,19 @@ std::vector<std::shared_ptr<InferTask>> InferBatchingDoneStage::BatchingDone(con
     // 等待本批完成期间，其他 slot 上的批次可继续 H2D/推理（批间重叠）。
     // 未启用异步的平台（RKNN/CPU）RunAsync 回退 RunSync 并返回 nullptr
     void* slot_stream = input_value.stream ? input_value.stream : model_->GetStream();
+    const int64_t t0 = cnstream::trace::NowUs();
     void* event = model_->RunAsync(input_value.ptrs, output_value.ptrs, slot_stream);
+
+    INFERTRACE("INFER-SUBMIT") << "bt=" << bt << " slot_in=" << ir_ticket.Slot()
+                             << " submit_us=" << (cnstream::trace::NowUs() - t0);
     if (event) {
       // 推理完成才释放票据：输入 buffer 不再被读取、输出 buffer 已写就绪
       model_->SyncEvent(event);
     }
+
+    INFERTRACE("INFER-DONE") << "bt=" << bt
+                           << " slot_in=" << ir_ticket.Slot() << " slot_out=" << or_ticket.Slot()
+                           << " cost_us=" << (cnstream::trace::NowUs() - t0);
 
     if (profiler_) {
       for (const auto& finfo : finfos) {
@@ -172,8 +197,14 @@ std::vector<std::shared_ptr<InferTask>> D2HBatchingDoneStage::BatchingDone(const
   task = std::make_shared<InferTask>([net_output_res_ticket, cpu_output_res_ticket, this, finfos]() -> int {
     QueuingTicket mor_ticket = net_output_res_ticket;
     QueuingTicket cor_ticket = cpu_output_res_ticket;
+
     IOResValue net_output_value = this->net_output_res_->WaitResourceByTicket(&mor_ticket);
     IOResValue cpu_output_value = this->cpu_output_res_->WaitResourceByTicket(&cor_ticket);
+
+    const uint64_t bt = finfos[0].first->timestamp;
+    INFERTRACE("D2H") << "bt=" << bt << " frames=" << finfos.size()
+                    << " net_slot=" << mor_ticket.Slot() << " net_buf=" << net_output_value.ptrs[0].get()
+                    << " cpu_slot=" << cor_ticket.Slot() << " cpu_buf=" << cpu_output_value.ptrs[0].get();
 
 #ifdef VSTREAM_UNIT_TEST
     // std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -187,6 +218,7 @@ std::vector<std::shared_ptr<InferTask>> D2HBatchingDoneStage::BatchingDone(const
     // Infer 阶段释放票据前已 SyncEvent，输出数据就绪；
     // 用 net_output slot 流拷贝，可与其他 slot 上的推理并行
     void* d2h_stream = net_output_value.stream ? net_output_value.stream : model_->GetStream();
+    const int64_t t0 = cnstream::trace::NowUs();
     for (int i = 0; i < model_->OutputNum(); i++) {
       void* src_net = net_output_value.ptrs[i].get();
       void* dst_cpu = cpu_output_value.ptrs[i].get();
@@ -196,6 +228,9 @@ std::vector<std::shared_ptr<InferTask>> D2HBatchingDoneStage::BatchingDone(const
     }
     memop_->SyncStream(d2h_stream);
 
+    INFERTRACE("D2H-DONE") << "bt=" << bt << " net_slot=" << mor_ticket.Slot()
+                         << " cpu_slot=" << cor_ticket.Slot()
+                         << " cost_us=" << (cnstream::trace::NowUs() - t0);
     this->net_output_res_->DeallingDone(mor_ticket);
     this->cpu_output_res_->DeallingDone(cor_ticket);
     return 0;
@@ -242,6 +277,11 @@ std::vector<std::shared_ptr<InferTask>> PostprocessingBatchingDoneStage::Batchin
 
           QueuingTicket cor_ticket = cpu_output_res_ticket;
           IOResValue cpu_output_value = cpu_output_res->WaitResourceByTicket(&cor_ticket);
+
+          INFERTRACE("POST") << "ts=" << finfo.first->timestamp << " bidx=" << bidx
+                           << " slot=" << cor_ticket.Slot()
+                           << " cpu_buf=" << cpu_output_value.ptrs[0].get();
+
           std::vector<float*> cpu_outputs;
 
           // cpu_outputs 长度 == output tensor num
@@ -252,6 +292,9 @@ std::vector<std::shared_ptr<InferTask>> PostprocessingBatchingDoneStage::Batchin
           if (!cnstream::IsStreamRemoved(finfo.first->stream_id)) {
             this->postprocessor_->Execute(cpu_outputs, this->model_, finfo.first);
           }
+
+          INFERTRACE("POST-DONE") << "ts=" << finfo.first->timestamp << " bidx=" << bidx
+                                << " slot=" << cor_ticket.Slot();
           cpu_output_res->DeallingDone(cor_ticket);
           return 0;
         });  // task
@@ -272,6 +315,11 @@ std::vector<std::shared_ptr<InferTask>> PostprocessingBatchingDoneStage::Batchin
   InferTaskSptr task = std::make_shared<InferTask>([net_output_res_ticket, net_output_res, this, finfos]() -> int {
     QueuingTicket mor_ticket = net_output_res_ticket;
     IOResValue net_output_value = net_output_res->WaitResourceByTicket(&mor_ticket);
+
+    INFERTRACE("POST") << "bt=" << finfos[0].first->timestamp << " frames=" << finfos.size()
+                         << " slot=" << mor_ticket.Slot()
+                         << " net_buf=" << net_output_value.ptrs[0].get();
+
     std::vector<void*> net_outputs;
     for (size_t output_idx = 0; output_idx < net_output_value.datas.size(); ++output_idx) {
       net_outputs.push_back(net_output_value.datas[output_idx].ptr);
@@ -281,6 +329,8 @@ std::vector<std::shared_ptr<InferTask>> PostprocessingBatchingDoneStage::Batchin
     for (const auto& it : finfos) batched_finfos.push_back(it.first);
 
     this->postprocessor_->Execute(net_outputs, this->model_, batched_finfos);
+
+    INFERTRACE("POST-DONE") << "bt=" << finfos[0].first->timestamp << " slot=" << mor_ticket.Slot();
     net_output_res->DeallingDone(mor_ticket);
     return 0;
   });
@@ -319,6 +369,11 @@ std::vector<std::shared_ptr<InferTask>> ObjPostprocessingBatchingDoneStage::ObjB
         std::make_shared<InferTask>([cpu_output_res_ticket, cpu_output_res, this, finfo, obj, bidx]() -> int {
           QueuingTicket cor_ticket = cpu_output_res_ticket;
           IOResValue cpu_output_value = cpu_output_res->WaitResourceByTicket(&cor_ticket);
+
+          INFERTRACE("POST-OBJ") << "ts=" << finfo.first->timestamp << " bidx=" << bidx
+                               << " slot=" << cor_ticket.Slot()
+                               << " cpu_buf=" << cpu_output_value.ptrs[0].get();
+
           std::vector<float*> cpu_outputs;
           for (size_t output_idx = 0; output_idx < cpu_output_value.datas.size(); ++output_idx) {
             cpu_outputs.push_back(reinterpret_cast<float*>(cpu_output_value.datas[output_idx].Offset(bidx)));
@@ -326,6 +381,9 @@ std::vector<std::shared_ptr<InferTask>> ObjPostprocessingBatchingDoneStage::ObjB
           if (!cnstream::IsStreamRemoved(finfo.first->stream_id)) {
             this->postprocessor_->Execute(cpu_outputs, this->model_, finfo.first, obj);
           }
+
+          INFERTRACE("POST-OBJ-DONE") << "ts=" << finfo.first->timestamp << " bidx=" << bidx
+                                    << " slot=" << cor_ticket.Slot();
           cpu_output_res->DeallingDone(cor_ticket);
           return 0;
         });
@@ -344,6 +402,11 @@ std::vector<std::shared_ptr<InferTask>> ObjPostprocessingBatchingDoneStage::ObjB
       std::make_shared<InferTask>([net_output_res_ticket, net_output_res, this, finfos, objs]() -> int {
         QueuingTicket mor_ticket = net_output_res_ticket;
         IOResValue net_output_value = net_output_res->WaitResourceByTicket(&mor_ticket);
+
+        INFERTRACE("POST-OBJ") << "bt=" << finfos[0].first->timestamp << " frames=" << finfos.size()
+                                 << " slot=" << mor_ticket.Slot()
+                                 << " net_buf=" << net_output_value.ptrs[0].get();
+
         std::vector<void*> net_outputs;
         for (size_t output_idx = 0; output_idx < net_output_value.datas.size(); ++output_idx) {
           net_outputs.push_back(net_output_value.datas[output_idx].ptr);
@@ -359,6 +422,8 @@ std::vector<std::shared_ptr<InferTask>> ObjPostprocessingBatchingDoneStage::ObjB
         }
 
         this->postprocessor_->Execute(net_outputs, this->model_, batched_objs);
+
+        INFERTRACE("POST-OBJ-DONE") << "bt=" << finfos[0].first->timestamp << " slot=" << mor_ticket.Slot();
         net_output_res->DeallingDone(mor_ticket);
         return 0;
       });

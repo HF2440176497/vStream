@@ -7,6 +7,7 @@
 #include "infer_task.hpp"
 #include "preproc.hpp"
 #include "batching_stage.hpp"
+#include "infer_trace.hpp"
 
 
 namespace cnstream {
@@ -31,11 +32,15 @@ std::shared_ptr<InferTask> IOBatchingStage::Batching(std::shared_ptr<FrameInfo> 
     QueuingTicket t = ticket;
     IOResValue value = this->output_res_->WaitResourceByTicket(&t);
 
-// #ifdef VSTREAM_UNIT_TEST
-//     LOGD(IOBatchingStage) << "bidx: " << bidx << "; [" << finfo->stream_id << "], ts: " << finfo->timestamp;
-// #endif
+    INFERTRACE("PREPROC") << "ts=" << finfo->timestamp << " bidx=" << bidx
+                        << " slot=" << t.Slot()
+                        << " cpu_buf=" << value.ptrs[0].get()
+                        << " tensors=" << value.ptrs.size();
 
     this->ProcessOneFrame(finfo, bidx, value);
+
+    INFERTRACE("PREPROC-DONE") << "ts=" << finfo->timestamp << " bidx=" << bidx
+                             << " slot=" << t.Slot();
     this->output_res_->DeallingDone(t);
     return 0;
   });

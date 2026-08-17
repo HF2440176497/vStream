@@ -366,7 +366,6 @@ bool ModelLoaderTrt::ApplyInputShapes(nvinfer1::IExecutionContext* context) {
 bool ModelLoaderTrt::EnableAsyncInfer(int slot_num) {
   if (slot_num <= 0 || !engine_) return false;
   std::lock_guard<std::mutex> lk(async_mtx_);
-  // 多个 InferEngine 共享同一 loader：已启用且 slot 数足够则直接复用
   if (static_cast<int>(async_slots_.size()) >= slot_num) return true;
   if (!async_slots_.empty()) {
     LOGW(MODEL) << "EnableAsyncInfer: " << async_slots_.size() << " slots already in use, requested "
@@ -377,7 +376,6 @@ bool ModelLoaderTrt::EnableAsyncInfer(int slot_num) {
   DestroyAsyncSlotsLocked();
   CudaDeviceGuard guard(device_id_);
 
-  // TrtAsyncSlot 含互斥量不可移动，用 deque 增长（vector 扩容需移动元素，编译期即失败）
   std::deque<TrtAsyncSlot> slots;
   auto cleanup = [&slots]() {
     for (auto& s : slots) {

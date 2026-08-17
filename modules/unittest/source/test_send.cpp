@@ -30,13 +30,12 @@ static const std::string             stream_id_1_ = "channel-1";
 static const std::string             stream_id_2_ = "channel-2";
 static const std::string             stream_id_3_ = "channel-3";
 static const std::string             stream_id_4_ = "channel-4";
-static std::vector<std::string>      stream_ids_image_push_ = {stream_id_1_};
-static std::vector<std::string>      stream_ids_pull_push_ = {stream_id_2_};
+static std::vector<std::string>      stream_ids_image_push_  = {stream_id_1_};
+static std::vector<std::string>      stream_ids_pull_push_   = {stream_id_2_};
 static std::vector<std::string>      stream_ids_image_queue_ = {stream_id_3_};
-static std::vector<std::string>      stream_ids_send_queue_ = {stream_id_4_};
+static std::vector<std::string>      stream_ids_send_queue_  = {stream_id_4_};
 
 static std::string test_pipeline_send_json = "pipeline_source_send.json";
-// static std::string test_pipeline_send_ocr_json = "OCR/pipeline_source_send_ocr.json";
 
 static std::string test_image_path = "image.jpg";
 static std::string test_image_folder = "images";
@@ -112,7 +111,7 @@ TEST_F(SourceSend, Run) {
       // frame_id_s start from 0
       send_handler_->Send(pts, std::to_string(send_count_), image);
       send_count_++;
-      std::this_thread::sleep_for(std::chrono::milliseconds(200));
+      std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
   });
 
@@ -121,12 +120,11 @@ TEST_F(SourceSend, Run) {
     while (running.load()) {
       s_output_data data = queue_handler_->GetData();
       if (data.result != output_result::RESULT_OK) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(4));
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
         continue;
       }
       count++;
-      if (count % 2 == 0) {
-        // LOGI(T_SEND) << "Receive: " << data;
+      if (count % 10 == 0) {
         LOGI(T_SEND) << "Received: " << count << "; Send: " << send_count_ << "; frames; id_s: " << data.frame_id_s;
       }
     }

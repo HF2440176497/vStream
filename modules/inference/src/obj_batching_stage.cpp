@@ -19,13 +19,15 @@
  *************************************************************************/
 
 #include "obj_batching_stage.hpp"
-#include <memory>
-#include <vector>
 #include "cnstream_frame.hpp"
 #include "cnstream_frame_va.hpp"
+#include "infer_trace.hpp"
 #include "infer_resource.hpp"
 #include "infer_task.hpp"
 #include "preproc.hpp"
+
+#include <memory>
+#include <vector>
 
 namespace cnstream {
 
@@ -44,7 +46,16 @@ std::shared_ptr<InferTask> IOObjBatchingStage::Batching(std::shared_ptr<FrameInf
   std::shared_ptr<InferTask> task = std::make_shared<InferTask>([this, ticket, finfo, obj, bidx]() -> int {
     QueuingTicket t = ticket;
     IOResValue value = this->output_res_->WaitResourceByTicket(&t);
+
+    INFERTRACE("PREPROC-OBJ") << "ts=" << finfo->timestamp << " bidx=" << bidx
+                              << " slot=" << t.Slot()
+                              << " cpu_buf=" << value.ptrs[0].get()
+                              << " tensors=" << value.ptrs.size();
+
     this->ProcessOneObject(finfo, obj, bidx, value);
+
+    INFERTRACE("PREPROC-OBJ-DONE") << "ts=" << finfo->timestamp << " bidx=" << bidx
+                                   << " slot=" << t.Slot();
     this->output_res_->DeallingDone(t);
     return 0;
   });

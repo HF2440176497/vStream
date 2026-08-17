@@ -23,6 +23,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <queue>
@@ -54,6 +55,9 @@ class InferTransDataHelper {
   std::atomic<bool> running_;
   Inference* infer_ = nullptr;
   int batchsize_ = 1;
+
+  uint64_t out_seq_ = 0;
+  std::map<std::string, uint64_t> last_out_ts_;
 };  // class InferTransDataHelper
 
 }  // namespace cnstream

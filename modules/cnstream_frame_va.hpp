@@ -91,12 +91,11 @@ class DataFrame : public NonCopyable {
       LOGW(FRAME) << "DataFrame::SetImage: meta already set, failed";
       return;
     }
-    Meta meta;
-    meta.fmt = DataFormat::PIXEL_FORMAT_BGR24;
-    meta.width = image.cols;
-    meta.height = image.rows;
-    meta.stride[0] = static_cast<int>(image.step);
-    SetMeta(meta);
+    meta_.fmt = DataFormat::PIXEL_FORMAT_BGR24;
+    meta_.width = image.cols;
+    meta_.height = image.rows;
+    meta_.stride[0] = static_cast<int>(image.step);
+    meta_set_ = true;
     mat_ = image.clone();
   }
 
