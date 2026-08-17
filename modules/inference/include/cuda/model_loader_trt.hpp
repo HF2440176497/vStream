@@ -62,7 +62,7 @@ class ModelLoaderTrt : public ModelLoader {
 
   bool RunSync(std::vector<std::shared_ptr<void>> inputs, std::vector<std::shared_ptr<void>> outputs) override;
 
-  bool EnableAsyncInfer(int slot_num) override;
+  bool EnableAsync(int slot_num) override;
   void* GetSlotStream(int slot) const override;
   void* RunAsync(const std::vector<std::shared_ptr<void>>& inputs,
                  const std::vector<std::shared_ptr<void>>& outputs,
@@ -94,7 +94,7 @@ class ModelLoaderTrt : public ModelLoader {
   cudaStream_t stream_ = nullptr;
   std::mutex mutex_;
 
-  std::deque<TrtAsyncSlot> async_slots_;  // 异步执行 slot 池（EnableAsyncInfer 创建）
+  std::deque<TrtAsyncSlot> async_slots_;  // 异步执行 slot 池（EnableAsync 创建）
   std::mutex async_mtx_;                  // 保护 async_slots_
 
 };  // end of ModelLoaderTrt

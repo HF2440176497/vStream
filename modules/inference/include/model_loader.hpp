@@ -100,10 +100,10 @@ class ModelLoader {
    * @note 支持的平台会为每个 slot 创建独立的执行上下文与执行流；
    *       同一 loader 被多个 InferEngine 共享时须可重入（已启用且 slot 数足够则直接返回 true）
    */
-  virtual bool EnableAsyncInfer(int slot_num) { (void)slot_num; return false; }
+  virtual bool EnableAsync(int slot_num) { (void)slot_num; return false; }
 
   /**
-   * @brief 查询 slot 绑定的执行流（EnableAsyncInfer 成功后有效）
+   * @brief 查询 slot 绑定的执行流（EnableAsync 成功后有效）
    * @return 未启用异步或 slot 越界时返回 nullptr，调用方应回退 GetStream()
    */
   virtual void* GetSlotStream(int slot) const { (void)slot; return nullptr; }

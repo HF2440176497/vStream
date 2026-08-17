@@ -363,12 +363,12 @@ bool ModelLoaderTrt::ApplyInputShapes(nvinfer1::IExecutionContext* context) {
   return true;
 }
 
-bool ModelLoaderTrt::EnableAsyncInfer(int slot_num) {
+bool ModelLoaderTrt::EnableAsync(int slot_num) {
   if (slot_num <= 0 || !engine_) return false;
   std::lock_guard<std::mutex> lk(async_mtx_);
   if (static_cast<int>(async_slots_.size()) >= slot_num) return true;
   if (!async_slots_.empty()) {
-    LOGW(MODEL) << "EnableAsyncInfer: " << async_slots_.size() << " slots already in use, requested "
+    LOGW(MODEL) << "EnableAsync: " << async_slots_.size() << " slots already in use, requested "
                 << slot_num << "; fallback to sync path";
     return false;
   }
@@ -390,7 +390,7 @@ bool ModelLoaderTrt::EnableAsyncInfer(int slot_num) {
     TrtAsyncSlot& slot = slots.back();
     slot.context = engine_->createExecutionContext();  // engine_ 已绑定模型，slot.context 手动管理释放
     if (!slot.context) {
-      LOGE(MODEL) << "EnableAsyncInfer: create execution context failed, slot: " << i;
+      LOGE(MODEL) << "EnableAsync: create execution context failed, slot: " << i;
       cleanup();
       return false;
     }
@@ -405,7 +405,7 @@ bool ModelLoaderTrt::EnableAsyncInfer(int slot_num) {
     }
   }
   async_slots_ = std::move(slots);
-  LOGI(MODEL) << "EnableAsyncInfer: " << async_slots_.size() << " slots created";
+  LOGI(MODEL) << "EnableAsync: " << async_slots_.size() << " slots created";
   return true;
 }
 

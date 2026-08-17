@@ -37,8 +37,7 @@ PipelineConfig CudaPipelineStrategy::Build(ModelLoader* model, const InferOption
   // 未启用时池深为 1，票据语义退化为单 buffer 串行，行为与改造前一致。
   // 拓扑统一为 H2D -> Infer -> D2H -> Post
   
-  // const bool async_infer = false;
-  const bool async_infer = model->EnableAsyncInfer(kAsyncSlotDepth);
+  const bool async_infer = model->EnableAsync(kAsyncSlotDepth);
   const uint32_t res_pool_size = async_infer ? kAsyncSlotDepth : 1;
 
   config.cpu_input_res = std::make_shared<CpuInputResource>(model);
