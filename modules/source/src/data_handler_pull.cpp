@@ -167,10 +167,16 @@ int PullHandlerIm::input_format_init() {
   ifmt_ctx_->interrupt_callback.opaque = this;
 
   AVDictionary* opts = nullptr;
-  av_dict_set(&opts, "buffer_size", "1024000", 0);
-  av_dict_set(&opts, "max_delay", "400000", 0);
-  av_dict_set(&opts, "stimeout", "20000000", 0);
-  av_dict_set(&opts, "rtsp_transport", "tcp", 0);
+  if (stream_url_.rfind("rtsp://", 0) == 0) {
+    av_dict_set(&opts, "buffer_size", "1024000", 0);
+    av_dict_set(&opts, "max_delay", "400000", 0);
+    // FFmpeg 5.0 起 RTSP 的 stimeout 已更名为 timeout(微秒)
+    av_dict_set(&opts, "timeout", "20000000", 0);
+    av_dict_set(&opts, "rtsp_transport", "tcp", 0);
+  }
+  // 通用读写超时(微秒)，对 RTMP/HTTP 等 TCP 协议生效：
+  // 服务器不可达时 avformat_open_input 不会无限阻塞
+  av_dict_set(&opts, "rw_timeout", "20000000", 0);
 
   ret = avformat_open_input(&ifmt_ctx_, stream_url_.c_str(), NULL, &opts);
   av_dict_free(&opts);

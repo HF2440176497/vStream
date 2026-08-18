@@ -31,10 +31,18 @@ class PushHandlerImRK : public PushHandlerIm {
   bool SendFrameFromCpu(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts);
 
   /**
-   * @brief 探测当前系统可用的 Rockchip 后端 (rkmpp / drm)。
-   * @return 成功返回 AVHWDeviceType，失败返回 AV_HWDEVICE_TYPE_NONE。
+   * @brief 取编码器声明的 HW_DEVICE_CTX，无声明返回 nullptr。
    */
-  AVHWDeviceType DetectRkDeviceType();
+  static const AVCodecHWConfig* GetHwDeviceConfig(const AVCodec* codec);
+
+  /**
+   * @brief 用指定后端(rkmpp/drm)创建设备/帧上下文并绑定到编码器，
+   *        含预分配 hw_frame；失败时清理自身部分状态并返回 false
+   */
+  bool CreateRkHwContext(AVHWDeviceType type);
+
+  /** 选一个可访问的 DRM 设备节点，无则返回 nullptr */
+  static const char* PickDrmDevice();
 };
 
 }  // namespace cnstream

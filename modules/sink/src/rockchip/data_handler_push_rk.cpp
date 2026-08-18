@@ -8,93 +8,167 @@
 #include "memop_factory.hpp"
 
 #include <memory>
+#include <string>
+#include <vector>
+#include <unistd.h>
 #include <opencv2/opencv.hpp>
 
 namespace cnstream {
 
-AVHWDeviceType PushHandlerImRK::DetectRkDeviceType() {
-  // 优先使用 rkmpp 后端；若 FFmpeg 未编译 rkmpp，再回退到 drm。
-  static const char* backend_names[] = {"rkmpp", "drm"};
-  for (auto name : backend_names) {
-    enum AVHWDeviceType type = av_hwdevice_find_type_by_name(name);
-    if (type != AV_HWDEVICE_TYPE_NONE) {
-      LOGI(SINK) << "[" << stream_id_ << "]: RK HW device backend: " << name
-                 << " (" << av_hwdevice_get_type_name(type) << ")";
-      return type;
+const AVCodecHWConfig* PushHandlerImRK::GetHwDeviceConfig(const AVCodec* codec) {
+  for (int i = 0;; i++) {
+    const AVCodecHWConfig* cfg = avcodec_get_hw_config(codec, i);
+    if (!cfg) break;
+    if (cfg->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) {
+      return cfg;
     }
   }
-  LOGE(SINK) << "[" << stream_id_ << "]: rkmpp/drm HW device not found."
-             << " Check `ffmpeg -hwaccels` for available backends.";
-  return AV_HWDEVICE_TYPE_NONE;
+  return nullptr;
 }
 
-bool PushHandlerImRK::InitDeviceCtx() {
-  // 1. 探测 Rockchip 硬件后端
-  AVHWDeviceType dev_type = DetectRkDeviceType();
-  if (dev_type == AV_HWDEVICE_TYPE_NONE) {
+const char* PushHandlerImRK::PickDrmDevice() {
+  static const char* kCandidates[] = {
+    "/dev/dri/card0",
+    "/dev/dri/card1",
+    "/dev/dri/renderD128",
+    "/dev/dri/renderD129",
+    nullptr
+  };
+  for (int i = 0; kCandidates[i]; ++i) {
+    if (access(kCandidates[i], R_OK | W_OK) == 0) {
+      return kCandidates[i];
+    }
+  }
+  return nullptr;
+}
+
+bool PushHandlerImRK::CreateRkHwContext(AVHWDeviceType type) {
+  const char* type_name = av_hwdevice_get_type_name(type);
+  // rkmpp 后端内部自己 open("/dev/mpp_service")，设备路径对它无效；
+  // drm 后端才需要 DRM 设备节点路径
+  const bool is_rkmpp = type_name && std::string(type_name) == "rkmpp";
+  const char* device = is_rkmpp ? nullptr : PickDrmDevice();
+  if (!is_rkmpp && !device) {
+    LOGW(SINK) << "[" << stream_id_ << "]: no accessible DRM device node, skip backend "
+               << (type_name ? type_name : "unknown");
     return false;
   }
 
-  // 2. 创建硬件设备上下文
-  int ret = av_hwdevice_ctx_create(&ctx_.hw_device_ctx, dev_type,
-                                   nullptr, nullptr, 0);
+  auto release_partial = [this] {
+    if (ctx_.hw_frames_ctx) av_buffer_unref(&ctx_.hw_frames_ctx);
+    if (ctx_.hw_device_ctx) av_buffer_unref(&ctx_.hw_device_ctx);
+  };
+  char errbuf[AV_ERROR_MAX_STRING_SIZE] = {0};
+
+  // 1. 创建硬件设备上下文
+  int ret = av_hwdevice_ctx_create(&ctx_.hw_device_ctx, type, device, nullptr, 0);
   if (ret < 0) {
-    char errbuf[AV_ERROR_MAX_STRING_SIZE] = {0};
     av_strerror(ret, errbuf, sizeof(errbuf));
-    LOGE(SINK) << "[" << stream_id_ << "]: av_hwdevice_ctx_create (rk) failed: "
-               << errbuf << " (" << ret << ")";
+    LOGW(SINK) << "[" << stream_id_ << "]: av_hwdevice_ctx_create (" << type_name
+               << ") failed: " << errbuf << " (" << ret << ")";
+    release_partial();
     return false;
   }
 
-  // 3. 分配硬件帧上下文：硬件帧为 DRM_PRIME，软件帧为 NV12
-  ctx_.hw_frames_ctx = av_hwframe_ctx_alloc(ctx_.hw_device_ctx);
-  if (!ctx_.hw_frames_ctx) {
-    LOGE(SINK) << "[" << stream_id_ << "]: av_hwframe_ctx_alloc failed";
+  // 2. 分配硬件帧上下文：硬件帧为 DRM_PRIME，软件帧为 NV12
+  AVBufferRef* frames_ref = av_hwframe_ctx_alloc(ctx_.hw_device_ctx);
+  if (!frames_ref) {
+    LOGW(SINK) << "[" << stream_id_ << "]: av_hwframe_ctx_alloc (" << type_name << ") failed";
+    release_partial();
     return false;
   }
-
-  AVHWFramesContext* hw_frames = reinterpret_cast<AVHWFramesContext*>(ctx_.hw_frames_ctx->data);
+  AVHWFramesContext* hw_frames = reinterpret_cast<AVHWFramesContext*>(frames_ref->data);
   hw_frames->format            = AV_PIX_FMT_DRM_PRIME;
   hw_frames->sw_format         = AV_PIX_FMT_NV12;
   hw_frames->width             = width_;
   hw_frames->height            = height_;
   hw_frames->initial_pool_size = 20;
 
-  ret = av_hwframe_ctx_init(ctx_.hw_frames_ctx);
+  ret = av_hwframe_ctx_init(frames_ref);
   if (ret < 0) {
-    char errbuf[AV_ERROR_MAX_STRING_SIZE] = {0};
     av_strerror(ret, errbuf, sizeof(errbuf));
-    LOGE(SINK) << "[" << stream_id_ << "]: av_hwframe_ctx_init failed: "
-               << errbuf << " (" << ret << ")";
+    LOGW(SINK) << "[" << stream_id_ << "]: av_hwframe_ctx_init (" << type_name
+               << ") failed: " << errbuf << " (" << ret << ")";
+    av_buffer_unref(&frames_ref);
+    release_partial();
     return false;
   }
 
-  // 4. 把硬件上下文挂到编码器上
-  // 在结束时统一解除引用
-  ctx_.codec_ctx->hw_device_ctx = av_buffer_ref(ctx_.hw_device_ctx);
-  ctx_.codec_ctx->hw_frames_ctx = av_buffer_ref(ctx_.hw_frames_ctx);
-  // 编码器看到的 pix_fmt 是硬件侧格式
-  ctx_.codec_ctx->pix_fmt = AV_PIX_FMT_DRM_PRIME;
-
-  // 5. 预分配一个硬件帧（用于 upload）
+  // 3. 预分配一个硬件帧（用于 upload），全部成功后才绑定编码器，避免半初始化状态
   ctx_.hw_frame = av_frame_alloc();
   if (!ctx_.hw_frame) {
-    LOGE(SINK) << "[" << stream_id_ << "]: av_frame_alloc (hw_frame) failed";
+    LOGW(SINK) << "[" << stream_id_ << "]: av_frame_alloc (hw_frame) failed";
+    av_buffer_unref(&frames_ref);
+    release_partial();
     return false;
   }
-  ret = av_hwframe_get_buffer(ctx_.hw_frames_ctx, ctx_.hw_frame, 0);
+  ret = av_hwframe_get_buffer(frames_ref, ctx_.hw_frame, 0);
   if (ret < 0) {
-    char errbuf[AV_ERROR_MAX_STRING_SIZE] = {0};
     av_strerror(ret, errbuf, sizeof(errbuf));
-    LOGE(SINK) << "[" << stream_id_ << "]: av_hwframe_get_buffer failed: "
-               << errbuf << " (" << ret << ")";
+    LOGW(SINK) << "[" << stream_id_ << "]: av_hwframe_get_buffer (" << type_name
+               << ") failed: " << errbuf << " (" << ret << ")";
+    av_frame_free(&ctx_.hw_frame);
+    av_buffer_unref(&frames_ref);
+    release_partial();
     return false;
   }
 
-  LOGI(SINK) << "[" << stream_id_ << "]: RK hardware encoder initialized: "
-             << "hw_format=" << av_get_pix_fmt_name(hw_frames->format)
-             << ", sw_format=" << av_get_pix_fmt_name(hw_frames->sw_format);
+  // 4. 绑定到编码器上下文：设备、帧上下文、硬件侧像素格式
+  ctx_.hw_frames_ctx = frames_ref;  // 接管引用
+  ctx_.codec_ctx->hw_device_ctx = av_buffer_ref(ctx_.hw_device_ctx);
+  ctx_.codec_ctx->hw_frames_ctx = av_buffer_ref(ctx_.hw_frames_ctx);
+  ctx_.codec_ctx->pix_fmt = AV_PIX_FMT_DRM_PRIME;
+
+  LOGI(SINK) << "[" << stream_id_ << "]: RK HW context ready: backend=" << type_name
+             << ", device=" << (device ? device : "<auto>")
+             << ", hw_format=" << av_get_pix_fmt_name(AV_PIX_FMT_DRM_PRIME)
+             << ", sw_format=" << av_get_pix_fmt_name(AV_PIX_FMT_NV12);
   return true;
+}
+
+bool PushHandlerImRK::InitDeviceCtx() {
+  // 候选后端：编码器 hw config 声明的类型优先, 之后按 rkmpp -> drm 顺序补充回退项
+  const AVCodec* codec = ctx_.codec_ctx->codec;
+  if (!codec) {
+    LOGE(SINK) << "[" << stream_id_ << "]: codec_ctx has no codec";
+    return false;
+  }
+
+  std::vector<AVHWDeviceType> candidates;
+  const AVCodecHWConfig* declared = GetHwDeviceConfig(codec);
+  if (declared) {
+    LOGI(SINK) << "[" << stream_id_ << "]: encoder " << codec->name
+               << " declares HW device type: " << av_hwdevice_get_type_name(declared->device_type);
+    candidates.push_back(declared->device_type);
+  }
+  for (const char* name : {"rkmpp", "drm"}) {
+    AVHWDeviceType t = av_hwdevice_find_type_by_name(name);
+    if (t == AV_HWDEVICE_TYPE_NONE) continue;
+    bool dup = false;
+    for (AVHWDeviceType c : candidates) {
+      if (c == t) { dup = true; break; }
+    }
+    if (!dup) candidates.push_back(t);
+  }
+  if (candidates.empty()) {
+    LOGE(SINK) << "[" << stream_id_ << "]: no RK HW backend (rkmpp/drm) available."
+               << " Check `ffmpeg -hwaccels` for available backends.";
+    return false;
+  }
+
+  for (AVHWDeviceType type : candidates) {
+    if (CreateRkHwContext(type)) {
+      return true;
+    }
+    LOGW(SINK) << "[" << stream_id_ << "]: backend "
+               << av_hwdevice_get_type_name(type) << " failed, try next backend";
+  }
+
+  LOGE(SINK) << "[" << stream_id_ << "]: all RK HW backends failed."
+             << " Checklist: 1) /dev/mpp_service exists"
+             << " 2) /dev/dri/card* /dev/dri/renderD* accessible"
+             << " 3) process permission (video/render group)";
+  return false;
 }
 
 void PushHandlerImRK::CleanDeviceCtx() {
@@ -115,10 +189,10 @@ bool PushHandlerImRK::SendFrameFromCpu(const DataFramePtr& frame, AVPixelFormat 
   const int src_height = frame->GetHeight();
 
 #ifdef VSTREAM_UNIT_TEST
-  const int src_stride = frame->GetStride(0);
+  const int _src_stride = frame->GetStride(0);
   if (src_pix_fmt == AV_PIX_FMT_RGB24 || src_pix_fmt == AV_PIX_FMT_BGR24) {
-    if (src_stride != GetStride_8U_C3(src_width)) {
-      LOGE(SINK) << "[" << stream_id_ << "]: src_stride != GetStride_8U_C3(src_width)";
+    if (_src_stride != GetStride_8U_C3(src_width)) {
+      LOGE(SINK) << "[" << stream_id_ << "]: _src_stride != GetStride_8U_C3(src_width)";
       return false;
     }
   }
