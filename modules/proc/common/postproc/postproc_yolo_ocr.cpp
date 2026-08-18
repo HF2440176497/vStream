@@ -34,6 +34,7 @@ inline constexpr const char* key_max_boxes_num = "max_boxes_num";
 inline constexpr const char* key_nms_iou_threshold = "nms_iou_threshold";
 inline constexpr const char* key_enable_save = "enable_save";
 inline constexpr const char* key_merge_direction = "merge_direction";
+inline constexpr const char* key_enable_secondary_merge = "enable_secondary_merge";
 
 }  // namespace
 
@@ -191,6 +192,12 @@ class Post_YOLOv5_CPU_OCR: public Postproc {
     if (data.find(key_nms_iou_threshold) != data.end()) {
       nms_iou_threshold_ = data[key_nms_iou_threshold].get<float>();
     }
+    if (data.find(key_enable_secondary_merge) != data.end()) {
+      enable_secondary_merge_ = data[key_enable_secondary_merge].get<bool>();
+    }
+    if (enable_secondary_merge_) {
+      LOGD(POSTPROC) << "YOLOv5_CPU_OCR enable secondary merge";
+    }
 
     if (data.find(key_enable_save) != data.end()) {
       debug_saver_.Configure(
@@ -340,13 +347,11 @@ class Post_YOLOv5_CPU_OCR: public Postproc {
       boxes.push_back({obj->bbox.x, obj->bbox.y, obj->bbox.w, obj->bbox.h});
     }
 
-    std::vector<std::vector<float>> results_merge;
+    std::vector<CharBox> results_merge;  // 一次合并（间隔合并），保持排序
     results_merge.reserve(boxes.size());
     if (boxes.size() <= 1) {
       // 0 个或 1 个框，无需合并
-      for (const auto& b : boxes) {
-        results_merge.push_back({b.x, b.y, b.w, b.h});
-      }
+      results_merge = boxes;
     } else {
       // 按合并方向排序：水平方向按 x（左到右），竖直方向按 y（上到下）
       const bool horizontal = (merge_direction_ == MergeDirection::Horizontal);
@@ -393,21 +398,27 @@ class Post_YOLOv5_CPU_OCR: public Postproc {
       }  // end while (start < boxes.size())
     }
 
-    LOGU(POSTPROC) << "YOLOv5_CPU_OCR results_size: " << results_merge.size();
+    LOGU(POSTPROC) << "YOLOv5_CPU_OCR first_merge_size: " << results_merge.size();
 
-    // 将合并后的字符行框也加入 objs，通过 type 与原始 YOLO 框区分
+    // 二次合并（默认关闭）：按数量切分并取字符外接矩形。关闭时直接输出一次合并结果。
+    std::vector<CharBox> second_merged =
+        enable_secondary_merge_ ? SecondMerge(results_merge) : results_merge;
+
+    LOGU(POSTPROC) << "YOLOv5_CPU_OCR output_merge_size: " << second_merged.size();
+
+    // 仅将最终合并结果（开启二次合并时为二次结果，否则为一次结果）作为 kMerged 输出
     {
       InferObjsPtr objs_holder = package->collection.Get<InferObjsPtr>(cnstream::kInferObjsTag);
       std::lock_guard<std::mutex> lock(objs_holder->mutex_);
       ObjsVec& global_objs = objs_holder->objs_;
-      for (const auto& r : results_merge) {
+      for (const auto& b : second_merged) {
         auto merged_obj = std::make_shared<InferObject>();
         merged_obj->id = 0;
         merged_obj->score = 1.0f;
-        merged_obj->bbox.x = r[0];
-        merged_obj->bbox.y = r[1];
-        merged_obj->bbox.w = r[2];
-        merged_obj->bbox.h = r[3];
+        merged_obj->bbox.x = b.x;
+        merged_obj->bbox.y = b.y;
+        merged_obj->bbox.w = b.w;
+        merged_obj->bbox.h = b.h;
         merged_obj->model_name = model_name_;
         cnstream::SetInferObjType(merged_obj, cnstream::InferObjType::kMerged);
         global_objs.push_back(merged_obj);
@@ -418,14 +429,18 @@ class Post_YOLOv5_CPU_OCR: public Postproc {
     if (debug_saver_.enable()) {
       cv::Mat img = frame->GetImage().clone();
       debug_saver_.MaybeSave("post_yolo_ocr", img, "",
-          [&boxes, &results_merge](cv::Mat& canvas) {
+          [&boxes, &results_merge, &second_merged](cv::Mat& canvas) {
             // 蓝色画原始字符框 (boxes)
             for (const auto& b : boxes) {
               cv::rectangle(canvas, cv::Rect(b.x, b.y, b.w, b.h), cv::Scalar(255, 0, 0), 2);
             }
-            // 绿色画合并后的文本行框 (results_merge)
+            // 黄色画一次合并行框 (results_merge)
             for (const auto& r : results_merge) {
-              cv::rectangle(canvas, cv::Rect(r[0], r[1], r[2], r[3]), cv::Scalar(0, 255, 0), 2);
+              cv::rectangle(canvas, cv::Rect(r.x, r.y, r.w, r.h), cv::Scalar(0, 255, 255), 2);
+            }
+            // 绿色画二次合并后的最终框 (second_merged)
+            for (const auto& b : second_merged) {
+              cv::rectangle(canvas, cv::Rect(b.x, b.y, b.w, b.h), cv::Scalar(0, 255, 0), 2);
             }
           });
     }
@@ -435,6 +450,45 @@ class Post_YOLOv5_CPU_OCR: public Postproc {
   }
 
  private:
+  // 二次合并切分规则
+  static size_t SplitIndex(size_t n) {
+    if (n <= 5) return n;
+    switch (n) {
+      case 6: return 3;
+      case 7: return 4;
+      case 8: return 4;
+      case 9: return 5;
+      case 10: return 5;
+      default: return (n + 1) / 2;
+    }
+  }
+
+  // 二次合并：对已排序的一次合并框按数量切分，每组取字符外接矩形
+  std::vector<CharBox> SecondMerge(const std::vector<CharBox>& ordered) const {
+    std::vector<CharBox> out;
+    const size_t n = ordered.size();
+    if (n == 0) return out;
+    out.reserve(n);
+    size_t start = 0;
+    while (start < n) {
+      // 当前分组的左右边界 index
+      size_t end = start + SplitIndex(n - start);
+      float min_x = ordered[start].x;
+      float min_y = ordered[start].y;
+      float max_x = ordered[start].xmax();
+      float max_y = ordered[start].ymax();
+      for (size_t i = start + 1; i < end && i < n; ++i) {
+        min_x = std::min(min_x, ordered[i].x);
+        min_y = std::min(min_y, ordered[i].y);
+        max_x = std::max(max_x, ordered[i].xmax());
+        max_y = std::max(max_y, ordered[i].ymax());
+      }
+      out.push_back({min_x, min_y, max_x - min_x, max_y - min_y});
+      start = end;
+    }
+    return out;
+  }
+
   struct ItemInfo {
     std::string name;
     float threshold = 0.0f;
@@ -445,6 +499,7 @@ class Post_YOLOv5_CPU_OCR: public Postproc {
 
   int max_boxes_num_ = 200;
   float nms_iou_threshold_ = 0.45f;
+  bool enable_secondary_merge_ = false;
   std::string model_name_;  ///< The name of the model.
 
  private:
