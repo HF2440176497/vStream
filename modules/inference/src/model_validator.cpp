@@ -26,6 +26,10 @@ ModelValidator::ModelValidator(const std::string& model_path,
 }
 
 ModelValidator::~ModelValidator() {
+  if (model_loader_ && exec_ctx_ != nullptr) {
+    model_loader_->ReleaseExecutionContext(exec_ctx_);
+  }
+  exec_ctx_ = nullptr;
   model_loader_.reset();
   memop_.reset();
   dev_input_bufs_.clear();
@@ -63,6 +67,8 @@ bool ModelValidator::Load() {
     LOGE(MODEL_VALIDATOR) << "Model not valid after init: " << model_path_;
     return false;
   }
+
+  exec_ctx_ = model_loader_->AcquireExecutionContext();
 
   // Create MemOp for device-aware memory operations
   memop_ = MemOpFactory::Instance().CreateMemOp(device_type_, device_id_);
@@ -214,7 +220,7 @@ ModelValidator::Infer(const std::vector<std::vector<float>>& inputs) {
   }
 
   // Run inference
-  if (!model_loader_->RunSync(dev_input_bufs_, dev_output_bufs_)) {
+  if (!model_loader_->RunSync(exec_ctx_, dev_input_bufs_, dev_output_bufs_)) {
     LOGE(MODEL_VALIDATOR) << "RunSync failed";
     return results;
   }
@@ -443,7 +449,7 @@ bool ModelValidator::RunInference() {
   }
 
   // RunSync
-  if (!model_loader_->RunSync(dev_input_bufs_, dev_output_bufs_)) {
+  if (!model_loader_->RunSync(exec_ctx_, dev_input_bufs_, dev_output_bufs_)) {
     LOGE(MODEL_VALIDATOR) << "RunSync failed";
     return false;
   }

@@ -152,6 +152,7 @@ class ModelValidator {
   uint32_t input_ordered_index_ = 0;
 
   std::unique_ptr<ModelLoader> model_loader_;
+  void* exec_ctx_ = nullptr;  ///< loader 提供的独占执行上下文（Load 获取，析构归还）
   std::shared_ptr<MemOp> memop_;  ///< device-aware memory operations
 
   // RAII 内存

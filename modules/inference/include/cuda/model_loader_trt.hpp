@@ -48,11 +48,16 @@ class ModelLoaderTrt : public ModelLoader {
 
   bool IsValid() override { return engine_ != nullptr; }
 
-  bool RunSync(std::vector<std::shared_ptr<void>> inputs, std::vector<std::shared_ptr<void>> outputs) override;
+  bool RunSync(void* exec_ctx,
+               std::vector<std::shared_ptr<void>> inputs,
+               std::vector<std::shared_ptr<void>> outputs) override;
+
+  void* AcquireExecutionContext() override;
+  void ReleaseExecutionContext(void* exec_ctx) override;
 
   void* GetStream() const override { return static_cast<void*>(stream_); }
 
-  nvinfer1::IExecutionContext* CreateExecutionContext();
+  std::unique_ptr<nvinfer1::IExecutionContext, TrtDeleter> CreateExecutionContext();
 
 #ifdef VSTREAM_UNIT_TEST
  public:
@@ -66,9 +71,12 @@ class ModelLoaderTrt : public ModelLoader {
   ModelLoaderTrt::Logger logger_;
   std::unique_ptr<nvinfer1::IRuntime, TrtDeleter> runtime_ = nullptr;
   std::unique_ptr<nvinfer1::ICudaEngine, TrtDeleter> engine_ = nullptr;
+  // 仅在 LoadEngine/ParseBindings 阶段持有，用于查询 profile 与设置动态 shape；
+  // 运行期的执行上下文由各流水线通过 AcquireExecutionContext() 独占持有
   std::unique_ptr<nvinfer1::IExecutionContext, TrtDeleter> context_ = nullptr;
   cudaStream_t stream_ = nullptr;
-  std::mutex mutex_;
+  // 仅保护执行上下文的创建/销毁（初始化与反初始化路径），推理路径无锁
+  std::mutex exec_ctx_mtx_;
 
 };  // end of ModelLoaderTrt
 

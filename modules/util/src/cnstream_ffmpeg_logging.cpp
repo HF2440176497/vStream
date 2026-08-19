@@ -12,7 +12,7 @@ __attribute__((constructor)) void InitFFmpegLogging() {
   av_log_set_level(AV_LOG_WARNING);
 }
 
-}  // anonymous namespace
+}  // namespace
 
 void SetFFmpegLogLevel(int level) {
   av_log_set_level(level);

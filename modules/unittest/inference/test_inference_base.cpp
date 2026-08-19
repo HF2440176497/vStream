@@ -308,7 +308,9 @@ TEST_F(ModelLoaderTest, Run) {
                          cpu_buffer.data(), 
                          one_batch_bytes);
   }
-  model_loader_->RunSync(i_value.ptrs, o_value.ptrs);
+  void* exec_ctx = model_loader_->AcquireExecutionContext();
+  model_loader_->RunSync(exec_ctx, i_value.ptrs, o_value.ptrs);
+  model_loader_->ReleaseExecutionContext(exec_ctx);
 
   // one output: post process
   void* one_output_data = o_value.datas[output_index].ptr;

@@ -67,15 +67,18 @@ std::vector<std::shared_ptr<InferTask>> H2DBatchingDoneStage::BatchingDone(const
       void* dst_net = net_value.ptrs[i].get();
       auto input_data_type = model_->InputDataType(i);
       size_t data_size = net_value.datas[i].shape.DataCount() * data_type_size(input_data_type);
-      
+
       // cpu shape 与 net shape 应该一致
       // LOGU(H2D) << " index: " << i << "; cpu shape: " << cpu_value.datas[i].shape << "; net shape:" << net_value.datas[i].shape << std::endl;
       // LOGU(H2D) << " index: " << i << "; count:" << net_value.datas[i].shape.DataCount() << ", data_size: " << data_size << std::endl;
 
-      void* infer_stream = model_->GetStream();
-      memop_->CopyFromHostAsync(dst_net, src_cpu, data_size, infer_stream);
+      memop_->CopyFromHostAsync(dst_net, src_cpu, data_size, model_->GetStream());
     }
-  
+
+    // 异步拷贝可能尚未执行，必须等其完成后再释放 cpu_input 票据：
+    // 否则下一批预处理将覆写仍在被 GPU 读取的源 buffer（输入撕裂）
+    memop_->SyncStream(model_->GetStream());
+
     this->cpu_input_res_->DeallingDone();
     this->net_input_res_->DeallingDone();
     return 0;
@@ -91,10 +94,17 @@ InferBatchingDoneStage::InferBatchingDoneStage(ModelLoader* model,
                                                std::shared_ptr<IOResource> output_res)
     : BatchingDoneStage(model, batchsize, model ? model->GetDeviceId() : -1),
       input_res_(input_res),
-      output_res_(output_res) {
+      output_res_(output_res),
+      exec_ctx_(model ? model->AcquireExecutionContext() : nullptr) {
 }
 
-InferBatchingDoneStage::~InferBatchingDoneStage() {}
+InferBatchingDoneStage::~InferBatchingDoneStage() {
+  if (model_) {
+    // 交给后端 model_loader 释放 context
+    model_->ReleaseExecutionContext(exec_ctx_);
+  }
+  exec_ctx_ = nullptr;
+}
 
 std::vector<std::shared_ptr<InferTask>> InferBatchingDoneStage::BatchingDone(const BatchingDoneInput& finfos) {
   std::vector<InferTaskSptr> tasks;
@@ -124,7 +134,7 @@ std::vector<std::shared_ptr<InferTask>> InferBatchingDoneStage::BatchingDone(con
     if (!dump_resized_image_dir_.empty()) {
       // dump_resized_image(net_input_value, dump_resized_image_dir_);
     }
-    model_->RunSync(input_value.ptrs, output_value.ptrs);
+    model_->RunSync(exec_ctx_, input_value.ptrs, output_value.ptrs);
 
     if (profiler_) {
       for (const auto& finfo : finfos) {
@@ -166,8 +176,7 @@ std::vector<std::shared_ptr<InferTask>> D2HBatchingDoneStage::BatchingDone(const
       void* dst_cpu = cpu_output_value.ptrs[i].get();
       auto output_data_type = model_->OutputDataType(i);
       size_t data_size = net_output_value.datas[i].shape.DataCount() * data_type_size(output_data_type);
-      void* infer_stream = model_->GetStream();
-      memop_->CopyToHostAsync(dst_cpu, src_net, data_size, infer_stream);
+      memop_->CopyToHostAsync(dst_cpu, src_net, data_size, model_->GetStream());
     }
     memop_->SyncStream(model_->GetStream());
 

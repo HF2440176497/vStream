@@ -359,8 +359,10 @@ bool ModelLoaderRknn::ParseInputOutputAttr() {
   return true;
 }
 
-bool ModelLoaderRknn::RunSync(std::vector<std::shared_ptr<void>> inputs,
+bool ModelLoaderRknn::RunSync(void* exec_ctx,
+                              std::vector<std::shared_ptr<void>> inputs,
                               std::vector<std::shared_ptr<void>> outputs) {
+  (void)exec_ctx;  // RKNN 单 context，由基类默认实现返回 nullptr
   std::lock_guard<std::mutex> lock(mutex_);
 
   if (rknn_ctx_ == 0) {

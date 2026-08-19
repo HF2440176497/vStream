@@ -186,7 +186,7 @@ bool ModelLoaderTrt::LoadEngine(const std::string& engine_path) {
     return false;
   }
 
-  context_ = std::unique_ptr<nvinfer1::IExecutionContext, TrtDeleter>(engine_->createExecutionContext());
+  context_ = CreateExecutionContext();
   if (context_ == nullptr) {
     LOGF(MODEL) << "Failed to create TensorRT execution context";
     return false;
@@ -194,6 +194,8 @@ bool ModelLoaderTrt::LoadEngine(const std::string& engine_path) {
   if (!ParseBindings()) {
     return false;
   }
+  // 初始化阶段专用 context 到此结束；运行期各流水线独占持有自己的执行上下文
+  context_.reset();
   name_ = utils::get_filename_without_ext(engine_path);
   engine_path_ = engine_path;
   return true;
@@ -316,22 +318,32 @@ bool ModelLoaderTrt::ParseBindings() {
  * @brief 运行模型推理
  * @note inputs outputs size == tensor num
  * 在解析模型阶段，需要确保 tensor shape 已设置
+ * @note 无锁：exec_ctx 由调用方独占（见 AcquireExecutionContext），同一流水线的
+ *       推理任务已被票据 FIFO 串行化；多流水线共享同一 cudaStream 时，
+ *       GPU 执行序 = 入队序，cudaStreamSynchronize 本身线程安全，等待至多
+ *       覆盖他人先入队的工作，不影响正确性
  */
-bool ModelLoaderTrt::RunSync(std::vector<std::shared_ptr<void>> inputs, std::vector<std::shared_ptr<void>> outputs) {
-  std::lock_guard<std::mutex> lock(mutex_);
+bool ModelLoaderTrt::RunSync(void* exec_ctx,
+                             std::vector<std::shared_ptr<void>> inputs,
+                             std::vector<std::shared_ptr<void>> outputs) {
   CudaDeviceGuard guard(device_id_);
+  nvinfer1::IExecutionContext* context = static_cast<nvinfer1::IExecutionContext*>(exec_ctx);
+  if (context == nullptr) {
+    LOGE(MODEL) << "execution context is null, acquire it via AcquireExecutionContext() first";
+    return false;
+  }
   if (inputs.size() != input_names_.size() || outputs.size() != output_names_.size()) {
     LOGE(MODEL) << "Tensor count mismatch: inputs " << inputs.size() << " vs " << input_names_.size()
                 << ", outputs " << outputs.size() << " vs " << output_names_.size();
     return false;
   }
   for (int i = 0; i < inputs.size(); ++i) {
-    context_->setInputTensorAddress(input_names_[i].c_str(), inputs[i].get());
+    context->setInputTensorAddress(input_names_[i].c_str(), inputs[i].get());
   }
   for (int i = 0; i < outputs.size(); ++i) {
-    context_->setOutputTensorAddress(output_names_[i].c_str(), outputs[i].get());
+    context->setOutputTensorAddress(output_names_[i].c_str(), outputs[i].get());
   }
-  bool execute_result = context_->enqueueV3(stream_);
+  bool execute_result = context->enqueueV3(stream_);
   if (!execute_result) {
     auto code = cudaGetLastError();
     LOGF(MODEL) << "execute fail, code: " << code << ", message: " << cudaGetErrorName(code) << ", " << cudaGetErrorString(code);
@@ -340,9 +352,47 @@ bool ModelLoaderTrt::RunSync(std::vector<std::shared_ptr<void>> inputs, std::vec
   return CHECK_CUDA_RUNTIME(cudaStreamSynchronize(stream_));
 }
 
-nvinfer1::IExecutionContext* ModelLoaderTrt::CreateExecutionContext() {
+void* ModelLoaderTrt::AcquireExecutionContext() {
+  std::lock_guard<std::mutex> lock(exec_ctx_mtx_);
+  CudaDeviceGuard guard(device_id_);
+  return CreateExecutionContext().release();
+}
+
+void ModelLoaderTrt::ReleaseExecutionContext(void* exec_ctx) {
+  if (exec_ctx == nullptr) {
+    return;
+  }
+  std::lock_guard<std::mutex> lock(exec_ctx_mtx_);
+  CudaDeviceGuard guard(device_id_);
+  TrtDeleter{}(static_cast<nvinfer1::IExecutionContext*>(exec_ctx));
+}
+
+std::unique_ptr<nvinfer1::IExecutionContext, TrtDeleter> ModelLoaderTrt::CreateExecutionContext() {
   if (!engine_) return nullptr;
-  return engine_->createExecutionContext();
+  std::unique_ptr<nvinfer1::IExecutionContext, TrtDeleter> context(engine_->createExecutionContext());
+  if (context == nullptr) {
+    LOGE(MODEL) << "Failed to create TensorRT execution context";
+    return nullptr;
+  }
+  // 动态 shape 模型：每个新建 context 都要按 opt profile 重新 setInputShape，
+  // 与 ParseBindings 中的处理保持一致
+  for (size_t i = 0; i < input_names_.size(); ++i) {
+    const auto& name = input_names_[i];
+    nvinfer1::Dims dims = engine_->getTensorShape(name.c_str());
+    bool has_dynamic = false;
+    for (int j = 0; j < dims.nbDims; ++j) {
+      if (dims.d[j] == -1) { has_dynamic = true; break; }
+    }
+    if (!has_dynamic) continue;
+    nvinfer1::Dims opt_dims = engine_->getProfileShape(name.c_str(),
+                                                       context->getOptimizationProfile(),
+                                                       nvinfer1::OptProfileSelector::kOPT);
+    if (!context->setInputShape(name.c_str(), opt_dims)) {
+      LOGE(MODEL) << "setInputShape failed for tensor: " << name;
+      return nullptr;
+    }
+  }
+  return context;
 }
 
 }  // namespace cnstream

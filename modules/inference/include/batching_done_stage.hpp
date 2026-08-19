@@ -131,6 +131,8 @@ class InferBatchingDoneStage : public BatchingDoneStage {
  private:
   std::shared_ptr<IOResource> input_res_;
   std::shared_ptr<IOResource> output_res_;
+  // 本流水线独占的执行上下文（TRT 多流水线并发时互不干扰；RKNN/CPU 为 nullptr）
+  void* exec_ctx_ = nullptr;
 };  // class InferBatchingDoneStage
 
 class D2HBatchingDoneStage : public BatchingDoneStage {

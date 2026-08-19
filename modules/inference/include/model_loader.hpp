@@ -91,7 +91,18 @@ class ModelLoader {
     return OutputShape(index).DataCount() * data_type_size(output_data_types_[index]);
   }
 
-  virtual bool RunSync(std::vector<std::shared_ptr<void>> inputs, std::vector<std::shared_ptr<void>> outputs) = 0;
+  /**
+   * 获取一个调用方独占的执行上下文句柄（如 TensorRT 的 IExecutionContext）。
+   * 支持多执行上下文的后端返回有效句柄；句柄同一时刻只允许一个线程使用，
+   * 用完后通过 ReleaseExecutionContext() 归还。
+   * 不支持的后端（RKNN/CPU）返回 nullptr，RunSync 将忽略句柄。
+   */
+  virtual void* AcquireExecutionContext() { return nullptr; }
+  virtual void ReleaseExecutionContext(void* exec_ctx) { (void)exec_ctx; }
+
+  virtual bool RunSync(void* exec_ctx,
+                       std::vector<std::shared_ptr<void>> inputs,
+                       std::vector<std::shared_ptr<void>> outputs) = 0;
 
 #ifdef VSTREAM_UNIT_TEST
  public:

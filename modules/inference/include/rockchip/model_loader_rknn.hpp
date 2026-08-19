@@ -26,7 +26,8 @@ class ModelLoaderRknn : public ModelLoader {
 
   bool Init(const std::string& engine_path, const InferParams& params) override;
   bool IsValid() override { return rknn_ctx_ != 0; }
-  bool RunSync(std::vector<std::shared_ptr<void>> inputs,
+  bool RunSync(void* exec_ctx,
+               std::vector<std::shared_ptr<void>> inputs,
                std::vector<std::shared_ptr<void>> outputs) override;
 
 #ifdef VSTREAM_UNIT_TEST
