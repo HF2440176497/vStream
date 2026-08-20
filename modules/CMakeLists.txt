@@ -62,6 +62,18 @@ else()
   message(FATAL_ERROR "OpenCV not found. Please ensure OpenCV is installed")
 endif()
 
+# ---[ RKNN runtime
+if(VSTREAM_USE_ROCKCHIP)
+  include(${VSTREAM_ROOT_PATH}/cmake/FindRKNN.cmake)
+  if(RKNN_FOUND)
+    list(APPEND VSTREAM_MODULES_3RDPARTY_INCLUDE ${RKNN_INCLUDE_DIRS})
+    list(APPEND VSTREAM_MODULES_3RDPARTY_LIBS ${RKNN_LIBRARIES})
+  else()
+    message(FATAL_ERROR "RKNN runtime not found! Expected 3rdparty/rknpu2 "
+      "(include/rknn_api.h + lib/librknnrt.so), or set RKNN_ROOT_DIR")
+  endif()
+endif()
+
 # ---[ nlohmann/json
 list(APPEND VSTREAM_MODULES_3RDPARTY_INCLUDE ${VSTREAM_ROOT_PATH}/3rdparty/nlohmann-json/include)
 

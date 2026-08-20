@@ -12,16 +12,22 @@ set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_SOURCE_DIR}/README.md")
 set(CPACK_RESOURCE_FILE_README  "${CMAKE_SOURCE_DIR}/README.md")
 
 # 自动检测架构
-execute_process(
-  COMMAND dpkg --print-architecture
-  OUTPUT_VARIABLE _deb_arch
-  OUTPUT_STRIP_TRAILING_WHITESPACE
-  RESULT_VARIABLE _arch_res
-)
-if(_arch_res EQUAL 0 AND _deb_arch)
-  set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE ${_deb_arch})
+# 交叉编译时 dpkg --print-architecture 取到的是构建机架构（amd64），必须按目标平台显式指定
+if(CMAKE_CROSSCOMPILING AND CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+  set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "arm64")
+  message(STATUS "Cross-compiling for aarch64, DEB architecture forced to arm64")
 else()
-  set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "amd64")
+  execute_process(
+    COMMAND dpkg --print-architecture
+    OUTPUT_VARIABLE _deb_arch
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    RESULT_VARIABLE _arch_res
+  )
+  if(_arch_res EQUAL 0 AND _deb_arch)
+    set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE ${_deb_arch})
+  else()
+    set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "amd64")
+  endif()
 endif()
 
 # DEB 生成器

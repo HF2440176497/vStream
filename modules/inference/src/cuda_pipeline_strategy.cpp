@@ -32,6 +32,13 @@ PipelineConfig CudaPipelineStrategy::Build(ModelLoader* model, const InferOption
   config.net_input_res = std::make_shared<NetInputResource>(model);
   config.net_output_res = std::make_shared<NetOutputResource>(model);
 
+  // 用于票据等待看门狗日志：定位哪个模块的哪类缓冲发生阻塞
+  const std::string res_prefix = options.module_name() + "/";
+  config.cpu_input_res->SetName(res_prefix + "cpu_input");
+  config.cpu_output_res->SetName(res_prefix + "cpu_output");
+  config.net_input_res->SetName(res_prefix + "net_input");
+  config.net_output_res->SetName(res_prefix + "net_output");
+
   config.cpu_input_res->Init();
   config.cpu_output_res->Init();
   config.net_input_res->Init();

@@ -18,9 +18,17 @@
  * THE SOFTWARE.
  *************************************************************************/
 
+#include <atomic>
+#include <chrono>
 #include <iostream>
+
+#include "cnstream_logging.hpp"
 #include "queuing_server.hpp"
 
+namespace {
+// 票据全局唯一 id：跨资源唯一，配合 QueuingServer::name_ 可精确定位冻结点
+std::atomic<uint64_t> g_next_ticket_id{1};
+}  // namespace
 
 /**
  * @brief 从队列中取出一个 ticket
@@ -35,7 +43,10 @@ QueuingTicket QueuingServer::PickUpTicket(bool reserve) {
   } else {
     // create new ticket.
     tickets_q_.push(QueuingTicketRoot());
-    ticket = tickets_q_.back().root.get_future().share();
+    QueuingTicketRoot& root = tickets_q_.back();
+    root.id = g_next_ticket_id++;
+    ticket.fut = root.root.get_future().share();
+    ticket.id = root.id;
     if (tickets_q_.size() == 1) {  // only one ticket, call at once
       Call();
     }
@@ -71,7 +82,10 @@ QueuingTicket QueuingServer::PickUpNewTicket(bool reserve) {
   }
   // create new ticket.
   tickets_q_.push(QueuingTicketRoot());
-  ticket = tickets_q_.back().root.get_future().share();
+  QueuingTicketRoot& root = tickets_q_.back();
+  root.id = g_next_ticket_id++;
+  ticket.fut = root.root.get_future().share();
+  ticket.id = root.id;
   if (tickets_q_.size() == 1) {
     // only one ticket, call at once
     Call();
@@ -101,7 +115,47 @@ void QueuingServer::DeallingDone() {
   }
 }
 
-void QueuingServer::WaitByTicket(QueuingTicket* pticket) { pticket->get(); }
+void QueuingServer::WaitByTicket(QueuingTicket* pticket) {
+  if (pticket == nullptr) return;
+  // 看门狗：正常情况下票据等待仅为批次间串行耗时（毫秒级）；
+  // 若队首票据未归还（任务异常退出或阻塞），后续任务将在此永久等待。
+  // 凭票据 id 区分冻结类型：挡在泄漏票之后 / 我即队首但未被唤醒 / 队列空异常
+  const auto kFirstWarn = std::chrono::milliseconds(1000);
+  const auto kRepeatWarn = std::chrono::milliseconds(10000);
+  auto status = pticket->fut.wait_for(kFirstWarn);
+  auto waited = kFirstWarn;
+  while (status != std::future_status::ready) {
+    size_t pending = 0;
+    uint64_t head_id = 0;
+    uint32_t head_reserved = 0;
+    {
+      std::lock_guard<std::mutex> lk(mtx_);
+      pending = tickets_q_.size();
+      if (!tickets_q_.empty()) {
+        head_id = tickets_q_.front().id;
+        head_reserved = tickets_q_.front().reserved_time;
+      }
+    }
+    if (pending == 0) {
+      LOGW(QUEUING) << "[" << name_ << "] ticket #" << pticket->id << " wait slow: waited="
+                    << waited.count() << "ms, queue is EMPTY. Wake-logic anomaly: "
+                    << "this ticket was popped but its future was never set.";
+    } else if (head_id == pticket->id) {
+      LOGW(QUEUING) << "[" << name_ << "] ticket #" << pticket->id << " wait slow: waited="
+                    << waited.count() << "ms, this ticket IS the head but never called. "
+                    << "Wake-logic anomaly in PickUp/Call path (head_reserved=" << head_reserved << ").";
+    } else {
+      LOGW(QUEUING) << "[" << name_ << "] ticket #" << pticket->id << " wait slow: waited="
+                    << waited.count() << "ms, blocked behind head #" << head_id
+                    << " (head_reserved=" << head_reserved << ", pending=" << pending
+                    << "). Head ticket #" << head_id
+                    << " not released: the task holding it exited without DeallingDone.";
+    }
+    status = pticket->fut.wait_for(kRepeatWarn);
+    waited += kRepeatWarn;
+  }
+}
+
 
 /**
  * @brief 设置队首 ticket 已处理 相当于唤醒

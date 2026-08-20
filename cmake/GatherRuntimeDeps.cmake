@@ -43,23 +43,29 @@ endif()
 # （它用已访问集合避免无限循环，结果只列依赖项，不会重复）
 # CONFLICTING_DEPENDENCIES_PREFIX 用于检测同名库指向不同路径的冲突情况
 #
-# DIRECTORIES 只含 _staging_lib（vstream 自身库如 libyuv.so 所在），
+# 原生构建：DIRECTORIES 只含 _staging_lib（vstream 自身库如 libyuv.so 所在），
 # 不含 _staging_dev_lib —— 否则已打包的依赖会解析到 staging 路径（含 DESTDIR），
 # 导致 dep-manifest.txt 记录的不是编译期系统路径，postinst 自适应复用会失效。
 # 第三方依赖由系统默认搜索路径（ld.so.conf）解析，得到的才是编译期真实路径。
-file(GET_RUNTIME_DEPENDENCIES
-  RESOLVED_DEPENDENCIES_VAR     _resolved
-  UNRESOLVED_DEPENDENCIES_VAR   _unresolved
-  CONFLICTING_DEPENDENCIES_PREFIX _conflict
-  DIRECTORIES                   "${_staging_lib}"
-  EXECUTABLES                   ${_vstream_libs}
-  LIBRARIES                     ${_vstream_libs}
-  # PRE：按 NEEDED 名字过滤，命中即不解析路径（最早期排除）
-  #   - 系统运行库
-  #   - CUDA runtime 与 driver
-  #   - TensorRT
-  #   - Python 解释器库
-  PRE_EXCLUDE_REGEXES
+#
+# RK 交叉编译：第三方依赖位于 sysroot / ffmpeg-rockchip 安装树 / 仓库内 rknpu2，
+# 不在构建机默认搜索路径中，必须显式补充解析目录（变量由 BundleThirdPartyDeps 的 install(CODE) 传入）。
+set(_dep_search_dirs "${_staging_lib}")
+if(VSTREAM_USE_ROCKCHIP)
+  foreach(_d
+      "${RK_FFMPEG_ROOT}/lib"
+      "${RK_SYSROOT}/usr/lib/aarch64-linux-gnu"
+      "${RK_SYSROOT}/usr/lib"
+      "${RK_SYSROOT}/lib/aarch64-linux-gnu"
+      "${RKNN_LIB_DIR}")
+    if(IS_DIRECTORY "${_d}")
+      list(APPEND _dep_search_dirs "${_d}")
+    endif()
+  endforeach()
+endif()
+
+# PRE：按 NEEDED 名字过滤，命中即不解析路径（最早期排除）
+set(_pre_exclude
     "^libc\\.so"
     "^libstdc\\+\\+\\.so"
     "^libgcc_s\\.so"
@@ -75,10 +81,25 @@ file(GET_RUNTIME_DEPENDENCIES
     "^libnvml\\.so"
     "^libnvinfer.*\\.so"
     "^libnvonnxparser\\.so"
-    "^libpython.*\\.so"
-  # POST：解析到完整路径后再按路径过滤
-  #   /lib/ /usr/lib/ /usr/lib64/ 视为系统库，不打包
-  POST_EXCLUDE_REGEXES
+    "^libpython.*\\.so")
+if(NOT VSTREAM_USE_ROCKCHIP)
+  # 原生构建：Python 解释器库由运行环境基础镜像提供
+  list(APPEND _pre_exclude "^libpython.*\\.so")
+else()
+  # RK：librknnrt.so 已通过 BundleThirdPartyDeps 显式打包（known_libs），按名排除防重复
+  list(APPEND _pre_exclude "^librknnrt\\.so")
+endif()
+
+# gflags/glog：已由 install(TARGETS) 装到 lib/，
+# 排除防止依赖解析时从 staging lib/ 命中后重复拷进 dev/lib
+if(VSTREAM_INTREE_GFLAGS_GLOG)
+  list(APPEND _pre_exclude "^libgflags\\.so" "^libglog\\.so")
+endif()
+
+# POST：解析到完整路径后再按路径过滤
+#   /lib/ /usr/lib/ /usr/lib64/ 视为系统库，不打包
+#   交叉编译解析到的 sysroot 路径不带 /usr 前缀，不在排除之列，随包自包含
+set(_post_exclude
     "^/lib/"
     "^/lib64/"
     "^/usr/lib/"
@@ -86,7 +107,17 @@ file(GET_RUNTIME_DEPENDENCIES
     "^/usr/lib64/"
     "^/usr/lib/x86_64-linux-gnu/"
     "^/usr/lib/aarch64-linux-gnu/"
-    "ld-linux"
+    "ld-linux")
+
+file(GET_RUNTIME_DEPENDENCIES
+  RESOLVED_DEPENDENCIES_VAR     _resolved
+  UNRESOLVED_DEPENDENCIES_VAR   _unresolved
+  CONFLICTING_DEPENDENCIES_PREFIX _conflict
+  DIRECTORIES                   ${_dep_search_dirs}
+  EXECUTABLES                   ${_vstream_libs}
+  LIBRARIES                     ${_vstream_libs}
+  PRE_EXCLUDE_REGEXES           ${_pre_exclude}
+  POST_EXCLUDE_REGEXES          ${_post_exclude}
 )
 
 # ---------- 处理冲突依赖 ----------

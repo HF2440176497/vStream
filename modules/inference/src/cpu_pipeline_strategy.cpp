@@ -29,6 +29,12 @@ PipelineConfig CpuPipelineStrategy::Build(ModelLoader* model, const InferOptions
 
   config.cpu_input_res = std::make_shared<CpuInputResource>(model);
   config.cpu_output_res = std::make_shared<CpuOutputResource>(model);
+
+  // 用于票据等待看门狗日志：定位哪个模块的哪类缓冲发生阻塞
+  const std::string res_prefix = options.module_name() + "/";
+  config.cpu_input_res->SetName(res_prefix + "cpu_input");
+  config.cpu_output_res->SetName(res_prefix + "cpu_output");
+
   config.cpu_input_res->Init();
   config.cpu_output_res->Init();
 

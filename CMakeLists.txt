@@ -35,6 +35,13 @@ if (VSTREAM_USE_ROCKCHIP)
   set(CMAKE_CUDA_STANDARD 17)
 endif()
 
+# CUDA 与 Rockchip 互斥：同一构建只允许一种硬件平台后端
+if(VSTREAM_USE_ROCKCHIP AND VSTREAM_USE_CUDA)
+  message(FATAL_ERROR "VSTREAM_USE_ROCKCHIP and VSTREAM_USE_CUDA are mutually exclusive. "
+    "Use: -DVSTREAM_USE_ROCKCHIP=ON -DVSTREAM_USE_CUDA=OFF")
+endif()
+
+
 set(VSTREAM_ROOT_PATH "${CMAKE_CURRENT_SOURCE_DIR}"
     CACHE INTERNAL "Top-level directory of this project")
 
@@ -46,7 +53,7 @@ option(VSTREAM_BUILD_MODULES "build modules" ON)
 option(VSTREAM_BUILD_PYTHON_API "build python api" ON)
 option(VSTREAM_BUILD_TOOLS "build tools" ON)
 
-# 第三方库 默认都为 ON
+# 默认都为 ON
 option(VSTREAM_BUILD_LIBYUV "build libyuv" ON)
 option(VSTREAM_BUILD_PYBIND11 "build pybind11" ON)
 
@@ -110,6 +117,7 @@ if (VSTREAM_BUILD_LIBYUV)
 endif()
 
 # ---[ pybind11
+# 在 build.sh 设置默认值 ON
 if (VSTREAM_BUILD_PYBIND11)
   message(STATUS "Pybind11 building from 3rdparty/pybind11")
 
@@ -139,19 +147,18 @@ if (VSTREAM_BUILD_PYBIND11)
   set(VSTREAM_HAS_BUILT_PYBIND11 TRUE)
 endif()
 
-# 当使用系统安装的 gtest，VSTREAM_HAS_BUILT_GTEST = FALSE
+# ---[ gflags / glog：统一从 3rdparty 随主构建
+# 共享库编译到 lib/，链接 in-tree target，随包安装到 lib/（不依赖系统安装）
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/SetupThirdPartyInTree.cmake)
+
+# ---[ gtest：统一从 3rdparty 随主构建（静态库，仅供单测链接，不安装）
 if(VSTREAM_BUILD_TESTS)
   add_definitions(-DVSTREAM_UNIT_TEST)
-  # ---[ gtest
-  include(${VSTREAM_ROOT_PATH}/cmake/FindGtest.cmake)
-  if(GTEST_FOUND)
-    message(STATUS "Found installed GTest (include: ${GTEST_INCLUDE_DIRS}, lib: ${GTEST_LIBRARIES})")
-    set(VSTREAM_HAS_BUILT_GTEST FALSE)
-  else()
-    message(STATUS "GTest not found, building from 3rdparty/googletest")
-    add_subdirectory(${VSTREAM_ROOT_PATH}/3rdparty/googletest)
-    set(VSTREAM_HAS_BUILT_GTEST TRUE)
-  endif()
+  set(INSTALL_GTEST OFF CACHE BOOL "googletest: install" FORCE)
+  set(BUILD_TESTING OFF CACHE BOOL "googletest: build self tests" FORCE)
+  add_subdirectory(${VSTREAM_ROOT_PATH}/3rdparty/googletest)
+  set(VSTREAM_HAS_BUILT_GTEST TRUE)
+  message(STATUS "GTest building from 3rdparty/googletest")
 endif()
 
 add_subdirectory(${VSTREAM_ROOT_PATH}/3rdparty/backward-cpp)

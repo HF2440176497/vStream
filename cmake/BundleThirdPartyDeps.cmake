@@ -14,11 +14,8 @@ function(vstream_bundle_third_party_deps)
   if(FFMPEG_FOUND)
     list(APPEND _known_libs ${FFMPEG_LIBRARIES})
   endif()
-  if(GFLAGS_FOUND)
-    list(APPEND _known_libs ${GFLAGS_LIBRARIES})
-  endif()
-  if(GLOG_FOUND)
-    list(APPEND _known_libs ${GLOG_LIBRARIES})
+  if(RKNN_FOUND)
+    list(APPEND _known_libs ${RKNN_LIBRARIES})
   endif()
   # libyuv 已是项目目标，通过 install(TARGETS) 处理，此处不重复
 
@@ -76,23 +73,23 @@ function(vstream_bundle_third_party_deps)
   if(FFMPEG_INCLUDE_DIR AND IS_DIRECTORY "${FFMPEG_INCLUDE_DIR}")
     install(DIRECTORY ${FFMPEG_INCLUDE_DIR}/ DESTINATION dev/include/ffmpeg)
   endif()
-  if(GFLAGS_INCLUDE_DIRS)
-    foreach(_inc ${GFLAGS_INCLUDE_DIRS})
-      if(IS_DIRECTORY "${_inc}")
-        install(DIRECTORY ${_inc}/ DESTINATION dev/include/gflags)
-      endif()
-    endforeach()
-  endif()
-  if(GLOG_INCLUDE_DIRS)
-    foreach(_inc ${GLOG_INCLUDE_DIRS})
-      if(IS_DIRECTORY "${_inc}")
-        install(DIRECTORY ${_inc}/ DESTINATION dev/include/glog)
-      endif()
-    endforeach()
+  # gflags/glog in-tree 编译，不作为头文件打包；头文件由构建期
+  # target 的 INTERFACE_INCLUDE_DIRECTORIES 传播，包内二次开发暂不提供
+  if(RKNN_FOUND AND RKNN_INCLUDE_DIRS AND IS_DIRECTORY "${RKNN_INCLUDE_DIRS}")
+    install(DIRECTORY ${RKNN_INCLUDE_DIRS}/ DESTINATION dev/include/rknpu2)
   endif()
 
-  # ---------- 3. 传递依赖解析（x264/vpx/...）----------
+  # ---------- 3. 传递依赖解析 ----------
   # Python 与 TensorRT 在此阶段被 PRE_EXCLUDE_REGEXES 显式排除
-  install(SCRIPT "${CMAKE_SOURCE_DIR}/cmake/GatherRuntimeDeps.cmake")
+  # 注：install(SCRIPT) 在安装阶段执行，读不到 configure 期的普通变量，
+  # 故用 install(CODE) 把相关变量烘焙进脚本后再 include 执行
+  install(CODE "
+    set(VSTREAM_USE_ROCKCHIP \"${VSTREAM_USE_ROCKCHIP}\")
+    set(VSTREAM_INTREE_GFLAGS_GLOG \"${VSTREAM_INTREE_GFLAGS_GLOG}\")
+    set(RK_SYSROOT \"${RK_SYSROOT}\")
+    set(RK_FFMPEG_ROOT \"${RK_FFMPEG_ROOT}\")
+    set(RKNN_LIB_DIR \"${CMAKE_SOURCE_DIR}/3rdparty/rknpu2/lib\")
+    include(\"${CMAKE_SOURCE_DIR}/cmake/GatherRuntimeDeps.cmake\")
+  ")
 
 endfunction()

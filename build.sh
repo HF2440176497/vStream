@@ -8,6 +8,7 @@ PROJECT_ROOT="${SCRIPT_DIR}"
 BUILD_TYPE="Debug"
 BUILD_DIR="${PROJECT_ROOT}/build"
 ENABLE_CUDA="ON"
+ENABLE_ROCKCHIP="OFF"
 ENABLE_TESTS="ON"
 ENABLE_PYTHON_API="ON"
 ENABLE_TOOLS="ON"
@@ -33,6 +34,9 @@ usage() {
   --clean                           构建前先清理构建目录
 
   --cuda / --no-cuda                启用/禁用 CUDA 支持 (默认: --cuda)
+  --rockchip                        RK(aarch64) 交叉编译: 自动使用 build-rk 目录并关闭 CUDA
+                                      可用环境变量覆盖 toolchain 默认路径:
+                                      RK_SYSROOT / RK_FFMPEG_ROOT / RK_PYTHON_ROOT / CROSS_PREFIX
   --tests / --no-tests              启用/禁用单元测试 (默认: --tests)
   --python / --no-python            启用/禁用 Python API (默认: --python)
   --tools / --no-tools              启用/禁用工具构建 (默认: --tools)
@@ -63,6 +67,12 @@ usage() {
 
   # 自包含 DEB 打包 (Release)
   $0 -t Release --package --bundle-deps --tools --cpack
+
+  # RK3576 交叉编译（需先 source RK SDK 环境）
+  $0 --rockchip -t Release --package --bundle-deps --cpack
+
+  # RK 交叉编译 + Python API（需先交叉编译好 Python）
+  RK_PYTHON_ROOT=/workspace/python-aarch64/python3.13 $0 --rockchip -t Release --python
 
   # 只安装到本地前缀, 不打包
   $0 -t Release --install --install-prefix /opt/vstream
@@ -95,6 +105,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --no-cuda)
             ENABLE_CUDA="OFF"
+            shift
+            ;;
+        --rockchip)
+            ENABLE_ROCKCHIP="ON"
             shift
             ;;
         --tests)
@@ -164,6 +178,19 @@ BUILD_DIR="$(cd "$(dirname "${BUILD_DIR}")" 2>/dev/null && pwd)/$(basename "${BU
     BUILD_DIR="$(cd "${PROJECT_ROOT}" && pwd)/$(basename "${BUILD_DIR}")"
 }
 
+# ---------- RK 交叉编译预处理 ----------
+if [[ "${ENABLE_ROCKCHIP}" == "ON" ]]; then
+    # 默认使用独立构建目录，避免与 x86 构建产物互相污染（用户显式 -b 时不覆盖）
+    if [[ "${BUILD_DIR}" == "${PROJECT_ROOT}/build" ]]; then
+        BUILD_DIR="${PROJECT_ROOT}/build-rk"
+    fi
+    # CUDA 与 Rockchip 互斥，自动关闭
+    if [[ "${ENABLE_CUDA}" == "ON" ]]; then
+        echo "[rockchip] 已自动关闭 CUDA（与 Rockchip 平台互斥）"
+        ENABLE_CUDA="OFF"
+    fi
+fi
+
 # ---------- 打印配置 ----------
 echo "============================================"
 echo "  Build Configuration"
@@ -174,6 +201,7 @@ printf "  %-14s: %s\n" "Build Type    " "${BUILD_TYPE}"
 printf "  %-14s: %s\n" "Parallel Jobs " "${JOBS}"
 printf "  %-14s: %s\n" "Clean Build   " "${CLEAN_BUILD}"
 printf "  %-14s: %s\n" "CUDA Support  " "${ENABLE_CUDA}"
+printf "  %-14s: %s\n" "Rockchip      " "${ENABLE_ROCKCHIP}"
 printf "  %-14s: %s\n" "Unit Tests    " "${ENABLE_TESTS}"
 printf "  %-14s: %s\n" "Python API    " "${ENABLE_PYTHON_API}"
 printf "  %-14s: %s\n" "Build Tools   " "${ENABLE_TOOLS}"
@@ -200,11 +228,34 @@ CMAKE_OPTIONS=(
     -DVSTREAM_USE_CUDA="${ENABLE_CUDA}"
     -DVSTREAM_BUILD_TESTS="${ENABLE_TESTS}"
     -DVSTREAM_BUILD_TOOLS="${ENABLE_TOOLS}"
+    -DVSTREAM_BUILD_PYTHON_API="${ENABLE_PYTHON_API}"
+    -DVSTREAM_BUILD_PYBIND11="${ENABLE_PYTHON_API}"
     -DVSTREAM_PACKAGE="${ENABLE_PACKAGE}"
     -DVSTREAM_PACKAGE_BUNDLE_DEPS="${ENABLE_BUNDLE_DEPS}"
     -DVSTREAM_PACKAGE_INCLUDE_TOOLS="${ENABLE_TOOLS}"
     -DVSTREAM_PACKAGE_INCLUDE_TESTS="${ENABLE_TESTS}"
 )
+
+# Python 路径透传：
+# - 未设置时使用 CMakeLists.txt 中的默认值（默认指向 /usr/local/python3.13）
+# - 交叉编译时：VSTREAM_PYTHON_ROOT_DIR 应当指向 aarch64 安装树；
+#   VSTREAM_PYTHON_EXECUTABLE 应当指向构建机上（x86）同版本的 Python
+[[ -n "${VSTREAM_PYTHON_ROOT_DIR:-}" ]]     && CMAKE_OPTIONS+=(-DVSTREAM_PYTHON_ROOT_DIR="${VSTREAM_PYTHON_ROOT_DIR}")
+[[ -n "${VSTREAM_PYTHON_EXECUTABLE:-}" ]]   && CMAKE_OPTIONS+=(-DVSTREAM_PYTHON_EXECUTABLE="${VSTREAM_PYTHON_EXECUTABLE}")
+
+# RK 交叉编译：toolchain + 平台开关 + 路径透传
+if [[ "${ENABLE_ROCKCHIP}" == "ON" ]]; then
+    CMAKE_OPTIONS+=(
+        -DCMAKE_TOOLCHAIN_FILE="${PROJECT_ROOT}/cmake/toolchains/rockchip-aarch64.cmake"
+        -DVSTREAM_USE_ROCKCHIP="ON"
+        -DVSTREAM_USE_CUDA="OFF"
+    )
+    [[ -n "${RK_SYSROOT:-}" ]]     && CMAKE_OPTIONS+=(-DRK_SYSROOT="${RK_SYSROOT}")
+    [[ -n "${RK_FFMPEG_ROOT:-}" ]] && CMAKE_OPTIONS+=(-DRK_FFMPEG_ROOT="${RK_FFMPEG_ROOT}")
+    [[ -n "${RK_PYTHON_ROOT:-}" ]] && CMAKE_OPTIONS+=(-DRK_PYTHON_ROOT="${RK_PYTHON_ROOT}")
+    [[ -n "${CROSS_PREFIX:-}" ]]   && CMAKE_OPTIONS+=(-DCROSS_PREFIX="${CROSS_PREFIX}")
+    true  # 保证 if 块返回 0（set -e 下条件行为空时短路返回非零）
+fi
 
 echo ""
 echo "运行 CMake 配置..."

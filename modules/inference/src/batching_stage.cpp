@@ -29,14 +29,15 @@ std::shared_ptr<InferTask> IOBatchingStage::Batching(std::shared_ptr<FrameInfo> 
 
   std::shared_ptr<InferTask> task = std::make_shared<InferTask>([this, ticket, finfo, bidx]() -> int {
     QueuingTicket t = ticket;
+
+    // 异常安全：预处理 Execute 抛出异常时也必须归还票据
+    DeallingDoneGuard ticket_guard{this->output_res_.get()};
+
     IOResValue value = this->output_res_->WaitResourceByTicket(&t);
 
-// #ifdef VSTREAM_UNIT_TEST
-//     LOGD(IOBatchingStage) << "bidx: " << bidx << "; [" << finfo->stream_id << "], ts: " << finfo->timestamp;
-// #endif
+    LOGU(PREPROC) << "bidx: " << bidx << "; [" << finfo->stream_id << "], ts: " << finfo->timestamp;
 
     this->ProcessOneFrame(finfo, bidx, value);
-    this->output_res_->DeallingDone();
     return 0;
   });
 

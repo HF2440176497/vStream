@@ -50,6 +50,9 @@ std::vector<std::shared_ptr<InferTask>> H2DBatchingDoneStage::BatchingDone(const
     QueuingTicket cir_ticket = cpu_input_res_ticket;
     QueuingTicket mir_ticket = net_input_res_ticket;
 
+    // 异常安全：正常返回或中途抛出都必须归还两张票据，否则队首票据泄漏导致流水线冻结
+    DeallingDoneGuard ticket_guard{this->cpu_input_res_.get(), this->net_input_res_.get()};
+
     // waiting for schedule
     IOResValue cpu_value = this->cpu_input_res_->WaitResourceByTicket(&cir_ticket);
     IOResValue net_value = this->net_input_res_->WaitResourceByTicket(&mir_ticket);
@@ -79,8 +82,6 @@ std::vector<std::shared_ptr<InferTask>> H2DBatchingDoneStage::BatchingDone(const
     // 否则下一批预处理将覆写仍在被 GPU 读取的源 buffer（输入撕裂）
     memop_->SyncStream(model_->GetStream());
 
-    this->cpu_input_res_->DeallingDone();
-    this->net_input_res_->DeallingDone();
     return 0;
   });
   tasks.push_back(task);
@@ -115,6 +116,9 @@ std::vector<std::shared_ptr<InferTask>> InferBatchingDoneStage::BatchingDone(con
   task = std::make_shared<InferTask>([input_res_ticket, output_res_ticket, this, finfos]() -> int {
     QueuingTicket ir_ticket = input_res_ticket;
     QueuingTicket or_ticket = output_res_ticket;
+
+    DeallingDoneGuard ticket_guard{this->input_res_.get(), this->output_res_.get()};
+
     IOResValue input_value = this->input_res_->WaitResourceByTicket(&ir_ticket);
     IOResValue output_value = this->output_res_->WaitResourceByTicket(&or_ticket);
 
@@ -142,8 +146,6 @@ std::vector<std::shared_ptr<InferTask>> InferBatchingDoneStage::BatchingDone(con
       }
     }
 
-    this->input_res_->DeallingDone();
-    this->output_res_->DeallingDone();
     return 0;
   });
   tasks.push_back(task);
@@ -159,6 +161,9 @@ std::vector<std::shared_ptr<InferTask>> D2HBatchingDoneStage::BatchingDone(const
   task = std::make_shared<InferTask>([net_output_res_ticket, cpu_output_res_ticket, this, finfos]() -> int {
     QueuingTicket mor_ticket = net_output_res_ticket;
     QueuingTicket cor_ticket = cpu_output_res_ticket;
+
+    DeallingDoneGuard ticket_guard{this->net_output_res_.get(), this->cpu_output_res_.get()};
+
     IOResValue net_output_value = this->net_output_res_->WaitResourceByTicket(&mor_ticket);
     IOResValue cpu_output_value = this->cpu_output_res_->WaitResourceByTicket(&cor_ticket);
 
@@ -180,8 +185,6 @@ std::vector<std::shared_ptr<InferTask>> D2HBatchingDoneStage::BatchingDone(const
     }
     memop_->SyncStream(model_->GetStream());
 
-    this->net_output_res_->DeallingDone();
-    this->cpu_output_res_->DeallingDone();
     return 0;
   });
   tasks.push_back(task);
@@ -224,7 +227,14 @@ std::vector<std::shared_ptr<InferTask>> PostprocessingBatchingDoneStage::Batchin
         std::make_shared<InferTask>([cpu_output_res_ticket, cpu_output_res, this, finfo, bidx]() -> int {
 
           QueuingTicket cor_ticket = cpu_output_res_ticket;
+
+          DeallingDoneGuard ticket_guard{cpu_output_res.get()};
+
           IOResValue cpu_output_value = cpu_output_res->WaitResourceByTicket(&cor_ticket);
+
+          LOGU(POSTPROC) << "bidx: " << bidx << "; [" << finfo.first->stream_id << "], ts: "
+                         << finfo.first->timestamp;
+
           std::vector<float*> cpu_outputs;
 
           // cpu_outputs 长度 == output tensor num
@@ -235,7 +245,6 @@ std::vector<std::shared_ptr<InferTask>> PostprocessingBatchingDoneStage::Batchin
           if (!cnstream::IsStreamRemoved(finfo.first->stream_id)) {
             this->postprocessor_->Execute(cpu_outputs, this->model_, finfo.first);
           }
-          cpu_output_res->DeallingDone();
           return 0;
         });  // task
     
@@ -253,7 +262,13 @@ std::vector<std::shared_ptr<InferTask>> PostprocessingBatchingDoneStage::Batchin
   std::vector<InferTaskSptr> tasks;
   InferTaskSptr task = std::make_shared<InferTask>([net_output_res_ticket, net_output_res, this, finfos]() -> int {
     QueuingTicket mor_ticket = net_output_res_ticket;
+
+    DeallingDoneGuard ticket_guard{net_output_res.get()};
+
     IOResValue net_output_value = net_output_res->WaitResourceByTicket(&mor_ticket);
+
+    LOGU(POSTPROC) << "batch postproc on device; frame num: " << finfos.size();
+
     std::vector<void*> net_outputs;
     for (size_t output_idx = 0; output_idx < net_output_value.datas.size(); ++output_idx) {
       net_outputs.push_back(net_output_value.datas[output_idx].ptr);
@@ -263,7 +278,6 @@ std::vector<std::shared_ptr<InferTask>> PostprocessingBatchingDoneStage::Batchin
     for (const auto& it : finfos) batched_finfos.push_back(it.first);
 
     this->postprocessor_->Execute(net_outputs, this->model_, batched_finfos);
-    net_output_res->DeallingDone();
     return 0;
   });
   tasks.push_back(task);
@@ -299,7 +313,14 @@ std::vector<std::shared_ptr<InferTask>> ObjPostprocessingBatchingDoneStage::ObjB
     InferTaskSptr task =
         std::make_shared<InferTask>([cpu_output_res_ticket, cpu_output_res, this, finfo, obj, bidx]() -> int {
           QueuingTicket cor_ticket = cpu_output_res_ticket;
+
+          DeallingDoneGuard ticket_guard{cpu_output_res.get()};
+
           IOResValue cpu_output_value = cpu_output_res->WaitResourceByTicket(&cor_ticket);
+
+          LOGU(POSTPROC) << "bidx: " << bidx << "; [" << finfo.first->stream_id << "], ts: "
+                         << finfo.first->timestamp;
+
           std::vector<float*> cpu_outputs;
           for (size_t output_idx = 0; output_idx < cpu_output_value.datas.size(); ++output_idx) {
             cpu_outputs.push_back(reinterpret_cast<float*>(cpu_output_value.datas[output_idx].Offset(bidx)));
@@ -307,7 +328,6 @@ std::vector<std::shared_ptr<InferTask>> ObjPostprocessingBatchingDoneStage::ObjB
           if (!cnstream::IsStreamRemoved(finfo.first->stream_id)) {
             this->postprocessor_->Execute(cpu_outputs, this->model_, finfo.first, obj);
           }
-          cpu_output_res->DeallingDone();
           return 0;
         });
     tasks.push_back(task);
@@ -323,7 +343,13 @@ std::vector<std::shared_ptr<InferTask>> ObjPostprocessingBatchingDoneStage::ObjB
   InferTaskSptr task =
       std::make_shared<InferTask>([net_output_res_ticket, net_output_res, this, finfos, objs]() -> int {
         QueuingTicket mor_ticket = net_output_res_ticket;
+
+        DeallingDoneGuard ticket_guard{net_output_res.get()};
+
         IOResValue net_output_value = net_output_res->WaitResourceByTicket(&mor_ticket);
+
+        LOGU(POSTPROC) << "batch obj postproc on device; obj num: " << objs.size();
+
         std::vector<void*> net_outputs;
         for (size_t output_idx = 0; output_idx < net_output_value.datas.size(); ++output_idx) {
           net_outputs.push_back(net_output_value.datas[output_idx].ptr);
@@ -339,7 +365,6 @@ std::vector<std::shared_ptr<InferTask>> ObjPostprocessingBatchingDoneStage::ObjB
         }
 
         this->postprocessor_->Execute(net_outputs, this->model_, batched_objs);
-        net_output_res->DeallingDone();
         return 0;
       });
   tasks.push_back(task);
