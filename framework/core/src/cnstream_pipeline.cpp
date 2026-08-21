@@ -556,7 +556,7 @@ void Pipeline::TransmitData(NodeContext* context, const std::shared_ptr<FrameInf
       if (connector->GetFailTime(conveyor_idx) % 10 == 0) {
         // 说明 next_module 消费数据过慢，存在堆积
         size_t size = connector->GetConveyorSize(conveyor_idx);
-        LOGW(CORE) << "[" << next_module->GetName() << " " << conveyor_idx << "] " << "Input buffer is full, size = " << size;
+        LOGE(CORE) << "[" << next_module->GetName() << " " << conveyor_idx << "] " << "Input buffer is full, size = " << size;
       }
       std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }  // while try push

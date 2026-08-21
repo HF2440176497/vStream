@@ -39,8 +39,8 @@ struct QueuingTicketRoot {
 /**
  * @brief 携带 id 的票据句柄
  * @note WaitByTicket 看门狗凭 id 区分两类冻结：
- *       - 我不是队首 → 队首票据泄漏（持有它的任务未归还）
- *       - 我就是队首但未被唤醒 → 取票/唤醒逻辑异常
+ *       - 不是队首 → 队首票据泄漏（持有它的任务未归还）
+ *       - 是队首但未被唤醒 → 取票/唤醒逻辑异常
  */
 struct QueuingTicket {
   std::shared_future<void> fut;

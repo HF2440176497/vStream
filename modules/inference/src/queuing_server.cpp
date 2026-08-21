@@ -117,9 +117,12 @@ void QueuingServer::DeallingDone() {
 
 void QueuingServer::WaitByTicket(QueuingTicket* pticket) {
   if (pticket == nullptr) return;
-  // 看门狗：正常情况下票据等待仅为批次间串行耗时（毫秒级）；
-  // 若队首票据未归还（任务异常退出或阻塞），后续任务将在此永久等待。
-  // 凭票据 id 区分冻结类型：挡在泄漏票之后 / 我即队首但未被唤醒 / 队列空异常
+  // 基于以下核心语义：
+  // 一张票据的 future 被置位，当且仅当它成为队首的那一刻
+  // 要么 push 时队列只有自己（PickUpTicket/PickUpNewTicket 里的 if (size == 1) Call()）
+  // 或者前驱票据 pop 后 Call() 唤醒
+
+  // 首次等待 1s, 后续每 10s 会重复检查
   const auto kFirstWarn = std::chrono::milliseconds(1000);
   const auto kRepeatWarn = std::chrono::milliseconds(10000);
   auto status = pticket->fut.wait_for(kFirstWarn);
@@ -136,19 +139,20 @@ void QueuingServer::WaitByTicket(QueuingTicket* pticket) {
         head_reserved = tickets_q_.front().reserved_time;
       }
     }
+    // 队列已空，但是没有复位 future
     if (pending == 0) {
-      LOGW(QUEUING) << "[" << name_ << "] ticket #" << pticket->id << " wait slow: waited="
-                    << waited.count() << "ms, queue is EMPTY. Wake-logic anomaly: "
+      LOGW(QUEUING) << "[" << name_ << "] ticket #" << pticket->id << " waited="
+                    << waited.count() << "ms, queue is EMPTY: "
                     << "this ticket was popped but its future was never set.";
     } else if (head_id == pticket->id) {
-      LOGW(QUEUING) << "[" << name_ << "] ticket #" << pticket->id << " wait slow: waited="
-                    << waited.count() << "ms, this ticket IS the head but never called. "
-                    << "Wake-logic anomaly in PickUp/Call path (head_reserved=" << head_reserved << ").";
+      LOGW(QUEUING) << "[" << name_ << "] ticket #" << pticket->id << " waited="
+                    << waited.count() << "ms, this ticket is the head but never called: "
+                    << "anomaly in PickUp/Call path [head_reserved=" << head_reserved << "].";
     } else {
-      LOGW(QUEUING) << "[" << name_ << "] ticket #" << pticket->id << " wait slow: waited="
+      LOGW(QUEUING) << "[" << name_ << "] ticket #" << pticket->id << " waited="
                     << waited.count() << "ms, blocked behind head #" << head_id
-                    << " (head_reserved=" << head_reserved << ", pending=" << pending
-                    << "). Head ticket #" << head_id
+                    << " [head_reserved=" << head_reserved << ", pending=" << pending
+                    << "]. Head ticket #" << head_id
                     << " not released: the task holding it exited without DeallingDone.";
     }
     status = pticket->fut.wait_for(kRepeatWarn);

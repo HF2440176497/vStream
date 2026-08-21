@@ -30,4 +30,4 @@ if(UNIX)
     message(STATUS "=== Library paths setup complete ===")
 else()
     message(STATUS "SetupLibraryPaths.cmake: Not on Linux, skipping automatic path setup")
-endif
+endif()

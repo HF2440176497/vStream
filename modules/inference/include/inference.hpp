@@ -74,9 +74,9 @@ class Inference : public Module, public ModuleCreator<Inference> {
   std::shared_ptr<InferParamManager> param_manager_ = nullptr;
 
 #ifdef VSTREAM_UNIT_TEST
-  public:
+ public:
 #else
-  private:
+ private:
 #endif
   DECLARE_PRIVATE(d_ptr_, Inference);
 };  // class Inference

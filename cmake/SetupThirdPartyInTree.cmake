@@ -17,6 +17,9 @@
 # ---------- gflags（共享库） ----------
 set(BUILD_SHARED_LIBS    ON  CACHE BOOL "gflags: build shared" FORCE)
 set(BUILD_STATIC_LIBS    OFF CACHE BOOL "gflags: build static" FORCE)
+# 子项目模式下 gflags 默认只构建 gflags_nothreads_shared（BUILD_gflags_LIB=OFF），
+# 需显式打开多线程库，否则 gflags_shared 目标不存在，链接时找不到 -lgflags_shared
+set(BUILD_gflags_LIB     ON  CACHE BOOL "gflags: build multi-threaded library" FORCE)
 # 子项目自身不执行安装（由 VSTREAM_PACKAGE 统一安装到 lib/）
 set(INSTALL_HEADERS      OFF CACHE BOOL "gflags: install headers" FORCE)
 set(INSTALL_SHARED_LIBS  OFF CACHE BOOL "gflags: install shared libs" FORCE)
