@@ -48,15 +48,18 @@ endif()
 # 导致 dep-manifest.txt 记录的不是编译期系统路径，postinst 自适应复用会失效。
 # 第三方依赖由系统默认搜索路径（ld.so.conf）解析，得到的才是编译期真实路径。
 #
-# RK 交叉编译：第三方依赖位于 sysroot / ffmpeg-rockchip 安装树 / 仓库内 rknpu2，
+# RK 交叉编译：第三方依赖位于 sysroot / ffmpeg-rockchip / OpenCV  / 仓库内 rknpu2，
 # 不在构建机默认搜索路径中，必须显式补充解析目录（变量由 BundleThirdPartyDeps 的 install(CODE) 传入）。
 set(_dep_search_dirs "${_staging_lib}")
 if(VSTREAM_USE_ROCKCHIP)
   foreach(_d
       "${RK_FFMPEG_ROOT}/lib"
-      "${RK_SYSROOT}/usr/lib/aarch64-linux-gnu"
-      "${RK_SYSROOT}/usr/lib"
+      "${RK_FFMPEG_ROOT}/lib/aarch64-linux-gnu"
+      "${RK_OPENCV_ROOT}/lib"
+      "${RK_OPENCV_ROOT}/lib/aarch64-linux-gnu"
       "${RK_SYSROOT}/lib/aarch64-linux-gnu"
+      "${RK_SYSROOT}/usr/lib"
+      "${RK_SYSROOT}/usr/lib/aarch64-linux-gnu"
       "${RKNN_LIB_DIR}")
     if(IS_DIRECTORY "${_d}")
       list(APPEND _dep_search_dirs "${_d}")

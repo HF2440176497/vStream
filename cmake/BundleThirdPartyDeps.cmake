@@ -32,7 +32,6 @@ function(vstream_bundle_third_party_deps)
 
     # 解析软链接到真实文件，再回推基名，glob 整条 SONAME 链
     #   libfoo.so -> libfoo.so.1 -> libfoo.so.1.0.0
-    # 详见第七节对软链接与循环依赖的处理
     get_filename_component(_real "${_lib}" REALPATH)
     get_filename_component(_dir "${_real}" DIRECTORY)
     get_filename_component(_base "${_real}" NAME_WE)  # 去版本号的基名，如 libopencv_core
@@ -88,6 +87,7 @@ function(vstream_bundle_third_party_deps)
     set(VSTREAM_INTREE_GFLAGS_GLOG \"${VSTREAM_INTREE_GFLAGS_GLOG}\")
     set(RK_SYSROOT \"${RK_SYSROOT}\")
     set(RK_FFMPEG_ROOT \"${RK_FFMPEG_ROOT}\")
+    set(RK_OPENCV_ROOT \"${RK_OPENCV_ROOT}\")
     set(RKNN_LIB_DIR \"${CMAKE_SOURCE_DIR}/3rdparty/rknpu2/lib\")
     include(\"${CMAKE_SOURCE_DIR}/cmake/GatherRuntimeDeps.cmake\")
   ")

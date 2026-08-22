@@ -36,7 +36,7 @@ usage() {
   --cuda / --no-cuda                启用/禁用 CUDA 支持 (默认: --cuda)
   --rockchip                        RK(aarch64) 交叉编译: 自动使用 build-rk 目录并关闭 CUDA
                                       可用环境变量覆盖 toolchain 默认路径:
-                                      RK_SYSROOT / RK_FFMPEG_ROOT / RK_PYTHON_ROOT / CROSS_PREFIX
+                                      RK_SYSROOT / RK_FFMPEG_ROOT / RK_OPENCV_ROOT / RK_PYTHON_ROOT / CROSS_PREFIX
   --tests / --no-tests              启用/禁用单元测试 (默认: --tests)
   --python / --no-python            启用/禁用 Python API (默认: --python)
   --tools / --no-tools              启用/禁用工具构建 (默认: --tools)
@@ -252,6 +252,7 @@ if [[ "${ENABLE_ROCKCHIP}" == "ON" ]]; then
     )
     [[ -n "${RK_SYSROOT:-}" ]]     && CMAKE_OPTIONS+=(-DRK_SYSROOT="${RK_SYSROOT}")
     [[ -n "${RK_FFMPEG_ROOT:-}" ]] && CMAKE_OPTIONS+=(-DRK_FFMPEG_ROOT="${RK_FFMPEG_ROOT}")
+    [[ -n "${RK_OPENCV_ROOT:-}" ]] && CMAKE_OPTIONS+=(-DRK_OPENCV_ROOT="${RK_OPENCV_ROOT}")
     [[ -n "${RK_PYTHON_ROOT:-}" ]] && CMAKE_OPTIONS+=(-DRK_PYTHON_ROOT="${RK_PYTHON_ROOT}")
     [[ -n "${CROSS_PREFIX:-}" ]]   && CMAKE_OPTIONS+=(-DCROSS_PREFIX="${CROSS_PREFIX}")
     true  # 保证 if 块返回 0（set -e 下条件行为空时短路返回非零）

@@ -8,6 +8,9 @@
 
 namespace cnstream {
 
+/**
+ * @param model_path 模型完整路径
+ */
 ModelValidator::ModelValidator(const std::string& model_path,
                                const std::string& device_type,
                                int device_id,
@@ -94,7 +97,9 @@ bool ModelValidator::IsLoaded() const {
   return model_loader_ && model_loader_->IsValid();
 }
 
-
+/**
+ * @brief 获取模型信息 Init 后调用
+ */
 ModelInfo ModelValidator::GetModelInfo() const {
   ModelInfo info;
   info.model_path = model_path_;
@@ -190,6 +195,7 @@ void ModelValidator::AllocateBuffers() {
 
 /**
  * @brief 运行推理 裸接口 使用输入参数指定的缓冲区
+ * 不包含前后处理
  */
 std::vector<std::vector<float>>
 ModelValidator::Infer(const std::vector<std::vector<float>>& inputs) {
@@ -423,6 +429,7 @@ FrameInfoPtr ModelValidator::CreateFrameInfo(const cv::Mat& image,
 /**
  * @brief 运行预处理
  * @details 从单帧图像中得到处理结果, 内存模型假定 batch_size = 1
+ * 这里是图像级的前处理，不涉及 obj 级的前处理
  */
 bool ModelValidator::RunPreproc(Preproc* preproc, const FrameInfoPtr& frame_info) {
   // Build float* array pointing to cpu_input_bufs_
@@ -466,6 +473,7 @@ bool ModelValidator::RunInference() {
 
 /**
  * @brief CPU 后处理
+ * 这里是图像级的后处理，不涉及 obj 级的后处理
  */
 bool ModelValidator::RunPostproc(Postproc* postproc, const FrameInfoPtr& frame_info) {
   // Build float* array pointing to cpu_output_bufs_

@@ -188,8 +188,8 @@ bool ModelLoaderRknn::Init(const std::string& engine_path, const InferParams& pa
   }
 
   if (!SetCoreMask(core_mask_)) {
-    LOGW(MODEL) << "SetCoreMask failed (core_mask=" << core_mask_
-                << "), continuing with default core";
+    LOGW(MODEL) << "SetCoreMask failed [core_mask=" << core_mask_
+                << "] continuing with default core";
   }
 
   if (!QueryTensorInfo()) {
@@ -378,6 +378,7 @@ bool ModelLoaderRknn::RunSync(void* exec_ctx,
   }
 
   // 1. 设置输入
+  // 仿照 demo, 设置为局部变量
   std::vector<rknn_input> rknn_inputs(io_num_.n_input);
   for (int i = 0; i < io_num_.n_input; ++i) {
     rknn_inputs[i].index = i;

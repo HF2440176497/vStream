@@ -11,8 +11,9 @@
 #
 # 路径优先级: -D 传入 > 环境变量 > 默认值
 #   RK_SYSROOT      RK SDK rootfs sysroot
-#   RK_FFMPEG_ROOT  ffmpeg-rockchip 安装树（含 rkmpp 硬编解码器）
-#   RK_PYTHON_ROOT  交叉编译 Python 安装树（可选，Python API 用）
+#   RK_FFMPEG_ROOT  ffmpeg-rockchip 安装树
+#   RK_OPENCV_ROOT  OpenCV 前缀树
+#   RK_PYTHON_ROOT  交叉编译 Python 安装树
 #   CROSS_PREFIX    交叉工具链前缀
 # =============================================================================
 
@@ -35,6 +36,20 @@ if(NOT DEFINED RK_FFMPEG_ROOT)
 endif()
 set(RK_FFMPEG_ROOT "${RK_FFMPEG_ROOT}" CACHE PATH "ffmpeg-rockchip install tree")
 
+# OpenCV：SDK 提供的预编译库位于 sysroot 的 Debian 布局下
+#   <RK_OPENCV_ROOT>/lib/aarch64-linux-gnu/libopencv_*.so
+#   <RK_OPENCV_ROOT>/lib/aarch64-linux-gnu/cmake/opencv4/OpenCVConfig.cmake
+#   <RK_OPENCV_ROOT>/include/opencv4/opencv2/...
+# 默认即 sysroot；OpenCV 不在 sysroot 时显式指定独立安装树
+if(NOT DEFINED RK_OPENCV_ROOT)
+  if(DEFINED ENV{RK_OPENCV_ROOT})
+    set(RK_OPENCV_ROOT "$ENV{RK_OPENCV_ROOT}")
+  else()
+    set(RK_OPENCV_ROOT "${RK_SYSROOT}")
+  endif()
+endif()
+set(RK_OPENCV_ROOT "${RK_OPENCV_ROOT}" CACHE PATH "OpenCV prefix tree (default: sysroot)")
+
 set(RK_PYTHON_ROOT "" CACHE PATH "Cross-compiled Python install tree (optional, for Python API)")
 
 # ---- 目标平台声明（CMAKE_CROSSCOMPILING 由此自动置位）----
@@ -48,9 +63,9 @@ set(CMAKE_CXX_COMPILER ${CROSS_PREFIX}g++)
 set(CMAKE_AR           ${CROSS_PREFIX}ar)
 set(CMAKE_STRIP        ${CROSS_PREFIX}strip)
 
-# ---- 搜索根：库/头文件/包只在 sysroot、ffmpeg-rockchip（及 Python）安装树内查找 ----
+# ---- 搜索根：库/头文件/包只在 sysroot、ffmpeg-rockchip、OpenCV（及 Python）安装树内查找 ----
 set(CMAKE_SYSROOT ${RK_SYSROOT})
-list(APPEND CMAKE_FIND_ROOT_PATH ${RK_SYSROOT} ${RK_FFMPEG_ROOT})
+list(APPEND CMAKE_FIND_ROOT_PATH ${RK_SYSROOT} ${RK_FFMPEG_ROOT} ${RK_OPENCV_ROOT})
 if(RK_PYTHON_ROOT)
   list(APPEND CMAKE_FIND_ROOT_PATH ${RK_PYTHON_ROOT})
 endif()
@@ -73,5 +88,6 @@ set(CMAKE_INSTALL_RPATH "$ORIGIN")
 message(STATUS "=== Rockchip aarch64 toolchain ===")
 message(STATUS "  SYSROOT     : ${RK_SYSROOT}")
 message(STATUS "  FFmpeg root : ${RK_FFMPEG_ROOT}")
+message(STATUS "  OpenCV root : ${RK_OPENCV_ROOT}")
 message(STATUS "  Python root : ${RK_PYTHON_ROOT}")
 message(STATUS "  Compiler    : ${CMAKE_CXX_COMPILER}")

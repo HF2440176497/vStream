@@ -222,7 +222,7 @@ inline const std::unordered_map<std::string, OutputType> param_output_map = {
 inline const std::unordered_map<std::string, DecoderType> param_decoder_map = {
   {"cpu", DecoderType::DECODER_CPU},
   {"cuda", DecoderType::DECODER_CUDA},
-  {"rkmpp", DecoderType::DECODER_RKMPP}
+  {"rockchip", DecoderType::DECODER_RKMPP}
 };
 
 inline const std::string key_device_id = "device_id";
