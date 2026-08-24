@@ -18,12 +18,13 @@
  * THE SOFTWARE.
  *************************************************************************/
 
+#pragma once
+
 #include <pybind11/pybind11.h>
-
-#include <cnstream_module.hpp>
-
 #include <memory>
 #include <string>
+
+#include "cnstream_module.hpp"
 
 namespace cnstream {
 

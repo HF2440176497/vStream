@@ -21,7 +21,26 @@ static bool RegisterMemOp() {
   return result;
 }
 
-static bool memop_registered = RegisterMemOp();
+static bool _memop_registered = RegisterMemOp();
+
+
+#ifdef VSTREAM_USE_ROCKCHIP
+
+// 内部封装使用 CPU 类型的 SyncedMemory 及相关操作
+static bool RegisterROCKCHIPMemOp() {
+  auto& factory = MemOpFactory::Instance();
+  bool result = true;
+  result &= factory.RegisterMemOpCreator(DevType::ROCKCHIP, 
+    [](int device_id) {
+      return std::make_shared<MemOp>();
+    });
+  return result;
+}
+
+static bool _rockchip_memop_registered = RegisterROCKCHIPMemOp();
+
+#endif
+
 
 /**
  * @brief 在 Collection 中查找或者注册 buffer

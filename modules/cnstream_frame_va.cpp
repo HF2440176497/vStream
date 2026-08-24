@@ -129,7 +129,7 @@ size_t DataFrame::GetBytes() const {
 
 /**
  * @brief 每次调用查找已注册的 MemOp 创建器，根据当前 device_type 和 device_id 创建 MemOp
- * 调用处：CopyToSyncMem(dec_frame)
+ * 调用处：CopyToSyncMem(dec_frame) 在数据源处将 decode_frame 拷贝到统一内存中
  */
 std::shared_ptr<MemOp> DataFrame::CreateMemOp() {
   const DevContext& ctx = GetCtx();

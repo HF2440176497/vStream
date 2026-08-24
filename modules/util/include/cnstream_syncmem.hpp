@@ -59,7 +59,6 @@ enum class SyncedHead {
   UNINITIALIZED,  ///< The memory is not allocated.
   HEAD_AT_CPU,    ///< The data is updated to CPU but is not synchronized to CUDA yet.
   HEAD_AT_CUDA,  ///< The data is updated to CUDA but is not synchronized to CPU yet.
-  HEAD_AT_NPU,  ///< The data is updated to NPU but is not synchronized to CPU yet.
   SYNCED          ///< The data is synchronized to both CPU and CUDA.
 };
 
@@ -121,7 +120,6 @@ class CNSyncedMemory : private NonCopyable {
       case SyncedHead::UNINITIALIZED: head_str = "UNINITIALIZED"; break;
       case SyncedHead::HEAD_AT_CPU: head_str = "HEAD_AT_CPU"; break;
       case SyncedHead::HEAD_AT_CUDA: head_str = "HEAD_AT_CUDA"; break;
-      case SyncedHead::HEAD_AT_NPU: head_str = "HEAD_AT_NPU"; break;
       case SyncedHead::SYNCED: head_str = "SYNCED"; break;
       default: head_str = "UNKNOWN"; break;
     }

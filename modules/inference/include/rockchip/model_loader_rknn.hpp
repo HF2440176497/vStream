@@ -35,7 +35,7 @@ class ModelLoaderRknn : public ModelLoader {
 #else
  private:
 #endif
-  bool LoadModel(const std::string& engine_path);
+  bool LoadEngine(const std::string& engine_path) override;
   bool QueryTensorInfo();
   bool ParseInputOutputAttr();
   bool SetCoreMask(int core_mask);

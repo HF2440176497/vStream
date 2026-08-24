@@ -21,6 +21,11 @@ class ModelLoader {
   virtual ~ModelLoader() = default;
   virtual bool IsValid() = 0;
   virtual bool Init(const std::string& engine_path, const InferParams& params) = 0;
+  /**
+   * @brief 加载模型文件并初始化推理上下文。
+   * 由 Init() 内部调用，各平台实现（TensorRT/RKNN/CPU）负责各自的加载流程。
+   */
+  virtual bool LoadEngine(const std::string& engine_path) = 0;
   virtual void SetInputOrderedIndex(int input_index) {
     input_ordered_index_ = input_index;
   }

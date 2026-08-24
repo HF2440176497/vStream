@@ -65,7 +65,7 @@ class ModelLoaderTrt : public ModelLoader {
  private:
 #endif
 
-  bool LoadEngine(const std::string& engine_path);
+  bool LoadEngine(const std::string& engine_path) override;
   bool ParseBindings();
 
   ModelLoaderTrt::Logger logger_;

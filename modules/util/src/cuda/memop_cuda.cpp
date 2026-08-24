@@ -20,7 +20,7 @@ static bool RegisterCudaMemOp() {
   return result;
 }
 
-static bool cuda_memops_registered = RegisterCudaMemOp();
+static bool _cuda_memop_registered = RegisterCudaMemOp();
 
 CudaMemOp::CudaMemOp(int device_id) : device_id_(device_id) {}
 

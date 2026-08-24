@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "cnstream_logging.hpp"
+#include "common.hpp"
 #include "tensor.hpp"
 
 namespace cnstream {
@@ -183,7 +184,7 @@ bool ModelLoaderRknn::Init(const std::string& engine_path, const InferParams& pa
     }
   }
 
-  if (!LoadModel(engine_path)) {
+  if (!LoadEngine(engine_path)) {
     return false;
   }
 
@@ -196,7 +197,7 @@ bool ModelLoaderRknn::Init(const std::string& engine_path, const InferParams& pa
     return false;
   }
 
-  name_ = engine_path.substr(engine_path.find_last_of("/\\") + 1);
+  name_ = utils::get_filename_without_ext(engine_path);
   engine_path_ = engine_path;
   return true;
 }
@@ -215,7 +216,7 @@ bool ModelLoaderRknn::SetCoreMask(int core_mask) {
   return true;
 }
 
-bool ModelLoaderRknn::LoadModel(const std::string& engine_path) {
+bool ModelLoaderRknn::LoadEngine(const std::string& engine_path) {
   auto model_data = LoadModelFile(engine_path);
   if (model_data.empty()) {
     return false;

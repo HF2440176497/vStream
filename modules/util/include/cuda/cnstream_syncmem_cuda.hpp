@@ -68,7 +68,6 @@ public:
       case SyncedHead::UNINITIALIZED: head_str = "UNINITIALIZED"; break;
       case SyncedHead::HEAD_AT_CPU: head_str = "HEAD_AT_CPU"; break;
       case SyncedHead::HEAD_AT_CUDA: head_str = "HEAD_AT_CUDA"; break;
-      case SyncedHead::HEAD_AT_NPU: head_str = "HEAD_AT_NPU"; break;
       case SyncedHead::SYNCED: head_str = "SYNCED"; break;
       default: head_str = "UNKNOWN"; break;
     }
