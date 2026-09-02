@@ -214,6 +214,10 @@ bool CNGraphConfig::ParseByJSONStr(const std::string& json_str) {
  * @note CheckPath 调用
  */
 std::string GetPathRelativeToTheJSONFile(const std::string& path, const ModuleParamSet& param_set) {
+  // 如果 path 为空，直接返回空字符串
+  if (path.empty()) {
+    return "";
+  }
   std::string dir_path = "./";
   // pipeline json dir
   if (param_set.find(CNS_JSON_DIR_PARAM_NAME) != param_set.end()) {

@@ -212,7 +212,8 @@ class InferObject {
    */
   ~InferObject() = default;
   std::string model_name;  ///< The name of the model.
-  int id;                  ///< The ID of the classification (label value).
+  int id;                  ///< The ID of the label.
+  std::string name;        ///< Optional, the name of the label.
   std::string track_id;    ///< The tracking result.
   float score;             ///< The label score.
   float area;              ///< The area of the object.
