@@ -48,8 +48,8 @@ void ReraiseSignal(int sig) {
   struct sigaction dfl;
   std::memset(&dfl, 0, sizeof(dfl));
   dfl.sa_handler = SIG_DFL;
-  std::sigemptyset(&dfl.sa_mask);
-  if (std::sigaction(sig, &dfl, nullptr) == 0) {
+  ::sigemptyset(&dfl.sa_mask);
+  if (::sigaction(sig, &dfl, nullptr) == 0) {
     kill(getpid(), sig);
     // 默认处理应当立即终止；兜底等待，覆盖被第三方处理器拦截的极端情况
     std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -94,23 +94,23 @@ bool InstallSignalStop() {
   struct sigaction sa;
   std::memset(&sa, 0, sizeof(sa));
   sa.sa_handler = &SignalStopHandler;
-  std::sigemptyset(&sa.sa_mask);
+  ::sigemptyset(&sa.sa_mask);
   sa.sa_flags = SA_RESTART;
-  if (std::sigaction(SIGTERM, &sa, nullptr) != 0) {
+  if (::sigaction(SIGTERM, &sa, nullptr) != 0) {
     LOGE(CORE) << "signal-stop: sigaction(SIGTERM) failed: " << std::strerror(errno);
     close(g_sig_pipe[0]);
     close(g_sig_pipe[1]);
     g_sig_pipe[0] = g_sig_pipe[1] = -1;
     return false;
   }
-  if (std::sigaction(SIGINT, &sa, nullptr) != 0) {
+  if (::sigaction(SIGINT, &sa, nullptr) != 0) {
     LOGE(CORE) << "signal-stop: sigaction(SIGINT) failed: " << std::strerror(errno);
     // 回滚已安装的 SIGTERM，避免出现“有处理器但无看门狗”的半安装状态
     struct sigaction dfl;
     std::memset(&dfl, 0, sizeof(dfl));
     dfl.sa_handler = SIG_DFL;
-    std::sigemptyset(&dfl.sa_mask);
-    std::sigaction(SIGTERM, &dfl, nullptr);
+    ::sigemptyset(&dfl.sa_mask);
+    ::sigaction(SIGTERM, &dfl, nullptr);
     close(g_sig_pipe[0]);
     close(g_sig_pipe[1]);
     g_sig_pipe[0] = g_sig_pipe[1] = -1;

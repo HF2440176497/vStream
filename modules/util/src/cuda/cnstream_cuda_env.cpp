@@ -5,7 +5,6 @@
 extern "C" {
 #include <libavutil/error.h>
 #include <libavutil/hwcontext.h>
-#include <libavutil/hwcontext_cuda.h>
 }
 
 #include <mutex>
@@ -18,21 +17,8 @@ namespace cnstream {
 
 namespace {
 
-struct SharedHwDeviceEntry {
-  AVBufferRef* ref = nullptr;  // 缓存持有的引用：进程存活期内不释放
-  std::recursive_mutex ctx_lock;  // FFmpeg 组件共享 CUcontext 的互斥保护
-};
-
 std::mutex g_hwdevice_cache_mtx;
-std::unordered_map<int, SharedHwDeviceEntry*> g_hwdevice_cache;
-
-void CudaHwctxLock(void* lock_ctx) {
-  static_cast<std::recursive_mutex*>(lock_ctx)->lock();
-}
-
-void CudaHwctxUnlock(void* lock_ctx) {
-  static_cast<std::recursive_mutex*>(lock_ctx)->unlock();
-}
+std::unordered_map<int, AVBufferRef*> g_hwdevice_cache;
 
 }  // namespace
 
@@ -82,32 +68,23 @@ AVBufferRef* AcquireSharedCudaHwDeviceCtx(int device_id) {
 
   auto it = g_hwdevice_cache.find(device_id);
   if (it != g_hwdevice_cache.end()) {
-    return av_buffer_ref(it->second->ref);
+    return av_buffer_ref(it->second);
   }
 
-  auto* entry = new SharedHwDeviceEntry();
-  int ret = av_hwdevice_ctx_create(&entry->ref, AV_HWDEVICE_TYPE_CUDA,
+  AVBufferRef* ref = nullptr;
+  int ret = av_hwdevice_ctx_create(&ref, AV_HWDEVICE_TYPE_CUDA,
                                    std::to_string(device_id).c_str(), nullptr, 0);
-  if (ret < 0 || entry->ref == nullptr) {
+  if (ret < 0 || ref == nullptr) {
     char errbuf[128] = {0};
     av_strerror(ret, errbuf, sizeof(errbuf));
     LOGE(CUDA_ENV) << "av_hwdevice_ctx_create(CUDA, device " << device_id << ") failed: "
                    << ret << " (" << errbuf << ")";
-    delete entry;
     return nullptr;
   }
 
-  // 多个 nvenc/cuvid 组件共用同一 CUcontext：通过 FFmpeg 提供的 lock/unlock
-  // 回调串行化其驱动 API 调用（与 ffmpeg CLI 共享 -init_hw_device 的做法一致）
-  auto* hwdev = reinterpret_cast<AVHWDeviceContext*>(entry->ref->data);
-  auto* hwctx = reinterpret_cast<AVCUDADeviceContext*>(hwdev->data);
-  hwctx->lock = &CudaHwctxLock;
-  hwctx->unlock = &CudaHwctxUnlock;
-  hwctx->lock_ctx = &entry->ctx_lock;
-
-  // entry 有意不释放（进程级 keep-alive），与缓存生命周期一致
-  g_hwdevice_cache.emplace(device_id, entry);
-  return av_buffer_ref(entry->ref);
+  // 缓存持有的引用有意不释放（进程级 keep-alive），与缓存生命周期一致
+  g_hwdevice_cache.emplace(device_id, ref);
+  return av_buffer_ref(ref);
 }
 
 }  // namespace cnstream

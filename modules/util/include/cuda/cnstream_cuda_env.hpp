@@ -28,9 +28,8 @@ bool ProbeCudaDevice(int device_id);
  * 把异常退出时驱动需要回收的 context 数量从 O(流数) 降为 O(设备数)。
  *
  * 生命周期：返回的 AVBufferRef* 引用计数已 +1，调用方负责 av_buffer_unref；
- * 缓存自身持有的引用存活到进程退出（刻意的 keep-alive，避免流级重建
- * context 的开销与生命周期耦合）。共享 CUcontext 的并发访问由写入
- * AVCUDADeviceContext 的 lock/unlock 回调串行化。
+ * 缓存自身持有的引用存活到进程退出（刻意的 keep-alive，避免流级重建context 的开销与生命周期耦合）
+ * 并发安全由 FFmpeg 保证
  *
  * @param device_id CUDA 设备号。
  * @return 可用的设备上下文引用；失败返回 nullptr（已打印日志）。
