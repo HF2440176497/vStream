@@ -5,6 +5,8 @@
 #include "data_source_param.hpp"
 #include "cnstream_source.hpp"
 
+#include "cuda/cnstream_cuda_env.hpp"
+
 #include <memory>
 #include <sstream>
 #include <unordered_map>
@@ -63,10 +65,25 @@ int PullHandlerImCUDA::hw_decoder_init() {
     LOGE(SOURCE) << "[" << stream_id_ << "]: Invalid device ID";
     return -1;
   }
-  std::string device_str = std::to_string(device_id_);
-  if ((err = av_hwdevice_ctx_create(&hw_device_ctx_, device_type_, device_str.c_str(), NULL, 0)) < 0) {
-    LOGE(SOURCE) << "[" << stream_id_ << "]: Failed to create specified HW device: " << err;
-    return err;
+  if (!ProbeCudaDevice(device_id_)) {
+    LOGE(SOURCE) << "[" << stream_id_ << "]: CUDA environment probe failed on device "
+                 << device_id_ << ", see CUDA_ENV logs above";
+    return -1;
+  }
+  if (device_type_ == AV_HWDEVICE_TYPE_CUDA) {
+    // 同一 device 全进程共享一个 CUcontext（进程级缓存）
+    hw_device_ctx_ = AcquireSharedCudaHwDeviceCtx(device_id_);
+    if (!hw_device_ctx_) {
+      LOGE(SOURCE) << "[" << stream_id_ << "]: AcquireSharedCudaHwDeviceCtx failed on device "
+                   << device_id_;
+      return -1;
+    }
+  } else {  // 退回独立创建，保持旧行为
+    std::string device_str = std::to_string(device_id_);
+    if ((err = av_hwdevice_ctx_create(&hw_device_ctx_, device_type_, device_str.c_str(), NULL, 0)) < 0) {
+      LOGE(SOURCE) << "[" << stream_id_ << "]: Failed to create specified HW device: " << err;
+      return err;
+    }
   }
   this->codec_ctx_->hw_device_ctx = av_buffer_ref(hw_device_ctx_);
   return err;

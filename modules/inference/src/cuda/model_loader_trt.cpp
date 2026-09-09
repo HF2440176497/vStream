@@ -5,6 +5,7 @@
 #include "common.hpp"
 #include "cuda/cuda_check.hpp"
 #include "cuda/cnstream_allocator_cuda.hpp"
+#include "cuda/cnstream_cuda_env.hpp"
 
 namespace cnstream {
 
@@ -168,6 +169,12 @@ ModelLoaderTrt::~ModelLoaderTrt() {
 
 bool ModelLoaderTrt::LoadEngine(const std::string& engine_path) {
   CudaDeviceGuard guard(device_id_);
+  // fail-fast：在反序列化引擎之前确认 CUDA 环境可用
+  if (!ProbeCudaDevice(device_id_)) {
+    LOGE(MODEL) << "CUDA environment probe failed on device " << device_id_
+                << ", abort loading TensorRT engine: " << engine_path;
+    return false;
+  }
   auto model_data = utils::load_model(engine_path);
   if (model_data.empty()) {
     LOGF(MODEL) << "Failed to load model file: " << engine_path;

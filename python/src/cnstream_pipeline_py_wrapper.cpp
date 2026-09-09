@@ -23,6 +23,7 @@
 #include <pybind11/stl.h>
 
 #include "cnstream_pipeline.hpp"
+#include "cnstream_signal_stop.hpp"
 #include "cnstream_source.hpp"
 #include "data_source.hpp"
 #include "data_sink.hpp"
@@ -83,6 +84,18 @@ void PipelineWrapper(py::module &m) {
       .def("get_module_config", &Pipeline::GetModuleConfig)
       .def("is_profiling_enabled", &Pipeline::IsProfilingEnabled)
       .def("is_root_node", &Pipeline::IsRootNode);
+
+  // 信号优雅停止：SIGTERM/SIGINT 到达后由 watchdog 线程调用已注册 pipeline 的
+  // Stop()（走既有析构链释放 TRT/FFmpeg/CUDA 资源），随后恢复默认处理并重新发出
+  // 信号，进程以 128+sig 退出。建议在 pipeline.start() 成功后立即调用。
+  m.def("enable_signal_stop", &EnableSignalStop, py::arg("pipeline"),
+        "Register pipeline for graceful stop on SIGTERM/SIGINT. "
+        "Call right after start(). Note: container stop_grace_period must exceed "
+        "the pipeline stop duration, otherwise SIGKILL still applies.");
+  m.def("disable_signal_stop", &DisableSignalStop, py::arg("pipeline"),
+        "Unregister pipeline from graceful signal stop (done automatically on destruction).");
+  m.def("signal_stop_requested", &SignalStopRequested,
+        "True once SIGTERM/SIGINT has been received and graceful stop has started.");
 }
 
 }  // namespace cnstream

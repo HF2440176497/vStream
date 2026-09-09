@@ -35,6 +35,7 @@
 #include "cnstream_graph.hpp"
 #include "cnstream_module.hpp"
 #include "cnstream_pipeline.hpp"
+#include "cnstream_signal_stop.hpp"
 #include "cnstream_connector.hpp"
 #include "cnstream_conveyor.hpp"
 
@@ -65,7 +66,8 @@ Pipeline::Pipeline(const std::string& name) : name_(name) {
 }
 
 Pipeline::~Pipeline() {
-  // instance_id 让同名的多个对象在日志中可区分。
+  // instance_id 让同名的多个对象在日志中可区分
+  DisableSignalStop(this);
   if (IsRunning()) {
     LOGI(CORE) << "Pipeline [" << GetName() << "] instance_id=" << instance_id_
                << " destructor entered, pipeline was running, calling Stop()";

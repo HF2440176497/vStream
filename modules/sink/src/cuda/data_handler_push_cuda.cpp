@@ -10,6 +10,7 @@
 #include "memop_factory.hpp"
 
 #include "cuda/cuda_check.hpp"
+#include "cuda/cnstream_cuda_env.hpp"
 #include "cuda/transfmt_cuda.cuh"
 
 #include <memory>
@@ -18,12 +19,20 @@
 namespace cnstream {
 
 bool PushHandlerImCUDA::InitDeviceCtx() {
-  int ret = av_hwdevice_ctx_create(&ctx_.hw_device_ctx, AV_HWDEVICE_TYPE_CUDA,
-                                   std::to_string(device_id_).c_str(), nullptr, 0);
-  if (ret < 0) {
-    LOGE(SINK) << "[" << stream_id_ << "]: av_hwdevice_ctx_create (CUDA) failed: " << ret;
+  if (!ProbeCudaDevice(device_id_)) {
+    LOGE(SINK) << "[" << stream_id_ << "]: CUDA environment probe failed on device "
+               << device_id_ << ", see CUDA_ENV logs above";
     return false;
   }
+
+  ctx_.hw_device_ctx = AcquireSharedCudaHwDeviceCtx(device_id_);
+  if (!ctx_.hw_device_ctx) {
+    LOGE(SINK) << "[" << stream_id_ << "]: AcquireSharedCudaHwDeviceCtx failed on device "
+               << device_id_;
+    return false;
+  }
+
+  int ret = 0;
 
   ctx_.hw_frames_ctx = av_hwframe_ctx_alloc(ctx_.hw_device_ctx);
   if (!ctx_.hw_frames_ctx) {
