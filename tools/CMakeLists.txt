@@ -84,5 +84,7 @@ if(HAVE_FRAMEWORK_TARGET AND HAVE_MODULES_TARGET)
   list(APPEND VSTREAM_TOOLS_DEPENDENCIES vstream_core vstream_va)
 endif()
 
-add_subdirectory(trt)
+if(VSTREAM_USE_CUDA)
+  add_subdirectory(trt)
+endif()
 

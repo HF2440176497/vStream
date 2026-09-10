@@ -537,9 +537,47 @@ void Pipeline::TransmitData(NodeContext* context, const std::shared_ptr<FrameInf
   }
 
   // transmit to next nodes
+  TransmitToNextNodes(context, data, cur_mask);
+}
+
+/**
+ * 将数据传播给 context 模块的下游节点。
+ *
+ * 对被 FrameInfo::MarkSkipModule 标记跳过的下游模块（EOS 帧豁免）执行“虚拟通过”：
+ * 与 MarkPassed 同锁置位 modules_mask_ 但不入队，并沿其下游继续传播。
+ * - 仅当本次 MarkPassed 实际置位（此前未置位）时才沿被跳过模块下游继续传播，
+ *   防止多条路径重复触发其下游传播；
+ * - 被跳过的模块不产生 profiler 输入/处理记录。
+ */
+void Pipeline::TransmitToNextNodes(NodeContext* context, const std::shared_ptr<FrameInfo>& data,
+                                   uint64_t cur_mask) {
+  if (context->node.expired()) {
+    LOGE(CORE) << "NodeContext[" << context->module->GetName() << "] is expired.";
+    return;
+  }
+  auto node = context->node.lock();
+  if (!node) {
+    LOGE(CORE) << "NodeContext[" << context->module->GetName() << "] is expired.";
+    return;
+  }
+
   for (auto next_node : node->GetNext()) {
     if (!PassedByAllParentNodes(&next_node->data, cur_mask)) continue;
     auto next_module = next_node->data.module;
+
+    if (!data->IsEos() && data->IsModuleSkipped(next_module.get())) {
+      // 虚拟通过被跳过的模块：置位但不入队。MarkPassedOnce 在锁内原子判定
+      uint64_t bypass_mask = 0;
+      if (data->MarkPassedOnce(next_module.get(), &bypass_mask)) {
+        if (PassedByAllModules(bypass_mask)) {
+          OnPassThrough(&next_node->data, data);  // 不需要再调用 OnEos 操作
+          return;
+        }
+        TransmitToNextNodes(&next_node->data, data, bypass_mask);
+      }
+      continue;
+    }
+
     auto connector = next_module->GetConnector();
     if (!connector) {
       LOGE(CORE) << "Module [" << next_module->GetName() << "] has no connector.";

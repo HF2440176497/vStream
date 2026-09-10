@@ -6,11 +6,6 @@
 if(UNIX)
     message(STATUS "=== Setting up library paths for Ubuntu ===")
 
-    # CUDA 架构仅 x86+NVIDIA 平台需要；RK（aarch64）构建下跳过
-    if(DVSTREAM_USE_CUDA)
-        set(CMAKE_CUDA_ARCHITECTURES "86;89;120")
-    endif()
-
     # FFmpeg：
     #   - RK 交叉编译默认指向 ffmpeg-rockchip 安装树（由 toolchain 文件的 RK_FFMPEG_ROOT 提供）
     #   - 其余平台维持 /usr/local/ffmpeg

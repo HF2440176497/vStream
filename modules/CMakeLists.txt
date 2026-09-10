@@ -119,6 +119,7 @@ file(GLOB util_src ${CMAKE_CURRENT_SOURCE_DIR}/util/src/*.cpp)
 
 if(VSTREAM_USE_CUDA)
   enable_language(CUDA)
+  set(CMAKE_CUDA_ARCHITECTURES "86;89;120")
   find_package(CUDAToolkit REQUIRED)
   file(GLOB util_cuda_src ${CMAKE_CURRENT_SOURCE_DIR}/util/src/cuda/*.cpp 
         ${CMAKE_CURRENT_SOURCE_DIR}/util/src/cuda/*.cu)

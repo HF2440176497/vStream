@@ -3,12 +3,12 @@
 .opencode/
 .trae/
 openspec/
-build/
+build*/
+**/build/
 data/
 lib/
 bin/
 docs/
-**/build/
 python/test/*
 !python/test/*.py
 *.md

@@ -7,6 +7,7 @@ if(NOT DEFINED VSTREAM_ROOT_PATH)
     CACHE INTERNAL "Top-level directory of this project")
 endif()
 
+set(CMAKE_CUDA_ARCHITECTURES "86;89;120")
 project(tools_trt_demo LANGUAGES C CXX CUDA)
 
 set(CMAKE_CXX_STANDARD 17)

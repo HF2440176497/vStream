@@ -65,6 +65,12 @@ class Pre_PPOCRv3_rec_Obj : public ObjPreproc {
     cv::Rect rect(x, y, w, h);
     cv::Mat crop_img = img(rect).clone();
 
+    // 帧级部署侧旋转：
+    // 仅旋转裁剪图，bbox 等原图信息保持不变
+    if (finfo->collection.HasValue(kCropRotate180Tag)) {
+      cv::rotate(crop_img, crop_img, cv::ROTATE_180);
+    }
+
     // 业务定制点：bbox 裁剪后、宽度压缩/Resize 前的部署侧变换（默认无操作）
     OnCropped(crop_img);
 

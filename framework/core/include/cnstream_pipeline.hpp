@@ -332,6 +332,13 @@ class Pipeline : private NonCopyable {
   void OnPassThrough(NodeContext* context, const std::shared_ptr<FrameInfo>& data);
 
   void TransmitData(NodeContext* context, const std::shared_ptr<FrameInfo>& data);
+  /**
+   * 将数据传播给 context 模块的下游节点，仅在 TransmitData 及其自身递归中调用。
+   * 对被 FrameInfo::MarkSkipModule 标记跳过的下游模块（EOS 帧豁免）执行“虚拟通过”：
+   * 经 FrameInfo::MarkPassedOnce 锁内原子置位 modules_mask_ 但不入队
+   * 仅翻转方（完成 0→1 的调用）沿其下游继续传播
+   */
+  void TransmitToNextNodes(NodeContext* context, const std::shared_ptr<FrameInfo>& data, uint64_t cur_mask);
   void TaskLoop(NodeContext* context, uint32_t conveyor_idx);
   EventHandleFlag DefaultBusWatch(const Event& event);
   void UpdateByStreamMsg(const StreamMsg& msg);

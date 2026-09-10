@@ -44,6 +44,9 @@ class Pipeline;
 
 inline const std::string kSkipFrameTag = "skip_frame";
 
+/// 帧级裁剪旋转标记：被标记的帧，其对象级处理在 bbox 裁剪后将裁剪图旋转 180°
+inline const std::string kCropRotate180Tag = "crop_rotate_180";
+
 /**
  * @enum FrameFlag
  *
@@ -146,6 +149,18 @@ class FrameInfo : private NonCopyable {
 
   Collection collection;
 
+  /**
+   * @brief 标记本帧跳过指定的下游模块。
+   *
+   * 路由时框架对该模块"虚拟通过"（置位 modules_mask_ 但不入队），数据直接沿其
+   * 下游继续传播；EOS 帧由框架豁免，始终流经所有模块。
+   *
+   * @param[in] module 需要跳过的下游模块（通常通过 Pipeline::GetModule 获取）。
+   *
+   * @return No return value.
+   */
+  void MarkSkipModule(Module* module);
+
 #ifdef VSTREAM_UNIT_TEST
  public:
   uint32_t test_idx = 0;
@@ -160,10 +175,28 @@ class FrameInfo : private NonCopyable {
   void SetModulesMask(uint64_t mask);
   uint64_t GetModulesMask();
   uint64_t MarkPassed(Module* current);  // return changed mask
+  /**
+   * @brief 锁内原子的 test-and-set 置位：仅当 module 的 bit 原本未置位时置位并返回 true
+   *        （本次调用完成 0→1 翻转），否则不产生任何修改并返回 false。
+   *
+   * 仅供 Pipeline 旁路路由（虚拟通过）使用：将"谁翻转 bit 谁负责其下游传播"的判定
+   *
+   * @param[in] module 目标模块。
+   * @param[out] new_mask 翻转成功时输出置位后的完整 modules_mask_ 快照（供路由继续判定）。
+   * @return 返回 true 表示本次调用翻转了该 bit，调用方负责其下游传播。
+   */
+  bool MarkPassedOnce(Module* module, uint64_t* new_mask);
 
   mutable std::mutex mask_lock_;
   /* Identifies which modules have processed this data */
   uint64_t modules_mask_ = 0;
+  /* Identifies which downstream modules should be skipped for this data（仅供框架路由使用） */
+  uint64_t skip_mask_ = 0;
+
+  /**
+   * @brief 查询本帧是否跳过指定模块。仅供 Pipeline 路由（friend Pipeline）使用。
+   */
+  bool IsModuleSkipped(Module* module);
 
 };  // end class FrameInfo
 

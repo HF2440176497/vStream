@@ -10,6 +10,8 @@ namespace cnstream {
  *
  * 仅对裁剪出的目标图做 180° 旋转，bbox 在原图中的坐标保持不变。
  * 部署时将模型配置中的 preproc_name 指定为 "Pre_PPOCRv3_rec_Obj_Rot180"。
+ *
+ * @note 注意本类是无条件旋转
  */
 class Pre_PPOCRv3_rec_Obj_Rot180 : public Pre_PPOCRv3_rec_Obj {
  protected:

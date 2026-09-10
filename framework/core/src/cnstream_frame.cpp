@@ -73,4 +73,23 @@ uint64_t FrameInfo::MarkPassed(Module* module) {
   return modules_mask_;
 }
 
+bool FrameInfo::MarkPassedOnce(Module* module, uint64_t* new_mask) {
+  std::lock_guard<std::mutex> lk(mask_lock_);
+  const uint64_t bit = (uint64_t)1 << module->GetId();
+  if (modules_mask_ & bit) return false;
+  modules_mask_ |= bit;
+  *new_mask = modules_mask_;
+  return true;
+}
+
+void FrameInfo::MarkSkipModule(Module* module) {
+  std::lock_guard<std::mutex> lk(mask_lock_);
+  skip_mask_ |= (uint64_t)1 << module->GetId();
+}
+
+bool FrameInfo::IsModuleSkipped(Module* module) {
+  std::lock_guard<std::mutex> lk(mask_lock_);
+  return (skip_mask_ & ((uint64_t)1 << module->GetId())) != 0;
+}
+
 }  // namespace cnstream
