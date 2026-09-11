@@ -2,8 +2,9 @@
 
 #include <cctype>
 #include <mutex>
-#include <sstream>
 #include <string>
+
+#include <nlohmann/json.hpp>
 
 #include "cnstream_logging.hpp"
 
@@ -32,78 +33,85 @@ std::string Trim(const std::string& s) {
   return s.substr(b, e - b);
 }
 
-bool ShouldDraw(const MarkConfig& config, const InferObject& obj) {
-  if (config.filter_model_ids.empty()) {
-    return true;  // no filter configured, draw everything
+bool ShouldDraw(const MarkConfig& config, const std::shared_ptr<InferObject>& obj) {
+  if (config.rules.empty()) {
+    return true;  // 没有配置规则，默认绘制
   }
-  auto it = config.filter_model_ids.find(obj.model_name);
-  if (it == config.filter_model_ids.end()) {
-    return false;
-  }
-  // Empty id-set for a model = wildcard (any id under this model_name is allowed).
-  if (it->second.empty()) {
+  // 每个规则（对应一个列表）内的条件都必须满足
+  // 只需要满足一个规则的条件，即可绘制
+  for (const auto& rule : config.rules) {
+    if (!rule.model.empty() && rule.model != obj->model_name) continue;
+    if (!rule.ids.empty() && rule.ids.count(obj->id) == 0) continue;
+    if (rule.has_type && GetInferObjType(obj) != ToString(rule.type)) continue;
     return true;
   }
-  return it->second.count(obj.id) > 0;
+  return false;
 }
 
 }  // namespace
 
 bool MarkConfig::ParseMarkFilter(const std::string& filter) {
-  filter_model_ids.clear();
+  rules.clear();
   std::string trimmed = Trim(filter);
   if (trimmed.empty()) {
     return true;  // empty filter is a valid no-op
   }
 
-  std::unordered_map<std::string, std::set<int>> parsed;
-  std::stringstream entries(trimmed);
-  std::string entry;
-  while (std::getline(entries, entry, ';')) {
-    entry = Trim(entry);
-    if (entry.empty()) continue;
-
-    size_t sep = entry.find(':');
-    if (sep == std::string::npos) {
-      LOGE(SINK) << "Mark filter: missing ':' in entry '" << entry << "'";
-      filter_model_ids.clear();
-      return false;
-    }
-    std::string model = Trim(entry.substr(0, sep));
-    std::string ids   = Trim(entry.substr(sep + 1));
-    if (model.empty()) {
-      LOGE(SINK) << "Mark filter: empty model name in entry '" << entry << "'";
-      filter_model_ids.clear();
-      return false;
-    }
-
-    std::set<int> id_set;
-    if (!ids.empty()) {
-      std::stringstream id_stream(ids);
-      std::string id_str;
-      while (std::getline(id_stream, id_str, ',')) {
-        id_str = Trim(id_str);
-        if (id_str.empty()) continue;
-        try {
-          size_t consumed = 0;
-          int id = std::stoi(id_str, &consumed);
-          if (consumed != id_str.size()) {
-            LOGE(SINK) << "Mark filter: trailing chars in id '" << id_str << "'";
-            filter_model_ids.clear();
-            return false;
-          }
-          id_set.insert(id);
-        } catch (const std::exception&) {
-          LOGE(SINK) << "Mark filter: invalid id '" << id_str << "' in entry '" << entry << "'";
-          filter_model_ids.clear();
-          return false;
-        }
-      }
-    }
-    parsed[model] = std::move(id_set);
+  nlohmann::json doc = nlohmann::json::parse(trimmed, nullptr, /*allow_exceptions=*/false);
+  if (doc.is_discarded() || !doc.is_array()) {
+    LOGE(SINK) << "Mark filter: expect a JSON array of rule objects";
+    return false;
   }
 
-  filter_model_ids = std::move(parsed);
+  std::vector<MarkRule> parsed;
+  parsed.reserve(doc.size());
+  for (const auto& item : doc) {
+    if (!item.is_object()) {
+      LOGE(SINK) << "Mark filter: each rule must be a JSON object";
+      return false;
+    }
+    MarkRule rule;
+    for (auto it = item.begin(); it != item.end(); ++it) {
+      const std::string& key = it.key();
+      if (key == "model") {
+        if (!it.value().is_string()) {
+          LOGE(SINK) << "Mark filter: rule.model must be a string";
+          return false;
+        }
+        rule.model = it.value().get<std::string>();
+      } else if (key == "ids") {
+        if (!it.value().is_array()) {
+          LOGE(SINK) << "Mark filter: rule.ids must be an array of integers";
+          return false;
+        }
+        for (const auto& id_val : it.value()) {
+          if (!id_val.is_number_integer()) {
+            LOGE(SINK) << "Mark filter: rule.ids must contain integers only";
+            return false;
+          }
+          rule.ids.insert(id_val.get<int>());
+        }
+      } else if (key == "type") {
+        if (!it.value().is_string()) {
+          LOGE(SINK) << "Mark filter: rule.type must be a string";
+          return false;
+        }
+        const std::string type_str = it.value().get<std::string>();
+        rule.type = InferObjTypeFromString(type_str);
+        if (rule.type == InferObjType::kUnknown) {
+          LOGE(SINK) << "Mark filter: unknown rule.type '" << type_str
+                     << "', expect 'original' or 'merged'";
+          return false;
+        }
+        rule.has_type = true;
+      } else {
+        LOGW(SINK) << "Mark filter: unknown rule key '" << key << "', ignored";
+      }
+    }
+    parsed.push_back(std::move(rule));
+  }
+
+  rules = std::move(parsed);
   return true;
 }
 
@@ -132,7 +140,7 @@ bool CpuMarkRender::Render(DataFramePtr frame, const InferObjsPtr& objs,
   std::lock_guard<std::mutex> lk(objs->mutex_);
   for (const auto& obj : objs->objs_) {
     if (!obj) continue;
-    if (!ShouldDraw(config, *obj)) continue;
+    if (!ShouldDraw(config, obj)) continue;
 
     float x = obj->bbox.x;
     float y = obj->bbox.y;

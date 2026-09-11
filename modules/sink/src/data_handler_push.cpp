@@ -43,7 +43,7 @@ bool PushHandlerIm::Open() {
         LOGE(SINK) << "[" << stream_id_ << "]: invalid mark '" << *mark_filter
                    << "', mark will be disabled";
         mark_render_ = false;
-      } else if (!mark_config_.filter_model_ids.empty()) {
+      } else if (!mark_config_.rules.empty()) {
         LOGI(SINK) << "[" << stream_id_ << "]: mark filter enabled, " << *mark_filter;
       }
     }
