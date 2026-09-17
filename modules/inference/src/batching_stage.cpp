@@ -5,6 +5,8 @@
 #include <thread>
 
 #include "infer_task.hpp"
+#include "model_loader.hpp"
+#include "input_deriver.hpp"
 #include "preproc.hpp"
 #include "batching_stage.hpp"
 
@@ -52,8 +54,10 @@ std::shared_ptr<InferTask> IOBatchingStage::Batching(std::shared_ptr<FrameInfo> 
 
 CpuPreprocessingBatchingStage::CpuPreprocessingBatchingStage(ModelLoader* model,
                                                              uint32_t batchsize, std::shared_ptr<Preproc> preprocessor,
-                                                             std::shared_ptr<CpuInputResource> cpu_input_res)
-    : IOBatchingStage(model, batchsize, cpu_input_res), preprocessor_(preprocessor) {}
+                                                             std::shared_ptr<CpuInputResource> cpu_input_res,
+                                                             std::shared_ptr<InputDeriver> input_deriver)
+    : IOBatchingStage(model, batchsize, cpu_input_res), preprocessor_(preprocessor),
+      input_deriver_(input_deriver) {}
 
 CpuPreprocessingBatchingStage::~CpuPreprocessingBatchingStage() {}
 
@@ -74,6 +78,12 @@ void CpuPreprocessingBatchingStage::ProcessOneFrame(std::shared_ptr<FrameInfo> f
   for (auto it : value.datas) {
     cpu_outputs.push_back(reinterpret_cast<float*>(it.Offset(batch_idx)));
   }
+  // 输入派生（业务级模块输入定制）：在前处理执行前生成模块专属输入图，
+  // preproc 通过 GetModelInputImage(package, model_name) 读取
+  if (input_deriver_) {
+    input_deriver_->Derive(finfo, model_->get_name());
+  }
+
   preprocessor_->Execute(cpu_outputs, model_, finfo);
 }
 

@@ -108,6 +108,17 @@ class Collection : public NonCopyable {
   bool AddIfNotExists(const std::string& tag, ValueT&& value);
 
   /**
+   * @brief Adds data tagged by `tag`, or overwrites the existing data with the same tag.
+   *
+   * @param[in] tag The unique identifier of the data.
+   * @param[in] value Value to be set.
+   *
+   * @return Returns the reference to the object of typename ValueT which is tagged by `tag`.
+   */
+  template <typename ValueT>
+  ValueT& Set(const std::string& tag, const ValueT& value);
+
+  /**
    * @brief Checks whether there is the data tagged by `tag`.
    *
    * @param[in] tag The unique identifier of the data.
@@ -190,6 +201,18 @@ bool Collection::AddIfNotExists(const std::string& tag, const ValueT& value) {
 template <typename ValueT> inline
 bool Collection::AddIfNotExists(const std::string& tag, ValueT&& value) {
   return AddIfNotExists(tag, std::unique_ptr<std::any>(new std::any(std::forward<ValueT>(value))));
+}
+
+template <typename ValueT> inline
+ValueT& Collection::Set(const std::string& tag, const ValueT& value) {
+  std::lock_guard<std::mutex> lk(data_mtx_);
+  auto iter = data_.find(tag);
+  if (data_.end() == iter) {
+    data_[tag] = std::unique_ptr<std::any>(new std::any(value));
+  } else {
+    iter->second = std::unique_ptr<std::any>(new std::any(value));
+  }
+  return std::any_cast<ValueT&>(*data_[tag]);
 }
 
 #if !defined(_LIBCPP_NO_RTTI)

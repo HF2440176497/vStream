@@ -253,6 +253,20 @@ void InferParamManager::RegisterAll(ParamRegister *pregister) {
   };
   ASSERT(RegisterParam(pregister, param));
 
+  param.name = "input_derive_name";
+  param.desc_str =
+      "Optional. The class name for input image deriver. See cnstream::InputDeriver. "
+      "Derives a module-private input image (e.g. rotated) before preprocessing and "
+      "restores detected object coordinates after postprocessing. "
+      "Only valid when object_infer is false.";
+  param.default_value = "";
+  param.type = "string";
+  param.parser = [](const std::string &value, InferParams *param_set) -> bool {
+    param_set->input_derive_name = value;
+    return true;
+  };
+  ASSERT(RegisterParam(pregister, param));
+
   param.name = "dump_resized_image_dir";
   param.desc_str = "Optional. Where to dump the resized image.";
   param.default_value = "";
@@ -366,6 +380,38 @@ void InferParamManager::RegisterAll(ParamRegister *pregister) {
         value_str = val.get<std::string>();
       }
       param_set->custom_obj_filter_params[key] = value_str;
+    }
+    return true;
+  };
+  ASSERT(RegisterParam(pregister, param));
+
+  param.name = "custom_input_derive_params";
+  param.desc_str =
+      "Optional. Custom input deriver parameters. After the inferencer module creates an instance of "
+      "the input deriver class specified by input_derive_name, the Init function of the specified "
+      "input deriver class will be called, and these parameters will be passed to Init. See InputDeriver::Init for detail.";
+  param.default_value = "";
+  param.type = "json string";
+  param.parser = [](const std::string &value, InferParams *param_set) -> bool {
+    if (value.empty()) {
+      param_set->custom_input_derive_params.clear();
+      return true;
+    }
+    auto doc = nlohmann::ordered_json::parse(value);
+    if (!doc.is_object()) {
+      LOGE(CORE) << "Custom input deriver parameters configuration must be object type.";
+      return false;
+    }
+    param_set->custom_input_derive_params.clear();
+
+    std::string value_str {};
+    for (auto& [key, val] : doc.items()) {
+      if (!val.is_string()) {
+        value_str = val.dump();
+      } else {
+        value_str = val.get<std::string>();
+      }
+      param_set->custom_input_derive_params[key] = value_str;
     }
     return true;
   };

@@ -41,6 +41,7 @@ namespace cnstream {
 
 class Postproc;
 class ObjPostproc;
+class InputDeriver;
 class CpuInputResource;
 class CpuOutputResource;
 class NetInputResource;
@@ -162,18 +163,22 @@ class PostprocessingBatchingDoneStage : public BatchingDoneStage {
   PostprocessingBatchingDoneStage(ModelLoader* model,
                                   uint32_t batchsize,
                                   std::shared_ptr<Postproc> postprocessor,
-                                  std::shared_ptr<CpuOutputResource> cpu_output_res)
+                                  std::shared_ptr<CpuOutputResource> cpu_output_res,
+                                  std::shared_ptr<InputDeriver> input_deriver = nullptr)
       : BatchingDoneStage(model, batchsize, model ? model->GetDeviceId() : -1),
-      postprocessor_(postprocessor),
-      cpu_output_res_(cpu_output_res) {}
+        postprocessor_(postprocessor),
+        cpu_output_res_(cpu_output_res),
+        input_deriver_(input_deriver) {}
 
   PostprocessingBatchingDoneStage(ModelLoader* model,
                                   uint32_t batchsize,
                                   std::shared_ptr<Postproc> postprocessor,
-                                  std::shared_ptr<NetOutputResource> net_output_res)
+                                  std::shared_ptr<NetOutputResource> net_output_res,
+                                  std::shared_ptr<InputDeriver> input_deriver = nullptr)
       : BatchingDoneStage(model, batchsize, model ? model->GetDeviceId() : -1),
-      postprocessor_(postprocessor),
-      net_output_res_(net_output_res) {}
+        postprocessor_(postprocessor),
+        net_output_res_(net_output_res),
+        input_deriver_(input_deriver) {}
 
   std::vector<std::shared_ptr<InferTask>> BatchingDone(const BatchingDoneInput& finfos) override;
   std::vector<std::shared_ptr<InferTask>> BatchingDone(const BatchingDoneInput& finfos,
@@ -184,6 +189,7 @@ class PostprocessingBatchingDoneStage : public BatchingDoneStage {
   std::shared_ptr<Postproc> postprocessor_ = nullptr;
   std::shared_ptr<CpuOutputResource> cpu_output_res_ = nullptr;
   std::shared_ptr<NetOutputResource> net_output_res_ = nullptr;
+  std::shared_ptr<InputDeriver> input_deriver_ = nullptr;
 };  // class PostprocessingBatchingDoneStage
 
 

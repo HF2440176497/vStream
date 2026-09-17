@@ -629,8 +629,10 @@ class Post_YOLOv5_CPU: public Postproc {
     }
 
     DataFramePtr frame = package->collection.Get<DataFramePtr>(cnstream::kDataFrameTag);
-    const int img_w = frame->GetWidth();
-    const int img_h = frame->GetHeight();
+    // 如果有模块级派生图（如旋转图）实际送入前处理的图像尺寸，否则为原图尺寸
+    int img_w = frame->GetWidth();
+    int img_h = frame->GetHeight();
+    GetModelInputImageSize(package, model->get_name(), &img_w, &img_h);
 
     const int input_w = model->get_width();
     const int input_h = model->get_height();

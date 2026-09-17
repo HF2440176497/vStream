@@ -32,11 +32,16 @@ int Execute(const std::vector<float*>& cpu_outputs, ModelLoader* model,
         LOGE(PREPROC) << "model input shape not supported";
         return -1;
     }
-    cv::Mat img = GetModelInputImage(package);  // BGR：优先派生图，回退原图
-    
+    cv::Mat img = GetModelInputImage(package, model->get_name());  // BGR：模块级派生图 > 帧级派生图 > 原图
+
     int img_w = img.cols;
     int img_h = img.rows;
     
+    if (model_name_.empty()) {
+        model_name_ = model->get_name();
+        LOGI(PREPROC) << "model: " << model_name_ << "; get image size [" << img_h << " " << img_w << "]";
+    }
+
     int input_index = model->get_input_ordered_index();  // input tensor index
     int input_h = model->get_height();
     int input_w = model->get_width();
@@ -82,6 +87,8 @@ int Execute(const std::vector<float*>& cpu_outputs, ModelLoader* model,
     }
     return 0;
 }
+ private:
+  std::string model_name_;
 
  private:
   DECLARE_REFLEX_OBJECT_EX(Pre_YOLO_CPU, cnstream::Preproc);
@@ -101,11 +108,16 @@ class Pre_YOLO_CPU_v2: public Preproc {
         LOGE(PREPROC) << "model input shape not supported";
         return -1;
     }
-    cv::Mat img = GetModelInputImage(package);  // BGR：优先派生图，回退原图
-    
+    cv::Mat img = GetModelInputImage(package, model->get_name());  // BGR：模块级派生图 > 帧级派生图 > 原图
+
     int img_w = img.cols;
     int img_h = img.rows;
-    
+
+    if (model_name_.empty()) {
+        model_name_ = model->get_name();
+        LOGI(PREPROC) << "model: " << model_name_ << "; get image size [" << img_h << " " << img_w << "]";
+    }
+
     int input_index = model->get_input_ordered_index();  // input tensor index
     int input_h = model->get_height();
     int input_w = model->get_width();
@@ -157,6 +169,8 @@ class Pre_YOLO_CPU_v2: public Preproc {
     });
     return 0;
   }
+ private:
+  std::string model_name_;
 
  private:
   DECLARE_REFLEX_OBJECT_EX(Pre_YOLO_CPU_v2, cnstream::Preproc);

@@ -476,12 +476,26 @@ inline constexpr char kCustomImagesTag[] = "CustomImages"; /*!< value type in Fr
  */
 inline constexpr char kModelInputImageTag[] = "ModelInputImage";
 
+/**
+ * @brief 模块级派生图 tag
+ *
+ * 与帧级 kModelInputImageTag 构成两个控制面：
+ * - 帧级：由上游业务模块（如 FrameStitcher）写入，作用于所有下游推理模块；
+ * - 模块级：由本模块的 InputDeriver 写入，仅作用于该模型自己的推理。
+ *
+ * 解析优先级：模块级 > 帧级 > 原图（见 GetModelInputImage）。
+ */
+inline std::string ModelInputImageTagForModel(const std::string& model_name) {
+  return std::string(kModelInputImageTag) + "/" + model_name;
+}
+
 
 /**
  * @struct ModelInputImage
  * @brief 派生出的模型输入图及其坐标还原元信息。
  *
- * 由业务侧处理模块构造并写入 kModelInputImageTag
+ * 由业务侧处理模块构造并写入 kModelInputImageTag（帧级）
+ * 或由 InputDeriver 写入模块级
  */
 struct ModelInputImage {
   cv::Mat image;             ///< 派生图（BGR, CV_8UC3）
@@ -495,6 +509,9 @@ struct ModelInputImage {
   ///< 当前帧内容相对原图的缩放
   float cur_scale_x = 1.0f;
   float cur_scale_y = 1.0f;
+
+  ///< 相对基准图（Derive 的输入图）顺时针旋转的角度，仅支持 0/90/180/270
+  int rotation = 0;
 };
 
 using ModelInputImagePtr = std::shared_ptr<ModelInputImage>;
@@ -509,6 +526,41 @@ inline cv::Mat GetModelInputImage(const FrameInfoPtr& package) {
   }
   DataFramePtr frame = package->collection.Get<DataFramePtr>(kDataFrameTag);
   return frame->GetImage();  // BGR
+}
+
+/**
+ * @brief 带模块维度的输入图解析：模块级派生图 > 帧级派生图 > 原图。
+ *
+ * @param[in] package 帧信息。
+ * @param[in] model_name 模型名（模块级控制面的维度）。
+ * @return 模型前处理实际应使用的输入图（BGR）。
+ */
+inline cv::Mat GetModelInputImage(const FrameInfoPtr& package, const std::string& model_name) {
+  const std::string module_tag = ModelInputImageTagForModel(model_name);
+  if (!model_name.empty() && package->collection.HasValue(module_tag)) {
+    auto derived = package->collection.Get<ModelInputImagePtr>(module_tag);
+    if (derived && !derived->image.empty()) {
+      return derived->image;  // BGR
+    }
+  }
+  return GetModelInputImage(package);  // 帧级 > 原图
+}
+
+/**
+ * @brief 查询模块级派生图的尺寸（确定"实际输入图"基准）
+ *
+ * 仅当存在模块级派生图时返回 true 并填充 w/h；帧级派生图与原图不在此处理，以保持既有行为
+ */
+inline bool GetModelInputImageSize(const FrameInfoPtr& package, const std::string& model_name,
+                                   int* w, int* h) {
+  if (model_name.empty()) return false;
+  const std::string module_tag = ModelInputImageTagForModel(model_name);
+  if (!package->collection.HasValue(module_tag)) return false;
+  auto derived = package->collection.Get<ModelInputImagePtr>(module_tag);
+  if (!derived || derived->image.empty()) return false;
+  if (w) *w = derived->image.cols;
+  if (h) *h = derived->image.rows;
+  return true;
 }
 
 
@@ -548,6 +600,13 @@ inline InferObjType InferObjTypeFromString(const std::string& str) {
  * @brief Extra attribute key used to store InferObjType in InferObject.
  */
 inline constexpr char kInferObjTypeKey[] = "type";
+
+/**
+ * @brief Extra attribute key marking that an InferObject's bbox coordinates have been
+ *        restored from the module-level derived image back to the base image
+ *        (used by InputDeriver::RestoreObjs for idempotency under batch padding).
+ */
+inline constexpr char kInferObjCoordRestoredKey[] = "coord_restored";
 
 /**
  * @brief Sets the type of an InferObject via extra attribute.

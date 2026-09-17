@@ -58,7 +58,7 @@ class Pre_Resnet : public Preproc {
         LOGE(PREPROC) << "model input shape not supported";
         return -1;
     }
-    cv::Mat img = GetModelInputImage(package);  // BGR：优先派生图，回退原图
+    cv::Mat img = GetModelInputImage(package, model->get_name());  // BGR：模块级派生图 > 帧级派生图 > 原图
 
     int input_index = model->get_input_ordered_index();  // input tensor index
     int input_h = model->get_height();

@@ -86,7 +86,7 @@ class Pre_Resnet_Obj : public ObjPreproc {
         return -1;
     }
     DataFramePtr frame = finfo->collection.Get<DataFramePtr>(cnstream::kDataFrameTag);
-    cv::Mat src_img = GetModelInputImage(finfo);  // BGR：优先派生图，回退原图
+    cv::Mat src_img = GetModelInputImage(finfo, model->get_name());  // BGR：模块级派生图 > 帧级派生图 > 原图
 
     if (!pobj) {
         LOGE(PREPROC) << "pobj is nullptr";

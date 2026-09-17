@@ -32,6 +32,7 @@
 #include "model_loader.hpp"
 #include "infer_engine.hpp"
 #include "infer_trans_data_helper.hpp"
+#include "input_deriver.hpp"
 #include "obj_filter.hpp"
 #include "postproc.hpp"
 #include "preproc.hpp"
@@ -64,6 +65,7 @@ class InferencePrivate: public NonCopyable {
   std::shared_ptr<ObjPreproc> obj_preproc_ = nullptr;
   std::shared_ptr<ObjPostproc> obj_postproc_ = nullptr;
   std::shared_ptr<ObjFilter> obj_filter_ = nullptr;
+  std::shared_ptr<InputDeriver> input_deriver_ = nullptr;
 
   uint32_t trans_data_size_ = 20;
   std::string dump_resized_image_dir_ = "";
@@ -220,6 +222,25 @@ class InferencePrivate: public NonCopyable {
       }
     }
 
+    // 输入派生（业务级模块输入定制，如旋转）
+    if (!params.input_derive_name.empty()) {
+      if (params.object_infer) {
+        LOGE(INFER) << "[" << module_name_ << "] input_derive_name is only supported "
+                    << "when object_infer is false.";
+        return false;
+      }
+      input_deriver_ = std::shared_ptr<InputDeriver>(InputDeriver::Create(params.input_derive_name));
+      if (!input_deriver_) {
+        LOGE(INFER) << "Can not find InputDeriver implemention by name: " << params.input_derive_name;
+        return false;
+      }
+      if (!input_deriver_->Init(params.custom_input_derive_params)) {
+        LOGE(INFER) << "[" << module_name_ << "] input_deriver_ init failed.";
+        return false;
+      }
+      LOGI(INFER) << "[" << module_name_ << "] Input deriver set: " << params.input_derive_name;
+    }
+
     if (!params.dump_resized_image_dir.empty()) {
       dump_resized_image_dir_ = GetPathRelativeToTheJSONFile(params.dump_resized_image_dir, param_set);
     }
@@ -254,6 +275,7 @@ class InferencePrivate: public NonCopyable {
           .SetObjPreprocessor(obj_preproc_)
           .SetObjPostprocessor(obj_postproc_)
           .SetObjFilter(obj_filter_)
+          .SetInputDeriver(input_deriver_)
           .SetDumpResizedImageDir(dump_resized_image_dir_)
           .SetSavingInferInput(params_.saving_infer_input)
           .SetModuleName(module_name_)

@@ -8,6 +8,7 @@
 #include "preproc.hpp"
 #include "postproc.hpp"
 #include "obj_filter.hpp"
+#include "input_deriver.hpp"
 
 namespace cnstream {
 
@@ -72,6 +73,11 @@ class InferOptions {
     return *this;
   }
 
+  InferOptions& SetInputDeriver(std::shared_ptr<InputDeriver> input_deriver) {
+    input_deriver_ = input_deriver;
+    return *this;
+  }
+
   InferOptions& SetDumpResizedImageDir(const std::string& dump_dir) {
     dump_resized_image_dir_ = dump_dir;
     return *this;
@@ -103,6 +109,7 @@ class InferOptions {
   std::shared_ptr<ObjPreproc> obj_preprocessor() const { return obj_preprocessor_; }
   std::shared_ptr<ObjPostproc> obj_postprocessor() const { return obj_postprocessor_; }
   std::shared_ptr<ObjFilter> obj_filter() const { return obj_filter_; }
+  std::shared_ptr<InputDeriver> input_deriver() const { return input_deriver_; }
   const std::string& dump_resized_image_dir() const { return dump_resized_image_dir_; }
   bool saving_infer_input() const { return saving_infer_input_; }
   const std::string& module_name() const { return module_name_; }
@@ -120,6 +127,7 @@ class InferOptions {
   std::shared_ptr<ObjPreproc> obj_preprocessor_ = nullptr;
   std::shared_ptr<ObjPostproc> obj_postprocessor_ = nullptr;
   std::shared_ptr<ObjFilter> obj_filter_ = nullptr;
+  std::shared_ptr<InputDeriver> input_deriver_ = nullptr;
   std::string dump_resized_image_dir_;
   bool saving_infer_input_ = false;
   std::string module_name_;

@@ -51,7 +51,7 @@ PipelineConfig CpuPipelineStrategy::Build(ModelLoader* model, const InferOptions
   } else {
     config.batching_stage =
         std::make_shared<CpuPreprocessingBatchingStage>(model, batchsize, options.preprocessor(),
-                                                        config.cpu_input_res);
+                                                        config.cpu_input_res, options.input_deriver());
   }
 
   // 推理阶段：直接读写 CPU 缓冲，无需 H2D/D2H
@@ -70,7 +70,8 @@ PipelineConfig CpuPipelineStrategy::Build(ModelLoader* model, const InferOptions
   } else {
     auto postproc_stage =
         std::make_shared<PostprocessingBatchingDoneStage>(model, batchsize,
-                                                          options.postprocessor(), config.cpu_output_res);
+                                                          options.postprocessor(), config.cpu_output_res,
+                                                          options.input_deriver());
     postproc_stage->SetProfiler(options.profiler());
     postproc_stage->SetDumpResizedImageDir(options.dump_resized_image_dir());
     config.batching_done_stages.push_back(postproc_stage);

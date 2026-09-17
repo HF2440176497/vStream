@@ -46,11 +46,13 @@ struct InferParams {
   std::string preproc_name;
   std::string postproc_name;
   std::string obj_filter_name;
+  std::string input_derive_name;  // 模块输入派生组件，仅支持 object_infer=false
   std::string dump_resized_image_dir = "";  // debug option, dump images(offline-model's input) before infer.
   bool saving_infer_input = false;
   std::map<std::string, std::string> custom_preproc_params;
   std::map<std::string, std::string> custom_postproc_params;
   std::map<std::string, std::string> custom_obj_filter_params;
+  std::map<std::string, std::string> custom_input_derive_params;
 };  // struct InferParams
 
 struct InferParamDesc {

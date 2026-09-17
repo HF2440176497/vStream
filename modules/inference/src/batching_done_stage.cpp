@@ -30,6 +30,7 @@
 #include "infer_engine.hpp"
 #include "infer_resource.hpp"
 #include "infer_task.hpp"
+#include "input_deriver.hpp"
 #include "postproc.hpp"
 #include "queuing_server.hpp"
 
@@ -244,10 +245,14 @@ std::vector<std::shared_ptr<InferTask>> PostprocessingBatchingDoneStage::Batchin
           }
           if (!cnstream::IsStreamRemoved(finfo.first->stream_id)) {
             this->postprocessor_->Execute(cpu_outputs, this->model_, finfo.first);
+            // 输入派生还原：把 obj 从模块派生图坐标逆变换回基准图坐标
+            if (this->input_deriver_) {
+              this->input_deriver_->RestoreObjs(finfo.first, this->model_->get_name());
+            }
           }
           return 0;
         });  // task
-    
+
     tasks.push_back(task);
   }  // end for bidx
   return tasks;
@@ -278,6 +283,12 @@ std::vector<std::shared_ptr<InferTask>> PostprocessingBatchingDoneStage::Batchin
     for (const auto& it : finfos) batched_finfos.push_back(it.first);
 
     this->postprocessor_->Execute(net_outputs, this->model_, batched_finfos);
+    // 输入派生还原：从模块派生图坐标逆变换回基准图坐标
+    if (this->input_deriver_) {
+      for (const auto& finfo : batched_finfos) {
+        this->input_deriver_->RestoreObjs(finfo, this->model_->get_name());
+      }
+    }
     return 0;
   });
   tasks.push_back(task);

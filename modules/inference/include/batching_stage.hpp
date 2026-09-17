@@ -15,6 +15,7 @@ class IOResource;
 class NetInputResource;
 class CpuInputResource;
 class Preproc;  // ObjPreproc see obj_batching_stage
+class InputDeriver;
 
 
 class BatchingStage {
@@ -51,12 +52,14 @@ class IOBatchingStage : public BatchingStage {
 class CpuPreprocessingBatchingStage : public IOBatchingStage {
  public:
   CpuPreprocessingBatchingStage(ModelLoader* model, uint32_t batchsize,
-                                std::shared_ptr<Preproc> preprocessor, std::shared_ptr<CpuInputResource> cpu_input_res);
+                                std::shared_ptr<Preproc> preprocessor, std::shared_ptr<CpuInputResource> cpu_input_res,
+                                std::shared_ptr<InputDeriver> input_deriver = nullptr);
   ~CpuPreprocessingBatchingStage();
 
  private:
   void ProcessOneFrame(std::shared_ptr<FrameInfo> finfo, uint32_t batch_idx, const IOResValue& value) override;
   std::shared_ptr<Preproc> preprocessor_ = nullptr;
+  std::shared_ptr<InputDeriver> input_deriver_ = nullptr;
 };  // class CpuPreprocessingBatchingStage
 
 
