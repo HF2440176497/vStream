@@ -96,6 +96,7 @@ int OrientationCheck::Process(std::shared_ptr<FrameInfo> data) {
   if (!decided) {
     // 结论未出：本帧跳过指定推理模块
     data->MarkSkipModule(skip_module);
+    LOGI(ORIENTATION) << " Mark skip module [" << skip_module->GetName() << "]";
     return 0;
   }
 

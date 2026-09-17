@@ -42,6 +42,9 @@ namespace cnstream {
 class Module;
 class Pipeline;
 
+/// 帧级推理跳过标记：value 为 uint64 mask，bit = 1 << module->GetId()，
+/// 记录哪些推理模块跳过了本帧的推理
+/// 通过 FrameInfo::MarkInferSkipped 原子写入
 inline const std::string kSkipFrameTag = "skip_frame";
 
 /// 帧级裁剪旋转标记：被标记的帧，其对象级处理在 bbox 裁剪后将裁剪图旋转 180°
@@ -160,6 +163,17 @@ class FrameInfo : private NonCopyable {
    * @return No return value.
    */
   void MarkSkipModule(Module* module);
+
+  /**
+   * @brief 原子置位本帧的推理跳过标记（kSkipFrameTag，value 为 uint64 mask）。
+   *
+   * 多个推理模块可能并发对同一帧打标，统一通过本方法在 mask_lock_ 内完成 RMW。
+   *
+   * @param[in] bit 目标模块的 bit（1 << module->GetId()），为 0 时不做任何修改。
+   *
+   * @return 返回置位后的完整 mask。
+   */
+  uint64_t MarkInferSkipped(uint64_t bit);
 
 #ifdef VSTREAM_UNIT_TEST
  public:

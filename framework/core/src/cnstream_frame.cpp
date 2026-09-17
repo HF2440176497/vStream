@@ -87,6 +87,18 @@ void FrameInfo::MarkSkipModule(Module* module) {
   skip_mask_ |= (uint64_t)1 << module->GetId();
 }
 
+uint64_t FrameInfo::MarkInferSkipped(uint64_t bit) {
+  if (bit == 0) {
+    std::lock_guard<std::mutex> lk(mask_lock_);
+    return collection.HasValue(kSkipFrameTag) ? collection.Get<uint64_t>(kSkipFrameTag) : 0;
+  }
+  std::lock_guard<std::mutex> lk(mask_lock_);
+  uint64_t mask = collection.HasValue(kSkipFrameTag) ? collection.Get<uint64_t>(kSkipFrameTag) : 0;
+  mask |= bit;
+  collection.Set(kSkipFrameTag, mask);
+  return mask;
+}
+
 bool FrameInfo::IsModuleSkipped(Module* module) {
   std::lock_guard<std::mutex> lk(mask_lock_);
   return (skip_mask_ & ((uint64_t)1 << module->GetId())) != 0;

@@ -32,6 +32,8 @@ InferEngine::InferEngine(const InferOptions& options)
       obj_preprocessor_(options.obj_preprocessor()),
       obj_postprocessor_(options.obj_postprocessor()),
       obj_filter_(options.obj_filter()),
+      frame_filter_(options.frame_filter()),
+      module_bit_mask_(options.module_bit_mask()),
       dump_resized_image_dir_(options.dump_resized_image_dir()),
       batching_timeout_(options.batching_timeout()),
       device_id_(options.device_id()),
@@ -161,6 +163,14 @@ InferEngine::ResultWaitingCard InferEngine::FeedData(std::shared_ptr<FrameInfo> 
     }  // end for objs
 
   } else {  // batching_by_obj_ = false
+
+    // 帧级门控：仅作用于帧级推理路径
+    // Filter 返回 false 的帧跳过推理，原子置位 kSkipFrameTag（uint64 mask）后透传
+    if (frame_filter_ && !frame_filter_->Filter(frame_info)) {
+      frame_info->MarkInferSkipped(module_bit_mask_);
+      timeout_helper_.UnlockOperator();
+      return card;
+    }
 
     // 对于前处理，task 封装对单张图像的操作
     InferTaskSptr task = batching_stage_->Batching(frame_info);

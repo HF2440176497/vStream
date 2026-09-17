@@ -1,5 +1,5 @@
 /*************************************************************************
- * Copyright (C) [2021] by Cambricon, Inc. All rights reserved
+ * Copyright (C) [2026] by vStream. All rights reserved
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,13 +24,13 @@
 /**
  *  \file frame_filter.hpp
  *
- *  This file contains a declaration of class FrameFilter
+ *  This file contains a declaration of class FrameFilter.
+ *  FrameFilter 与 ObjFilter 对齐：ObjFilter 用于对象级过滤（批内逐 obj 筛选），
+ *  FrameFilter 用于帧级过滤（整帧门控，帧级不满足时该帧不进入推理批处理）。
  */
 
 #include <memory>
 #include <string>
-#include <utility>
-#include <vector>
 
 #include "reflex_object.h"
 
@@ -41,6 +41,7 @@ namespace cnstream {
 
 /**
  * @brief The base class of frame filter.
+ * @note Filter 会被多个 TaskLoop 线程并发调用，实现必须是无状态的（只读配置、只读 frame）。
  */
 class FrameFilter : virtual public ReflexObjectEx<FrameFilter> {
  public:
@@ -51,23 +52,30 @@ class FrameFilter : virtual public ReflexObjectEx<FrameFilter> {
   /**
    * @brief Creates relative frame filter.
    *
-   * @param frame_filter_name The frame filter class name.
+   * @param filter_name The frame filter class name.
    *
    * @return None
    */
-  static FrameFilter* Create(const std::string& frame_filter_name) {
-    return ReflexObjectEx<FrameFilter>::CreateObject(frame_filter_name);
+  static FrameFilter* Create(const std::string& filter_name) {
+    return ReflexObjectEx<FrameFilter>::CreateObject(filter_name);
+  }
+
+  virtual bool Init(const std::map<std::string, std::string> &params) {
+    return true;
   }
 
   /**
-   * @brief Filters frame.
+   * @brief Filters the frame.
    *
    * @param finfo: The smart pointer of struct to store origin frame data.
    *
-   * @return Returns true if this frame is satisfied, otherwise returns false.
+   * @return Returns true if this frame should be inferred, otherwise returns false
+   *         (false 时该帧跳过推理).
    */
   virtual bool Filter(const FrameInfoPtr& finfo) = 0;
 };  // class FrameFilter
+
+using FrameFilterPtr = std::shared_ptr<FrameFilter>;
 
 }  // namespace cnstream
 

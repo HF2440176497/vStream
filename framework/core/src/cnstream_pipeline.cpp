@@ -561,6 +561,8 @@ void Pipeline::TransmitToNextNodes(NodeContext* context, const std::shared_ptr<F
     return;
   }
 
+  auto cur_module_name = context->module->GetName();
+
   for (auto next_node : node->GetNext()) {
     if (!PassedByAllParentNodes(&next_node->data, cur_mask)) continue;
     auto next_module = next_node->data.module;
@@ -573,6 +575,7 @@ void Pipeline::TransmitToNextNodes(NodeContext* context, const std::shared_ptr<F
           OnPassThrough(&next_node->data, data);  // 不需要再调用 OnEos 操作
           return;
         }
+        LOGI(CORE) << "Module [" << cur_module_name << "] skips module [" << next_module->GetName() << "]";
         TransmitToNextNodes(&next_node->data, data, bypass_mask);
       }
       continue;

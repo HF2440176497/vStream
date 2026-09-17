@@ -240,6 +240,20 @@ void InferParamManager::RegisterAll(ParamRegister *pregister) {
   };
   ASSERT(RegisterParam(pregister, param));
 
+  param.name = "frame_filter_name";
+  param.desc_str =
+      "Optional. The class name for frame filter. See cnstream::FrameFilter. "
+      "Frames rejected by the filter skip inferencing "
+      "Mutually exclusive with object_infer=true / obj_filter_name: use frame_filter for frame-level "
+      "inferencing and obj_filter for object-level inferencing. No frame will be filtered when not set.";
+  param.default_value = "";
+  param.type = "string";
+  param.parser = [](const std::string &value, InferParams *param_set) -> bool {
+    param_set->frame_filter_name = value;
+    return true;
+  };
+  ASSERT(RegisterParam(pregister, param));
+
   param.name = "obj_filter_name";
   param.desc_str =
       "Optional. The class name for object filter. See cnstream::ObjFilter. "
@@ -348,6 +362,38 @@ void InferParamManager::RegisterAll(ParamRegister *pregister) {
         value_str = val.get<std::string>();
       }
       param_set->custom_postproc_params[key] = value_str;
+    }
+    return true;
+  };
+  ASSERT(RegisterParam(pregister, param));
+
+  param.name = "custom_frame_filter_params";
+  param.desc_str =
+      "Optional. Custom frame filter parameters. After the inferencer module creates an instance of "
+      "the frame filter class specified by frame_filter_name, the Init function of the specified "
+      "frame filter class will be called, and these parameters will be passed to Init. See FrameFilter::Init for detail.";
+  param.default_value = "";
+  param.type = "json string";
+  param.parser = [](const std::string &value, InferParams *param_set) -> bool {
+    if (value.empty()) {
+      param_set->custom_frame_filter_params.clear();
+      return true;
+    }
+    auto doc = nlohmann::ordered_json::parse(value);
+    if (!doc.is_object()) {
+      LOGE(CORE) << "Custom frame filter parameters configuration must be object type.";
+      return false;
+    }
+    param_set->custom_frame_filter_params.clear();
+
+    std::string value_str {};
+    for (auto& [key, val] : doc.items()) {
+      if (!val.is_string()) {
+        value_str = val.dump();
+      } else {
+        value_str = val.get<std::string>();
+      }
+      param_set->custom_frame_filter_params[key] = value_str;
     }
     return true;
   };

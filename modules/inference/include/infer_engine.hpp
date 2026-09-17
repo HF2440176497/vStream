@@ -41,6 +41,7 @@
 #include "postproc.hpp"
 #include "preproc.hpp"
 #include "obj_filter.hpp"
+#include "frame_filter.hpp"
 #include "timeout_helper.hpp"
 
 namespace cnstream {
@@ -90,6 +91,8 @@ class InferEngine {
   std::shared_ptr<ObjBatchingStage>                                 obj_batching_stage_ = nullptr;
   std::vector<std::shared_ptr<BatchingDoneStage>>                   batching_done_stages_;  // note: include postproc_stage, but obj_postproc_stage not included
   std::shared_ptr<ObjPostprocessingBatchingDoneStage>               obj_postproc_stage_ = nullptr;
+  std::shared_ptr<FrameFilter>                                      frame_filter_ = nullptr;  // 帧级门控：Filter=false 的帧跳过批处理
+  uint64_t                                                          module_bit_mask_ = 0;  // 本模块的 module mask bit
   std::shared_ptr<ObjFilter>                                        obj_filter_ = nullptr;
 
   std::shared_ptr<IOResource>        input_res_ = nullptr;

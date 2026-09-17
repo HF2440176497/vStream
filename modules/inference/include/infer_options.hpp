@@ -7,6 +7,7 @@
 
 #include "preproc.hpp"
 #include "postproc.hpp"
+#include "frame_filter.hpp"
 #include "obj_filter.hpp"
 #include "input_deriver.hpp"
 
@@ -68,6 +69,16 @@ class InferOptions {
     return *this;
   }
 
+  InferOptions& SetFrameFilter(std::shared_ptr<FrameFilter> frame_filter) {
+    frame_filter_ = frame_filter;
+    return *this;
+  }
+
+  InferOptions& SetModuleBitMask(uint64_t module_bit_mask) {
+    module_bit_mask_ = module_bit_mask;
+    return *this;
+  }
+
   InferOptions& SetObjFilter(std::shared_ptr<ObjFilter> obj_filter) {
     obj_filter_ = obj_filter;
     return *this;
@@ -108,6 +119,8 @@ class InferOptions {
   bool batching_by_obj() const { return batching_by_obj_; }
   std::shared_ptr<ObjPreproc> obj_preprocessor() const { return obj_preprocessor_; }
   std::shared_ptr<ObjPostproc> obj_postprocessor() const { return obj_postprocessor_; }
+  std::shared_ptr<FrameFilter> frame_filter() const { return frame_filter_; }
+  uint64_t module_bit_mask() const { return module_bit_mask_; }
   std::shared_ptr<ObjFilter> obj_filter() const { return obj_filter_; }
   std::shared_ptr<InputDeriver> input_deriver() const { return input_deriver_; }
   const std::string& dump_resized_image_dir() const { return dump_resized_image_dir_; }
@@ -126,6 +139,8 @@ class InferOptions {
   bool batching_by_obj_ = false;
   std::shared_ptr<ObjPreproc> obj_preprocessor_ = nullptr;
   std::shared_ptr<ObjPostproc> obj_postprocessor_ = nullptr;
+  std::shared_ptr<FrameFilter> frame_filter_ = nullptr;
+  uint64_t module_bit_mask_ = 0;  // 本模块在 module mask 中的 bit（1 << module->GetId()）
   std::shared_ptr<ObjFilter> obj_filter_ = nullptr;
   std::shared_ptr<InputDeriver> input_deriver_ = nullptr;
   std::string dump_resized_image_dir_;

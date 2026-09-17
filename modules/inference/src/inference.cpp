@@ -34,6 +34,7 @@
 #include "infer_trans_data_helper.hpp"
 #include "input_deriver.hpp"
 #include "obj_filter.hpp"
+#include "frame_filter.hpp"
 #include "postproc.hpp"
 #include "preproc.hpp"
 
@@ -65,6 +66,7 @@ class InferencePrivate: public NonCopyable {
   std::shared_ptr<ObjPreproc> obj_preproc_ = nullptr;
   std::shared_ptr<ObjPostproc> obj_postproc_ = nullptr;
   std::shared_ptr<ObjFilter> obj_filter_ = nullptr;
+  std::shared_ptr<FrameFilter> frame_filter_ = nullptr;
   std::shared_ptr<InputDeriver> input_deriver_ = nullptr;
 
   uint32_t trans_data_size_ = 20;
@@ -76,6 +78,15 @@ class InferencePrivate: public NonCopyable {
 
   void InferEngineErrorHandleFunc(const std::string& err_msg) {
     LOGE(INFER) << err_msg;
+  }
+
+  /**
+   * @brief 本模块在 module mask 中的 bit（1 << module->GetId()）
+   *        模块未入 pipeline（GetId 无效）时返回 0，MarkInferSkipped 对 0 不做修改。
+   */
+  uint64_t ModuleBitMask() const {
+    size_t id = q_ptr_->GetId();
+    return id < 64 ? (static_cast<uint64_t>(1) << id) : 0;
   }
 
   /**
@@ -152,6 +163,26 @@ class InferencePrivate: public NonCopyable {
       trans_data_size_ = params.trans_data_size;
     } else {
       LOGW(INFER) << "[" << module_name_ << "] trans_data_size is 0. use default:" << trans_data_size_;
+    }
+
+    // 帧级过滤：仅用于帧级推理路径（object_infer=false）
+    if (!params.frame_filter_name.empty()) {
+      if (params.object_infer) {
+        LOGE(INFER) << "[" << module_name_ << "] frame_filter_name is mutually exclusive with "
+                    << "object_infer(true)/obj_filter_name. Use obj_filter for object-level filtering.";
+        return false;
+      }
+      frame_filter_ = std::shared_ptr<FrameFilter>(FrameFilter::Create(params.frame_filter_name));
+      if (!frame_filter_) {
+        LOGE(INFER) << "[" << module_name_ << "] Can not find FrameFilter implemention by name: "
+                    << params.frame_filter_name;
+        return false;
+      }
+      if (!frame_filter_->Init(params.custom_frame_filter_params)) {
+        LOGE(INFER) << "[" << module_name_ << "] frame_filter_ init failed.";
+        return false;
+      }
+      LOGI(INFER) << "[" << module_name_ << "] Frame filter set:" << params.frame_filter_name;
     }
 
     if (params.object_infer) {
@@ -275,6 +306,8 @@ class InferencePrivate: public NonCopyable {
           .SetObjPreprocessor(obj_preproc_)
           .SetObjPostprocessor(obj_postproc_)
           .SetObjFilter(obj_filter_)
+          .SetFrameFilter(frame_filter_)
+          .SetModuleBitMask(ModuleBitMask())
           .SetInputDeriver(input_deriver_)
           .SetDumpResizedImageDir(dump_resized_image_dir_)
           .SetSavingInferInput(params_.saving_infer_input)
@@ -402,7 +435,7 @@ int Inference::Process(std::shared_ptr<FrameInfo> data) {
     // drop_count 重新从 1 计数
     if (drop_data) {
       pctx->drop_count %= d_ptr_->params_.infer_interval;
-      data->collection.AddIfNotExists(kSkipFrameTag, true);
+      data->MarkInferSkipped(d_ptr_->ModuleBitMask());
     }
     std::shared_ptr<std::promise<void>> promise = std::make_shared<std::promise<void>>();
     promise->set_value();
