@@ -86,17 +86,17 @@ class InputDeriver : virtual public ReflexObjectEx<InputDeriver> {
   virtual int Derive(const FrameInfoPtr& finfo, const std::string& model_name) = 0;
 
   /**
-   * @brief 推理后调用：把本模型 obj 从模块派生图坐标系还原到基准图坐标系。
+   * @brief 推理后调用：把本模型产物（obj 坐标等）从模块派生图还原到基准图，使帧信息对下游模块透明。
    *
    * 仅处理 obj->model_name == model_name 的对象。必须幂等：同一帧因批次 pad
-   * 可能触发多次后处理，实现需保证坐标只被逆变换一次。
+   * 可能触发多次后处理，实现需保证还原只被执行一次。
    *
    * @param[in] finfo 帧信息。
    * @param[in] model_name 本模块的模型名。
    *
    * @return Returns 0 if successful, otherwise returns -1.
    */
-  virtual int RestoreObjs(const FrameInfoPtr& finfo, const std::string& model_name) = 0;
+  virtual int Restore(const FrameInfoPtr& finfo, const std::string& model_name) = 0;
 
  protected:
   std::map<std::string, std::string> params_;

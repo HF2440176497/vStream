@@ -245,9 +245,9 @@ std::vector<std::shared_ptr<InferTask>> PostprocessingBatchingDoneStage::Batchin
           }
           if (!cnstream::IsStreamRemoved(finfo.first->stream_id)) {
             this->postprocessor_->Execute(cpu_outputs, this->model_, finfo.first);
-            // 输入派生还原：把 obj 从模块派生图坐标逆变换回基准图坐标
+            // 输入派生还原：把本模型产物从模块派生图坐标还原回基准图坐标
             if (this->input_deriver_) {
-              this->input_deriver_->RestoreObjs(finfo.first, this->model_->get_name());
+              this->input_deriver_->Restore(finfo.first, this->model_->get_name());
             }
           }
           return 0;
@@ -283,10 +283,10 @@ std::vector<std::shared_ptr<InferTask>> PostprocessingBatchingDoneStage::Batchin
     for (const auto& it : finfos) batched_finfos.push_back(it.first);
 
     this->postprocessor_->Execute(net_outputs, this->model_, batched_finfos);
-    // 输入派生还原：从模块派生图坐标逆变换回基准图坐标
+    // 输入派生还原：把本模型产物从模块派生图坐标还原回基准图坐标
     if (this->input_deriver_) {
       for (const auto& finfo : batched_finfos) {
-        this->input_deriver_->RestoreObjs(finfo, this->model_->get_name());
+        this->input_deriver_->Restore(finfo, this->model_->get_name());
       }
     }
     return 0;

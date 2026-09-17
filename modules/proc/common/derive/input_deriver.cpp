@@ -90,7 +90,7 @@ class Rotate90InputDeriver: public InputDeriver {
    * @return 0 成功，-1 失败
    * 当不需要处理的时候，也是返回 0
    */
-  int RestoreObjs(const FrameInfoPtr& finfo, const std::string& model_name) override {
+  int Restore(const FrameInfoPtr& finfo, const std::string& model_name) override {
     if (!finfo || model_name.empty()) return -1;
 
     const std::string module_tag = ModelInputImageTagForModel(model_name);
@@ -106,7 +106,7 @@ class Rotate90InputDeriver: public InputDeriver {
     const int derived_h = derived.rows;  // 逆时针时 = 基准图宽 W0
 
     LOGI(DERIVE) << "Restore for model:" << model_name
-                  << ", derived size [" << derived_h << " " << derived_w << "]";
+                  << ", derived size [" << derived_h << " " << derived_w << "]"
                   << ", rotation: " << rotation_;
 
     std::lock_guard<std::mutex> lock(objs_holder->mutex_);

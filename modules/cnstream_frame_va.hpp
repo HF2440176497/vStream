@@ -604,7 +604,7 @@ inline constexpr char kInferObjTypeKey[] = "type";
 /**
  * @brief Extra attribute key marking that an InferObject's bbox coordinates have been
  *        restored from the module-level derived image back to the base image
- *        (used by InputDeriver::RestoreObjs for idempotency under batch padding).
+ *        (used by InputDeriver::Restore for idempotency under batch padding).
  */
 inline constexpr char kInferObjCoordRestoredKey[] = "coord_restored";
 
