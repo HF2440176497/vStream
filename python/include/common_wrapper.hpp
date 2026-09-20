@@ -30,6 +30,9 @@ namespace py = pybind11;
 
 namespace cnstream {
 
+// 桥接层与 Python 侧协商的 ABI 版本
+constexpr int kBridgeAbiVersion = 1;
+
 py::dtype GetNpDType(int depth);
 std::vector<std::size_t> GetMatShape(const cv::Mat& m);
 py::capsule MakeCapsule(const cv::Mat& m);

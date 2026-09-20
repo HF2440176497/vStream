@@ -24,6 +24,7 @@ extern "C" {
   #include <libavutil/log.h>
 }
 #include "cnstream_ffmpeg_logging.hpp"
+#include "common_wrapper.hpp"
 
 namespace py = pybind11;
 
@@ -40,6 +41,7 @@ void ModelValidatorWrapper(const py::module &);
 
 PYBIND11_MODULE(vstream, m) {
   m.doc() = "vstream python api";
+  m.attr("ABI_VERSION") = kBridgeAbiVersion;
 
   SetFFmpegLogLevel(AV_LOG_WARNING);
   m.def("set_ffmpeg_log_level", &SetFFmpegLogLevel,
