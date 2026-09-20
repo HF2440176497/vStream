@@ -31,7 +31,11 @@ inline bool __check_cuda_runtime(cudaError_t code, const char* op, const char* f
 
 class Logger : public ILogger {
  public:
+  // 只打印不高于该等级的日志（TRT 中等级数值越小越严重）
+  void setSeverity(Severity severity) noexcept { severity_ = severity; }
+
   void log(Severity severity, const char* msg) noexcept override {
+    if (severity > severity_) return;
     switch (severity) {
       case Severity::kINTERNAL_ERROR:
         std::cerr << "[TRT][FATAL] " << msg << std::endl;
@@ -49,6 +53,9 @@ class Logger : public ILogger {
         std::cerr << "[TRT] " << msg << std::endl;
     }
   }
+
+ private:
+  Severity severity_{Severity::kWARNING};
 };
 static Logger gLogger;
 
@@ -60,6 +67,45 @@ static std::string join_dims(const std::vector<int>& dims) {
   for (size_t i = 0; i < dims.size(); ++i) {
     result += std::to_string(dims[i]);
     if (i < dims.size() - 1) result += ", ";
+  }
+  result += ")";
+  return result;
+}
+
+static const char* severity_name(ILogger::Severity severity) {
+  switch (severity) {
+    case ILogger::Severity::kINTERNAL_ERROR: return "INTERNAL_ERROR";
+    case ILogger::Severity::kERROR:          return "ERROR";
+    case ILogger::Severity::kWARNING:        return "WARNING";
+    case ILogger::Severity::kINFO:           return "INFO";
+    default:                                 return "VERBOSE";
+  }
+}
+
+static const char* dtype_name(nvinfer1::DataType dtype) {
+  switch (dtype) {
+    case nvinfer1::DataType::kFLOAT:  return "FLOAT";
+    case nvinfer1::DataType::kHALF:   return "HALF";
+    case nvinfer1::DataType::kINT8:   return "INT8";
+    case nvinfer1::DataType::kUINT8:  return "UINT8";
+    case nvinfer1::DataType::kINT32:  return "INT32";
+    case nvinfer1::DataType::kINT64:  return "INT64";
+    case nvinfer1::DataType::kBOOL:   return "BOOL";
+    default:                          return "OTHER";
+  }
+}
+
+// 动态维度(-1)显示为 '?'
+static std::string dims_to_string(const nvinfer1::Dims& dims) {
+  if (dims.nbDims <= 0) return "(invalid)";
+  std::string result = "(";
+  for (int i = 0; i < dims.nbDims; ++i) {
+    if (dims.d[i] < 0) {
+      result += "?";
+    } else {
+      result += std::to_string(dims.d[i]);
+    }
+    if (i < dims.nbDims - 1) result += ", ";
   }
   result += ")";
   return result;
@@ -108,6 +154,9 @@ CompileOutput::CompileOutput(const char* file) : type_(CompileOutputType::File),
 std::vector<uint8_t> compile(const ModelSource& source, const CompileOutput& saveto,
                              const CompileConfig& config) {
 
+  gLogger.setSeverity(config.log_severity);
+  std::cout << "TensorRT LOG level: " << severity_name(config.log_severity) << std::endl;
+
   std::shared_ptr<IBuilder> builder(createInferBuilder(gLogger), destroy_trt_pointer<IBuilder>);
   if (!builder) {
     std::cerr << "Failed to create TensorRT builder" << std::endl;
@@ -135,7 +184,7 @@ std::vector<uint8_t> compile(const ModelSource& source, const CompileOutput& sav
 
   bool parsed = false;
   if (source.type() == ModelSourceType::ONNX) {
-    parsed = parser->parseFromFile(source.onnxmodel().c_str(), static_cast<int>(ILogger::Severity::kWARNING));
+    parsed = parser->parseFromFile(source.onnxmodel().c_str(), static_cast<int>(config.log_severity));
   } else {
     parsed = parser->parse(source.onnx_data(), source.onnx_data_size());
   }
@@ -184,6 +233,7 @@ std::vector<uint8_t> compile(const ModelSource& source, const CompileOutput& sav
               << " [dtype=" << static_cast<int>(tensor->getType()) << "]" << std::endl;
   }
   std::cout << "Dynamic shape: " << (has_dynamic_shape ? "YES" : "NO (static)") << std::endl;
+  std::cout << "(above are parse-time dims; the built engine dims are printed after build)" << std::endl;
   std::cout << "=======================================" << std::endl;
 
   std::shared_ptr<IBuilderConfig> builder_config(builder->createBuilderConfig(),
@@ -267,6 +317,30 @@ std::vector<uint8_t> compile(const ModelSource& source, const CompileOutput& sav
         std::chrono::high_resolution_clock::now() - start_time).count();
   std::cout << "Engine built successfully in " << duration << " ms" << std::endl;
 
+  std::cout << "========== Built Engine I/O ==========" << std::endl;
+  bool engine_has_dynamic_dims = false;
+  for (int i = 0; i < engine->getNbIOTensors(); ++i) {
+    const char* io_name = engine->getIOTensorName(i);
+    nvinfer1::TensorIOMode io_mode = engine->getTensorIOMode(io_name);
+    nvinfer1::Dims io_dims = engine->getTensorShape(io_name);
+    bool io_dynamic = false;
+    for (int j = 0; j < io_dims.nbDims; ++j) {
+      if (io_dims.d[j] == -1) io_dynamic = true;
+    }
+    if (io_dynamic) engine_has_dynamic_dims = true;
+    std::cout << "  [" << (io_mode == nvinfer1::TensorIOMode::kINPUT ? "INPUT " : "OUTPUT")
+              << "] " << io_name << ": " << dims_to_string(io_dims)
+              << ", dtype=" << dtype_name(engine->getTensorDataType(io_name))
+              << (io_dynamic ? ", DYNAMIC" : ", static") << std::endl;
+  }
+  if (engine_has_dynamic_dims) {
+    std::cout << "WARNING: engine has dynamic dims, ModelLoaderTrt requires static output dims; "
+                 "constant-fold the ONNX sizes path (e.g. Resize sizes) before conversion" << std::endl;
+  } else {
+    std::cout << "Engine I/O is fully static" << std::endl;
+  }
+  std::cout << "======================================" << std::endl;
+
   std::shared_ptr<IHostMemory> serialized(engine->serialize(), destroy_trt_pointer<IHostMemory>);
   if (!serialized || serialized->size() == 0) {
     std::cerr << "Engine serialization failed" << std::endl;
@@ -293,6 +367,21 @@ std::vector<uint8_t> compile(const ModelSource& source, const CompileOutput& sav
 }
 
 }  // namespace TRT
+
+static bool ParseLogSeverity(const std::string& level, nvinfer1::ILogger::Severity* severity) {
+  static const std::map<std::string, nvinfer1::ILogger::Severity> table = {
+      {"INTERNAL_ERROR", nvinfer1::ILogger::Severity::kINTERNAL_ERROR},
+      {"ERROR",          nvinfer1::ILogger::Severity::kERROR},
+      {"WARNING",        nvinfer1::ILogger::Severity::kWARNING},
+      {"INFO",           nvinfer1::ILogger::Severity::kINFO},
+  };
+  auto it = table.find(level);
+  if (it == table.end()) {
+    return false;
+  }
+  *severity = it->second;
+  return true;
+}
 
 static bool LoadConfigFromJson(const std::string& config_file,
                                std::string* onnx_path,
@@ -355,6 +444,15 @@ static bool LoadConfigFromJson(const std::string& config_file,
     config->strict_qdq = data["strict_qdq"].get<bool>();
   }
 
+  if (data.find("log_level") != data.end()) {
+    const auto& log_level = data["log_level"];
+    if (!log_level.is_string() || !ParseLogSeverity(log_level.get<std::string>(), &config->log_severity)) {
+      std::cerr << "Invalid config field 'log_level', expect one of: "
+                << "INTERNAL_ERROR, ERROR, WARNING, INFO" << std::endl;
+      return false;
+    }
+  }
+
   if (config->min_batch_size > config->opt_batch_size ||
       config->opt_batch_size > config->max_batch_size) {
     std::cerr << "Invalid batch sizes: require min_batch_size <= opt_batch_size <= max_batch_size."
@@ -368,6 +466,8 @@ static bool LoadConfigFromJson(const std::string& config_file,
 static void PrintUsage(const char* program) {
   std::cerr << "Usage: " << program << " <config.json>" << std::endl;
   std::cerr << "   or: " << program << " <onnx_path> <out_engine_path> [config_json]" << std::endl;
+  std::cerr << "Optional config fields: max_workspace_size, dynamic_batch, strict_qdq, "
+            << "log_level (INTERNAL_ERROR|ERROR|WARNING|INFO)" << std::endl;
 }
 
 int main(int argc, char* argv[]) {

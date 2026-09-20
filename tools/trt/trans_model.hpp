@@ -28,6 +28,9 @@ struct ProfileShape {
 struct CompileConfig {
   size_t max_workspace_size = 2ULL << 30;
 
+  // TensorRT 日志等级：只打印不高于该等级的日志（数值越小越严重），默认只保留 WARNING/ERROR
+  nvinfer1::ILogger::Severity log_severity = nvinfer1::ILogger::Severity::kWARNING;
+
   bool dynamic_batch = true;
   int  max_batch_size = 8;
   int  opt_batch_size = 4;

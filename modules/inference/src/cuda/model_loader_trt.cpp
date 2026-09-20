@@ -22,11 +22,49 @@ static bool RegisterModelLoader() {
 static bool model_loader_registered = RegisterModelLoader();
 
 static std::vector<int> dims_to_vector(const nvinfer1::Dims& dims) {
-  std::vector<int> shape(dims.nbDims);
+  std::vector<int> shape;
+  // 防御: 非法 Dims（如 getProfileShape 对非输入张量返回的 Dims{-1, {}}）返回空 vector，
+  // 避免 std::vector<int>(-1) 异常
+  if (dims.nbDims <= 0) {
+    return shape;
+  }
+  shape.resize(dims.nbDims);
   for (int i = 0; i < dims.nbDims; ++i) {
     shape[i] = dims.d[i];
   }
   return shape;
+}
+
+// 是否含未解析的动态维度(-1)
+static bool has_dynamic_dims(const nvinfer1::Dims& dims) {
+  for (int i = 0; i < dims.nbDims; ++i) {
+    if (dims.d[i] == -1) return true;
+  }
+  return false;
+}
+
+// 维度是否已全部解析且为正
+static bool is_static_shape(const nvinfer1::Dims& dims) {
+  if (dims.nbDims <= 0) return false;
+  for (int i = 0; i < dims.nbDims; ++i) {
+    if (dims.d[i] <= 0) return false;
+  }
+  return true;
+}
+
+static std::string dims_to_str(const nvinfer1::Dims& dims) {
+  if (dims.nbDims <= 0) return "(invalid)";
+  std::string result = "(";
+  for (int i = 0; i < dims.nbDims; ++i) {
+    if (dims.d[i] < 0) {
+      result += "?";
+    } else {
+      result += std::to_string(dims.d[i]);
+    }
+    if (i < dims.nbDims - 1) result += ", ";
+  }
+  result += ")";
+  return result;
 }
 
 
@@ -142,7 +180,7 @@ ModelLoaderTrt::ModelLoaderTrt(int device_id) : ModelLoader(device_id) {
 
 bool ModelLoaderTrt::Init(const std::string& engine_path, const InferParams& params) {
   if (engine_path.empty()) {
-    LOGF(MODEL) << "Empty engine path";
+    LOGE(MODEL) << "Empty engine path";
     return false;
   }    
   // Set input ordered index
@@ -176,25 +214,26 @@ bool ModelLoaderTrt::LoadEngine(const std::string& engine_path) {
   }
   auto model_data = utils::load_model(engine_path);
   if (model_data.empty()) {
-    LOGF(MODEL) << "Failed to load model file: " << engine_path;
+    LOGE(MODEL) << "Failed to load model file: " << engine_path;
     return false;
   }
   runtime_ = std::unique_ptr<nvinfer1::IRuntime, TrtDeleter>(nvinfer1::createInferRuntime(logger_));
   if (runtime_ == nullptr) {
-    LOGF(MODEL) << "Failed to create TensorRT runtime";
+    // 模型加载失败只上报、返回 false；不可用 LOGF（LOG(FATAL) 会 abort 掉嵌入 vstream 的宿进程）
+    LOGE(MODEL) << "Failed to create TensorRT runtime";
     return false;
   }
 
   engine_ = std::unique_ptr<nvinfer1::ICudaEngine, TrtDeleter>(
       runtime_->deserializeCudaEngine(model_data.data(), model_data.size()));
   if (engine_ == nullptr) {
-    LOGF(MODEL) << "Failed to deserialize TensorRT engine";
+    LOGE(MODEL) << "Failed to deserialize TensorRT engine";
     return false;
   }
 
   context_ = CreateExecutionContext();
   if (context_ == nullptr) {
-    LOGF(MODEL) << "Failed to create TensorRT execution context";
+    LOGE(MODEL) << "Failed to create TensorRT execution context";
     return false;
   }
   if (!ParseBindings()) {
@@ -255,7 +294,7 @@ bool ModelLoaderTrt::ParseBindings() {
       LOGW(MODEL) << "Model with " << input_names_.size() << " inputs, choose input index: " << input_ordered_index_;
   }
   if (input_ordered_index_ < 0 || input_ordered_index_ >= static_cast<int>(input_names_.size())) {
-    LOGF(MODEL) << "input_ordered_index_ out of range: " << input_ordered_index_
+    LOGE(MODEL) << "input_ordered_index_ out of range: " << input_ordered_index_
                 << ", input count: " << input_names_.size();
     return false;
   }
@@ -263,59 +302,52 @@ bool ModelLoaderTrt::ParseBindings() {
 
   int input_num = 0;
   for (auto& input_name : input_names_) {
-    nvinfer1::Dims opt_dims;
-    auto dims = engine_->getTensorShape(input_name.c_str());
+    nvinfer1::Dims dims = engine_->getTensorShape(input_name.c_str());
 
-    std::string input_dims_str;
-    for (int j = 0; j < dims.nbDims; ++j) {
-      input_dims_str += std::to_string(dims.d[j]);
-      if (j < dims.nbDims - 1) input_dims_str += "x";
-    }
-    LOGI(MODEL) << "input_name [" << input_num++ << "]: " << input_name << "; dims: " << input_dims_str;
-
-    bool input_has_dynamic = false;
-    for (int j = 0; j < dims.nbDims; ++j) {
-      if (dims.d[j] == -1) { input_has_dynamic = true; break; }
-    }
-    if (input_has_dynamic) {
+    if (has_dynamic_dims(dims)) {
       auto opt_profile_index = context_->getOptimizationProfile();
-      opt_dims = engine_->getProfileShape(input_name.c_str(),
-                                          opt_profile_index,
-                                          nvinfer1::OptProfileSelector::kOPT);
-      context_->setInputShape(input_name.c_str(), opt_dims);
-    } else {
-      opt_dims = dims;
+      nvinfer1::Dims opt_dims = engine_->getProfileShape(input_name.c_str(),
+                                                         opt_profile_index,
+                                                         nvinfer1::OptProfileSelector::kOPT);
+      if (!is_static_shape(opt_dims)) {
+        LOGE(MODEL) << "Input tensor '" << input_name << "' dims unresolved: " << dims_to_str(opt_dims)
+                    << " (engine dims: " << dims_to_str(dims) << ", profile index: " << opt_profile_index << ")";
+        return false;
+      }
+      if (!context_->setInputShape(input_name.c_str(), opt_dims)) {
+        LOGE(MODEL) << "setInputShape failed for input tensor: " << input_name
+                    << ", dims: " << dims_to_str(opt_dims);
+        return false;
+      }
+      dims = opt_dims;
+    } else if (!is_static_shape(dims)) {
+      LOGE(MODEL) << "Input tensor '" << input_name << "' has invalid dims: " << dims_to_str(dims);
+      return false;
     }
-    TensorShape input_shape(dims_to_vector(opt_dims));
-    input_shapes_.push_back(input_shape);  // 对应 input_names_ 顺序
+
+    LOGI(MODEL) << "input_name [" << input_num++ << "]: " << input_name << "; dims: " << dims_to_str(dims);
+    input_shapes_.push_back(TensorShape(dims_to_vector(dims)));  // 对应 input_names_ 顺序
   }  // end of input_names_
 
   int output_num = 0;
   for (auto& output_name : output_names_) {
-    nvinfer1::Dims opt_dims;
-    auto dims = engine_->getTensorShape(output_name.c_str());
+    nvinfer1::Dims dims = engine_->getTensorShape(output_name.c_str());
 
-    bool output_has_dynamic = false;
-    for (int j = 0; j < dims.nbDims; ++j) {
-      if (dims.d[j] == -1) { output_has_dynamic = true; break; }
+    if (has_dynamic_dims(dims)) {
+      // 形状依赖输入的输出（如 sizes 由 Shape/Concat 计算出的 Resize）在运行期解析：
+      // 此时输入 shape 已按 opt profile 设置，可拿到具体维度；
+      // 数据相关的输出仍为 -1，本类不支持
+      dims = context_->getTensorShape(output_name.c_str());
     }
-    if (output_has_dynamic) {
-      auto opt_profile_index = context_->getOptimizationProfile();
-      opt_dims = engine_->getProfileShape(output_name.c_str(),
-                                          opt_profile_index,
-                                          nvinfer1::OptProfileSelector::kOPT);
-    } else {
-      opt_dims = dims;
+    if (!is_static_shape(dims)) {
+      LOGE(MODEL) << "Output tensor '" << output_name << "' dims unresolved: " << dims_to_str(dims)
+                  << ". ModelLoaderTrt requires static output shapes; rebuild the engine with "
+                     "output dims resolved (e.g. constant-fold the ONNX sizes path)";
+      return false;
     }
 
-    std::string output_dims_str;
-    for (int j = 0; j < opt_dims.nbDims; ++j) {
-      output_dims_str += std::to_string(opt_dims.d[j]);
-      if (j < opt_dims.nbDims - 1) output_dims_str += "x";
-    }
-    LOGI(MODEL) << "output_name [" << output_num++ << "]: " << output_name << "; dims: " << output_dims_str;
-    TensorShape output_shape(dims_to_vector(opt_dims));
-    output_shapes_.push_back(output_shape);  // 对应 output_names_ 顺序
+    LOGI(MODEL) << "output_name [" << output_num++ << "]: " << output_name << "; dims: " << dims_to_str(dims);
+    output_shapes_.push_back(TensorShape(dims_to_vector(dims)));  // 对应 output_names_ 顺序
   }  // end of output_names_
   return true;
 }  // end of ParseBindings
@@ -385,16 +417,16 @@ std::unique_ptr<nvinfer1::IExecutionContext, TrtDeleter> ModelLoaderTrt::CreateE
   for (size_t i = 0; i < input_names_.size(); ++i) {
     const auto& name = input_names_[i];
     nvinfer1::Dims dims = engine_->getTensorShape(name.c_str());
-    bool has_dynamic = false;
-    for (int j = 0; j < dims.nbDims; ++j) {
-      if (dims.d[j] == -1) { has_dynamic = true; break; }
-    }
-    if (!has_dynamic) continue;
+    if (!has_dynamic_dims(dims)) continue;
     nvinfer1::Dims opt_dims = engine_->getProfileShape(name.c_str(),
                                                        context->getOptimizationProfile(),
                                                        nvinfer1::OptProfileSelector::kOPT);
+    if (!is_static_shape(opt_dims)) {
+      LOGE(MODEL) << "Input tensor '" << name << "' dims unresolved: " << dims_to_str(opt_dims);
+      return nullptr;
+    }
     if (!context->setInputShape(name.c_str(), opt_dims)) {
-      LOGE(MODEL) << "setInputShape failed for tensor: " << name;
+      LOGE(MODEL) << "setInputShape failed for tensor: " << name << ", dims: " << dims_to_str(opt_dims);
       return nullptr;
     }
   }
