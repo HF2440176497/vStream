@@ -1,10 +1,7 @@
 #include "mark_render.hpp"
 
-#include <cctype>
 #include <mutex>
 #include <string>
-
-#include <nlohmann/json.hpp>
 
 #include "cnstream_logging.hpp"
 
@@ -26,24 +23,13 @@ std::unique_ptr<MarkRender> MarkRender::Create(DevType device_type) {
 
 namespace {
 
-std::string Trim(const std::string& s) {
-  size_t b = 0, e = s.size();
-  while (b < e && std::isspace(static_cast<unsigned char>(s[b]))) ++b;
-  while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1]))) --e;
-  return s.substr(b, e - b);
-}
-
 bool ShouldDraw(const MarkConfig& config, const std::shared_ptr<InferObject>& obj) {
   if (config.rules.empty()) {
     return true;  // 没有配置规则，默认绘制
   }
-  // 每个规则（对应一个列表）内的条件都必须满足
-  // 只需要满足一个规则的条件，即可绘制
+  // 只需命中任一规则即可绘制（规则内条件取与，见 MatchObjRule）
   for (const auto& rule : config.rules) {
-    if (!rule.model.empty() && rule.model != obj->model_name) continue;
-    if (!rule.ids.empty() && rule.ids.count(obj->id) == 0) continue;
-    if (rule.has_type && GetInferObjType(obj) != ToString(rule.type)) continue;
-    return true;
+    if (MatchObjRule(rule, obj)) return true;
   }
   return false;
 }
@@ -52,66 +38,12 @@ bool ShouldDraw(const MarkConfig& config, const std::shared_ptr<InferObject>& ob
 
 bool MarkConfig::ParseMarkFilter(const std::string& filter) {
   rules.clear();
-  std::string trimmed = Trim(filter);
-  if (trimmed.empty()) {
-    return true;  // empty filter is a valid no-op
-  }
-
-  nlohmann::json doc = nlohmann::json::parse(trimmed, nullptr, /*allow_exceptions=*/false);
-  if (doc.is_discarded() || !doc.is_array()) {
-    LOGE(SINK) << "Mark filter: expect a JSON array of rule objects";
+  std::string err;
+  if (!ParseObjRules(filter, &rules, &err)) {
+    LOGE(SINK) << "Mark filter: " << err;
+    rules.clear();
     return false;
   }
-
-  std::vector<MarkRule> parsed;
-  parsed.reserve(doc.size());
-  for (const auto& item : doc) {
-    if (!item.is_object()) {
-      LOGE(SINK) << "Mark filter: each rule must be a JSON object";
-      return false;
-    }
-    MarkRule rule;
-    for (auto it = item.begin(); it != item.end(); ++it) {
-      const std::string& key = it.key();
-      if (key == "model") {
-        if (!it.value().is_string()) {
-          LOGE(SINK) << "Mark filter: rule.model must be a string";
-          return false;
-        }
-        rule.model = it.value().get<std::string>();
-      } else if (key == "ids") {
-        if (!it.value().is_array()) {
-          LOGE(SINK) << "Mark filter: rule.ids must be an array of integers";
-          return false;
-        }
-        for (const auto& id_val : it.value()) {
-          if (!id_val.is_number_integer()) {
-            LOGE(SINK) << "Mark filter: rule.ids must contain integers only";
-            return false;
-          }
-          rule.ids.insert(id_val.get<int>());
-        }
-      } else if (key == "type") {
-        if (!it.value().is_string()) {
-          LOGE(SINK) << "Mark filter: rule.type must be a string";
-          return false;
-        }
-        const std::string type_str = it.value().get<std::string>();
-        rule.type = InferObjTypeFromString(type_str);
-        if (rule.type == InferObjType::kUnknown) {
-          LOGE(SINK) << "Mark filter: unknown rule.type '" << type_str
-                     << "', expect 'original' or 'merged'";
-          return false;
-        }
-        rule.has_type = true;
-      } else {
-        LOGW(SINK) << "Mark filter: unknown rule key '" << key << "', ignored";
-      }
-    }
-    parsed.push_back(std::move(rule));
-  }
-
-  rules = std::move(parsed);
   return true;
 }
 

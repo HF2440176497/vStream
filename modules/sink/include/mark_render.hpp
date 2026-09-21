@@ -2,24 +2,13 @@
 #define MODULES_SINK_MARK_RENDER_HPP_
 
 #include <memory>
-#include <set>
 #include <string>
 #include <vector>
 #include <opencv2/opencv.hpp>
 
-#include "cnstream_frame_va.hpp"
+#include "cnstream_obj_rule.hpp"
 
 namespace cnstream {
-
-/**
- * @brief 单条标框白名单规则：对象命中任一规则即绘制，规则内部各条件取与。
- */
-struct MarkRule {
-  std::string model;      ///< 模型名，空表示不限制
-  std::set<int> ids;      ///< 类别 id 集合，空表示不限制
-  bool has_type = false;  ///< 是否限定目标类型
-  InferObjType type = InferObjType::kUnknown;
-};
 
 struct MarkConfig {
   bool draw_bbox = true;  // 开启绘制时 默认只开启标框
@@ -34,16 +23,17 @@ struct MarkConfig {
    * matches at least one rule; within a rule all set conditions must hold.
    * Empty `rules` means no filtering (draw everything).
    *
-   * mark_filter is configured as a JSON array of rule objects:
-   *   "mark_filter": [
-   *     {"model": "yolo_ocr", "ids": [0, 1], "type": "merged"},
-   *     {"type": "original"}
-   *   ]
-   * - model: empty/omitted = any model
-   * - ids:   empty/omitted = any class id
-   * - type:  "original" or "merged" (InferObjType); omitted = any type
+   * mark_filter is configured as a JSON array of rule objects; 
+   * a single rule object is also accepted (see ParseObjRules):
+   *   "mark_filter": {"type": "merged"}
+   *   "mark_filter": [{"model": "yolo_ocr", "ids": [0, 1], "type": "merged"},
+   *                   {"model": ["a", "b"], "position": {"x": [0.1, 0.9]}}]
+   * - model:    string or string array; empty/omitted = any model
+   * - ids:      integer or integer array; empty/omitted = any class id
+   * - type:     "original"/"merged", string or string array; omitted = any type
+   * - position: optional per-rule bbox filter {"x": [min, max], "y": [min, max]}
    */
-  std::vector<MarkRule> rules;
+  std::vector<ObjRule> rules;
 
   /**
    * Parse a JSON filter string into `rules`.
