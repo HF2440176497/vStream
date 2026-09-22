@@ -1,10 +1,4 @@
 {
     "onnx_path": "PPOCRv3_rec.onnx",
-    "engine_path": "PPOCRv3_rec.engine",
-    "dynamic_batch": {
-        "enable": true,
-        "max_batch_size": 4,
-        "opt_batch_size": 4,
-        "min_batch_size": 1
-    }
+    "engine_path": "PPOCRv3_rec.engine"
 }

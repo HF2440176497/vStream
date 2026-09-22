@@ -95,6 +95,14 @@ static const char* dtype_name(nvinfer1::DataType dtype) {
   }
 }
 
+// 是否含未解析的动态维度(-1)
+static bool has_dynamic_dims(const nvinfer1::Dims& dims) {
+  for (int i = 0; i < dims.nbDims; ++i) {
+    if (dims.d[i] == -1) return true;
+  }
+  return false;
+}
+
 // 动态维度(-1)显示为 '?'
 static std::string dims_to_string(const nvinfer1::Dims& dims) {
   if (dims.nbDims <= 0) return "(invalid)";
@@ -236,6 +244,11 @@ std::vector<uint8_t> compile(const ModelSource& source, const CompileOutput& sav
   std::cout << "(above are parse-time dims; the built engine dims are printed after build)" << std::endl;
   std::cout << "=======================================" << std::endl;
 
+  if (!has_dynamic_shape && !config.profile_shapes.empty()) {
+    std::cout << "NOTE: model inputs are fully static; 'profile_shapes' config is ignored"
+              << std::endl;
+  }
+
   std::shared_ptr<IBuilderConfig> builder_config(builder->createBuilderConfig(),
                                                  destroy_trt_pointer<IBuilderConfig>);
   if (!builder_config) {
@@ -247,11 +260,28 @@ std::vector<uint8_t> compile(const ModelSource& source, const CompileOutput& sav
   builder_config->setMemoryPoolLimit(MemoryPoolType::kWORKSPACE, workspace_size);
   std::cout << "Workspace limit: " << workspace_size / 1024.0 / 1024.0 << " MB" << std::endl;
 
+  // 记录每个输入最终采用的 opt 形状，供 build 后做 context 级输出解析检查
+  std::map<std::string, nvinfer1::Dims> opt_dims_map;
+
   if (has_dynamic_shape) {
-    if (!config.dynamic_batch) {
-      std::cerr << "ERROR: Model has dynamic dimensions but dynamic_batch is disabled. "
-                << "Please set dynamic_batch=true in CompileConfig." << std::endl;
-      return {};
+    // 校验 profile_shapes 的键必须对应网络真实输入名
+    for (const auto& entry : config.profile_shapes) {
+      bool found = false;
+      for (int i = 0; i < num_inputs; ++i) {
+        if (entry.first == network->getInput(i)->getName()) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        std::cerr << "ERROR: profile_shapes refers to unknown input '" << entry.first
+                  << "'. Available inputs:";
+        for (int i = 0; i < num_inputs; ++i) {
+          std::cerr << " '" << network->getInput(i)->getName() << "'";
+        }
+        std::cerr << std::endl;
+        return {};
+      }
     }
 
     nvinfer1::IOptimizationProfile* profile = builder->createOptimizationProfile();
@@ -269,19 +299,34 @@ std::vector<uint8_t> compile(const ModelSource& source, const CompileOutput& sav
       nvinfer1::Dims opt_dims = dims;
       nvinfer1::Dims max_dims = dims;
 
-      if (config.profile_shapes.count(name) > 0) {
+      int dynamic_dim_count = 0;
+      for (int j = 0; j < dims.nbDims; ++j) {
+        if (dims.d[j] == -1) ++dynamic_dim_count;
+      }
+
+      if (dynamic_dim_count > 0) {
+        // 含动态维的输入必须显式配置 profile_shapes
+        if (config.profile_shapes.count(name) == 0) {
+          std::cerr << "ERROR: input '" << name << "' has " << dynamic_dim_count
+                    << " dynamic dims (" << dims_to_string(dims)
+                    << ") but no entry. Add to json, e.g.:"
+                    << " \"profile_shapes\": {\"" << name
+                    << "\": {\"min\": [1,3,48,320], \"opt\": [1,3,48,320], \"max\": [1,3,48,320]}}"
+                    << std::endl;
+          return {};
+        }
         const auto& shape_cfg = config.profile_shapes.at(name);
+        if (shape_cfg.min.nbDims != dims.nbDims) {
+          std::cerr << "ERROR: profile_shapes['" << name << "'] rank (" << shape_cfg.min.nbDims
+                    << ") does not match network input rank (" << dims.nbDims << ")" << std::endl;
+          return {};
+        }
         min_dims = shape_cfg.min;
         opt_dims = shape_cfg.opt;
         max_dims = shape_cfg.max;
-      } else {
-        for (int j = 0; j < dims.nbDims; ++j) {
-          if (dims.d[j] == -1) {
-            min_dims.d[j] = config.min_batch_size;
-            opt_dims.d[j] = config.opt_batch_size;
-            max_dims.d[j] = config.max_batch_size;
-          }
-        }
+      } else if (config.profile_shapes.count(name) > 0) {
+        std::cout << "NOTE: input '" << name << "' is static; its profile_shapes entry is ignored"
+                  << std::endl;
       }
 
       std::string min_str, opt_str, max_str;
@@ -295,6 +340,7 @@ std::vector<uint8_t> compile(const ModelSource& source, const CompileOutput& sav
       profile->setDimensions(name, OptProfileSelector::kMIN, min_dims);
       profile->setDimensions(name, OptProfileSelector::kOPT, opt_dims);
       profile->setDimensions(name, OptProfileSelector::kMAX, max_dims);
+      opt_dims_map[name] = opt_dims;
     }
 
     if (!builder_config->addOptimizationProfile(profile)) {
@@ -334,8 +380,45 @@ std::vector<uint8_t> compile(const ModelSource& source, const CompileOutput& sav
               << (io_dynamic ? ", DYNAMIC" : ", static") << std::endl;
   }
   if (engine_has_dynamic_dims) {
-    std::cout << "WARNING: engine has dynamic dims, ModelLoaderTrt requires static output dims; "
-                 "constant-fold the ONNX sizes path (e.g. Resize sizes) before conversion" << std::endl;
+    // engine 签名中的 -1 不代表运行期不可用：多数动态维是"输入形状派生"的
+    // 模拟加载流程：建临时 context、按 opt profile 设置输入形状，检查输出能否解析。
+    std::shared_ptr<IExecutionContext> probe_ctx(engine->createExecutionContext(),
+                                                 destroy_trt_pointer<IExecutionContext>);
+    bool context_resolved = (probe_ctx != nullptr);
+    if (context_resolved) {
+      for (const auto& entry : opt_dims_map) {
+        if (!probe_ctx->setInputShape(entry.first.c_str(), entry.second)) {
+          std::cerr << "Probe setInputShape failed for '" << entry.first << "'" << std::endl;
+          context_resolved = false;
+          break;
+        }
+      }
+    }
+    if (context_resolved) {
+      for (int i = 0; i < engine->getNbIOTensors(); ++i) {
+        const char* io_name = engine->getIOTensorName(i);
+        if (engine->getTensorIOMode(io_name) != nvinfer1::TensorIOMode::kOUTPUT) continue;
+        nvinfer1::Dims ctx_dims = probe_ctx->getTensorShape(io_name);
+        // 输出仍然动态，说明解析失败
+        if (has_dynamic_dims(ctx_dims)) {
+          std::cout << "  Output '" << io_name << "' remains dynamic at context level: "
+                    << dims_to_string(ctx_dims) << std::endl;
+          context_resolved = false;
+        } else {
+          std::cout << "  Output '" << io_name << "' resolves to " << dims_to_string(ctx_dims)
+                    << " with opt input shapes" << std::endl;
+        }
+      }
+    }
+    if (context_resolved) {
+      std::cout << "INFO: engine dims are dynamic but input-shape derived; "
+                << "ModelLoaderTrt resolves them via kOPT profile at load time" << std::endl;
+    } else {
+      std::cout << "WARNING: engine has data-dependent dynamic dims that cannot be resolved "
+                << "by setting input shapes; ModelLoaderTrt requires static output dims. "
+                << "Constant-fold the ONNX sizes path (e.g. Resize sizes) before conversion"
+                << std::endl;
+    }
   } else {
     std::cout << "Engine I/O is fully static" << std::endl;
   }
@@ -383,6 +466,76 @@ static bool ParseLogSeverity(const std::string& level, nvinfer1::ILogger::Severi
   return true;
 }
 
+// 解析 JSON 数组为 nvinfer1::Dims，要求全部为正整型常量
+static bool ParseDimsJson(const nlohmann::ordered_json& arr,
+                          const std::string& field_desc,
+                          nvinfer1::Dims* dims) {
+  if (!arr.is_array() || arr.empty() ||
+      arr.size() > static_cast<size_t>(nvinfer1::Dims::MAX_DIMS)) {
+    std::cerr << "Config field '" << field_desc
+              << "' must be a non-empty int array with at most "
+              << nvinfer1::Dims::MAX_DIMS << " dims." << std::endl;
+    return false;
+  }
+  dims->nbDims = static_cast<int>(arr.size());
+  for (int i = 0; i < dims->nbDims; ++i) {
+    if (!arr[i].is_number_integer()) {
+      std::cerr << "Config field '" << field_desc << "' dim[" << i
+                << "] must be an integer." << std::endl;
+      return false;
+    }
+    dims->d[i] = arr[i].get<int>();
+    if (dims->d[i] <= 0) {
+      std::cerr << "Config field '" << field_desc << "' dim[" << i
+                << "] must be > 0, got " << dims->d[i] << "." << std::endl;
+      return false;
+    }
+  }
+  return true;
+}
+
+// profile_shapes: { "<input_name>": { "min": [..], "opt": [..], "max": [..] } }
+// 三者设为同一形状即得到只接受该形状的 engine（静态特化，供 ModelLoaderTrt 按 kOPT 加载）
+static bool ParseProfileShapes(const nlohmann::ordered_json& data,
+                               TRT::CompileConfig* config) {
+  const auto& ps = data["profile_shapes"];
+  if (!ps.is_object()) {
+    std::cerr << "Config field 'profile_shapes' must be an object "
+                 "mapping input name to {min, opt, max}." << std::endl;
+    return false;
+  }
+  for (auto it = ps.begin(); it != ps.end(); ++it) {
+    const std::string& name = it.key();
+    const auto& entry = it.value();
+    if (!entry.is_object() || entry.find("min") == entry.end() ||
+        entry.find("opt") == entry.end() || entry.find("max") == entry.end()) {
+      std::cerr << "profile_shapes['" << name
+                << "'] must be an object with 'min', 'opt' and 'max' arrays." << std::endl;
+      return false;
+    }
+    TRT::ProfileShape shape;
+    if (!ParseDimsJson(entry["min"], "profile_shapes['" + name + "'].min", &shape.min)) return false;
+    if (!ParseDimsJson(entry["opt"], "profile_shapes['" + name + "'].opt", &shape.opt)) return false;
+    if (!ParseDimsJson(entry["max"], "profile_shapes['" + name + "'].max", &shape.max)) return false;
+    if (shape.min.nbDims != shape.opt.nbDims || shape.opt.nbDims != shape.max.nbDims) {
+      std::cerr << "profile_shapes['" << name << "']: min/opt/max must have the same rank."
+                << std::endl;
+      return false;
+    }
+    for (int i = 0; i < shape.min.nbDims; ++i) {
+      if (shape.min.d[i] > shape.opt.d[i] || shape.opt.d[i] > shape.max.d[i]) {
+        std::cerr << "profile_shapes['" << name << "'] dim[" << i
+                  << "]: require min <= opt <= max, got "
+                  << shape.min.d[i] << " / " << shape.opt.d[i] << " / " << shape.max.d[i]
+                  << "." << std::endl;
+        return false;
+      }
+    }
+    config->profile_shapes[name] = shape;
+  }
+  return true;
+}
+
 static bool LoadConfigFromJson(const std::string& config_file,
                                std::string* onnx_path,
                                std::string* engine_path,
@@ -421,27 +574,22 @@ static bool LoadConfigFromJson(const std::string& config_file,
   }
 
   if (data.find("dynamic_batch") != data.end()) {
-    const auto& dynamic_batch = data["dynamic_batch"];
-    if (!dynamic_batch.is_object()) {
-      std::cerr << "Config field 'dynamic_batch' must be an object." << std::endl;
-      return false;
-    }
-    if (dynamic_batch.find("enable") != dynamic_batch.end()) {
-      config->dynamic_batch = dynamic_batch["enable"].get<bool>();
-    }
-    if (dynamic_batch.find("max_batch_size") != dynamic_batch.end()) {
-      config->max_batch_size = dynamic_batch["max_batch_size"].get<int>();
-    }
-    if (dynamic_batch.find("opt_batch_size") != dynamic_batch.end()) {
-      config->opt_batch_size = dynamic_batch["opt_batch_size"].get<int>();
-    }
-    if (dynamic_batch.find("min_batch_size") != dynamic_batch.end()) {
-      config->min_batch_size = dynamic_batch["min_batch_size"].get<int>();
-    }
+    std::cerr << "Config field 'dynamic_batch' has been removed. "
+              << "Dynamic inputs are now configured exclusively via 'profile_shapes', e.g.: "
+              << "\"profile_shapes\": {\"<input_name>\": {\"min\": [1,3,640,640], "
+              << "\"opt\": [4,3,640,640], \"max\": [8,3,640,640]}}. "
+              << "Fully static models need neither field." << std::endl;
+    return false;
   }
 
   if (data.find("strict_qdq") != data.end()) {
     config->strict_qdq = data["strict_qdq"].get<bool>();
+  }
+
+  if (data.find("profile_shapes") != data.end()) {
+    if (!ParseProfileShapes(data, config)) {
+      return false;
+    }
   }
 
   if (data.find("log_level") != data.end()) {
@@ -453,21 +601,17 @@ static bool LoadConfigFromJson(const std::string& config_file,
     }
   }
 
-  if (config->min_batch_size > config->opt_batch_size ||
-      config->opt_batch_size > config->max_batch_size) {
-    std::cerr << "Invalid batch sizes: require min_batch_size <= opt_batch_size <= max_batch_size."
-              << std::endl;
-    return false;
-  }
-
   return true;
 }
 
 static void PrintUsage(const char* program) {
   std::cerr << "Usage: " << program << " <config.json>" << std::endl;
   std::cerr << "   or: " << program << " <onnx_path> <out_engine_path> [config_json]" << std::endl;
-  std::cerr << "Optional config fields: max_workspace_size, dynamic_batch, strict_qdq, "
-            << "log_level (INTERNAL_ERROR|ERROR|WARNING|INFO)" << std::endl;
+  std::cerr << "Optional config fields: max_workspace_size, strict_qdq, "
+            << "log_level (INTERNAL_ERROR|ERROR|WARNING|INFO), "
+            << "profile_shapes ({\"<input>\": {\"min\": [..], \"opt\": [..], \"max\": [..]}}; "
+            << "required for inputs with dynamic dims, min=opt=max pins a static shape)"
+            << std::endl;
 }
 
 int main(int argc, char* argv[]) {
@@ -492,12 +636,8 @@ int main(int argc, char* argv[]) {
       if (!LoadConfigFromJson(argv[3], &onnx_path, &out_engine_path, &config)) {
         return 1;
       }
-    } else {
-      // Keep the original hard-coded defaults for the no-config path.
-      config.max_batch_size = 4;
-      config.opt_batch_size = 4;
-      config.min_batch_size = 1;
     }
+    // 无 config 路径：仅适用于全静态模型
   } else {
     PrintUsage(argv[0]);
     return 1;

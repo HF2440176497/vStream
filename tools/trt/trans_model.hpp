@@ -31,12 +31,8 @@ struct CompileConfig {
   // TensorRT 日志等级：只打印不高于该等级的日志（数值越小越严重），默认只保留 WARNING/ERROR
   nvinfer1::ILogger::Severity log_severity = nvinfer1::ILogger::Severity::kWARNING;
 
-  bool dynamic_batch = true;
-  int  max_batch_size = 8;
-  int  opt_batch_size = 4;
-  int  min_batch_size = 1;
-
-  // specific profile shapes
+  // 动态输入的 optimization profile，按输入名配置 min/opt/max。
+  // 全静态模型会忽略此配置
   std::map<std::string, ProfileShape> profile_shapes;
 
   bool strict_qdq = true;

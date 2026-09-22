@@ -74,6 +74,7 @@ class Post_PPOCRv3_rec_Obj : public ObjPostproc {
         label_list_ = PaddlePaddle::ReadDict(label_path_);
         label_list_.insert(this->label_list_.begin(), "#");  // blank
         label_list_.push_back(" ");  // space
+        LOGI(POSTPROC) << "PPOCRv3 dict size (with blank & space): " << label_list_.size();
     }
 
     return true;
@@ -115,7 +116,7 @@ class Post_PPOCRv3_rec_Obj : public ObjPostproc {
 
     for (int j = 0; j < rows; ++j) {
         int offset = j * cols;
-  
+
         const float* row_start = output + offset;
         const float* row_end = row_start + cols;
 
