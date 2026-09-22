@@ -105,7 +105,8 @@ static bool has_dynamic_dims(const nvinfer1::Dims& dims) {
 
 // 动态维度(-1)显示为 '?'
 static std::string dims_to_string(const nvinfer1::Dims& dims) {
-  if (dims.nbDims <= 0) return "(invalid)";
+  if (dims.nbDims < 0) return "(invalid)";
+  if (dims.nbDims == 0) return "()";
   std::string result = "(";
   for (int i = 0; i < dims.nbDims; ++i) {
     if (dims.d[i] < 0) {
@@ -219,26 +220,16 @@ std::vector<uint8_t> compile(const ModelSource& source, const CompileOutput& sav
     auto  dims = tensor->getDimensions();
     input_dims_list.push_back(dims);
 
-    std::string dims_str;
-    for (int j = 0; j < dims.nbDims; ++j) {
-      dims_str += std::to_string(dims.d[j]);
-      if (j < dims.nbDims - 1) dims_str += "x";
-      if (dims.d[j] == -1) has_dynamic_shape = true;
-    }
-    std::cout << "  Input[" << i << "] '" << tensor->getName() << "': " << dims_str.c_str()
-              << " [dtype=" << static_cast<int>(tensor->getType()) << "]" << std::endl;
+    if (has_dynamic_dims(dims)) has_dynamic_shape = true;
+    std::cout << "  Input[" << i << "] '" << tensor->getName() << "': " << dims_to_string(dims)
+              << " [dtype=" << dtype_name(tensor->getType()) << "]" << std::endl;
   }
 
   for (int i = 0; i < num_outputs; ++i) {
     auto* tensor = network->getOutput(i);
     auto  dims = tensor->getDimensions();
-    std::string dims_str;
-    for (int j = 0; j < dims.nbDims; ++j) {
-      dims_str += std::to_string(dims.d[j]);
-      if (j < dims.nbDims - 1) dims_str += "x";
-    }
-    std::cout << "  Output[" << i << "] '" << tensor->getName() << "': " << dims_str.c_str()
-              << " [dtype=" << static_cast<int>(tensor->getType()) << "]" << std::endl;
+    std::cout << "  Output[" << i << "] '" << tensor->getName() << "': " << dims_to_string(dims)
+              << " [dtype=" << dtype_name(tensor->getType()) << "]" << std::endl;
   }
   std::cout << "Dynamic shape: " << (has_dynamic_shape ? "YES" : "NO (static)") << std::endl;
   std::cout << "(above are parse-time dims; the built engine dims are printed after build)" << std::endl;
@@ -329,13 +320,9 @@ std::vector<uint8_t> compile(const ModelSource& source, const CompileOutput& sav
                   << std::endl;
       }
 
-      std::string min_str, opt_str, max_str;
-      for (int j = 0; j < min_dims.nbDims; ++j) {
-        min_str += std::to_string(min_dims.d[j]) + (j < min_dims.nbDims - 1 ? "x" : "");
-        opt_str += std::to_string(opt_dims.d[j]) + (j < opt_dims.nbDims - 1 ? "x" : "");
-        max_str += std::to_string(max_dims.d[j]) + (j < max_dims.nbDims - 1 ? "x" : "");
-      }
-      std::cout << "  Profile '" << name << "': min=" << min_str << " opt=" << opt_str << " max=" << max_str << std::endl;
+      std::cout << "  Profile '" << name << "': min=" << dims_to_string(min_dims)
+                << " opt=" << dims_to_string(opt_dims)
+                << " max=" << dims_to_string(max_dims) << std::endl;
 
       profile->setDimensions(name, OptProfileSelector::kMIN, min_dims);
       profile->setDimensions(name, OptProfileSelector::kOPT, opt_dims);
@@ -343,10 +330,14 @@ std::vector<uint8_t> compile(const ModelSource& source, const CompileOutput& sav
       opt_dims_map[name] = opt_dims;
     }
 
-    if (!builder_config->addOptimizationProfile(profile)) {
+    // return the index of the optimization profile (starting from 0) if the input is valid
+    builder_config->addOptimizationProfile(profile);
+    if (builder_config->getNbOptimizationProfiles() < 1) {
       std::cerr << "Failed to add optimization profile" << std::endl;
       return {};
     }
+    std::cout << "Optimization profile added (nbProfiles="
+              << builder_config->getNbOptimizationProfiles() << ")" << std::endl;
 
   }  // end if (has_dynamic_shape)
 
@@ -457,6 +448,7 @@ static bool ParseLogSeverity(const std::string& level, nvinfer1::ILogger::Severi
       {"ERROR",          nvinfer1::ILogger::Severity::kERROR},
       {"WARNING",        nvinfer1::ILogger::Severity::kWARNING},
       {"INFO",           nvinfer1::ILogger::Severity::kINFO},
+      {"VERBOSE",        nvinfer1::ILogger::Severity::kVERBOSE},
   };
   auto it = table.find(level);
   if (it == table.end()) {

@@ -53,7 +53,7 @@ inline cv::Mat CrnnResizeImg(cv::Mat img, float wh_ratio, int rec_image_height) 
   return resize_img;
 }
 
-std::vector<std::string> ReadDict(std::string path) {
+inline std::vector<std::string> ReadDict(std::string path) {
   std::ifstream in(path);
   std::string filename;
   std::string line;
