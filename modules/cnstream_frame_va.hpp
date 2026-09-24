@@ -6,6 +6,7 @@
 
 #include <memory>
 #include <mutex>
+#include <ostream>
 #include <string>
 #include <map>
 #include <utility>
@@ -214,9 +215,9 @@ class InferObject {
   std::string model_name;  ///< The name of the model.
   int id;                  ///< The ID of the label.
   std::string name;        ///< Optional, the name of the label.
-  std::string track_id;    ///< The tracking result.
   float score;             ///< The label score.
   float area;              ///< The area of the object.
+  std::string track_id;    ///< The tracking result.
   InferBoundingBox bbox;   ///< The object normalized coordinates.
   Collection collection;   ///< User-defined structured information.
   std::vector<InferObjectInfo> classes;  ///< Full classification results (primary + secondary).
@@ -374,6 +375,25 @@ class InferObject {
 using InferObjectPtr = std::shared_ptr<InferObject>;
 
 /**
+ * @brief 输出 InferObject 简要信息（model/id/name/score/bbox）
+ */
+inline std::ostream& operator<<(std::ostream& os, const InferObject& obj) {
+  os << "model=" << obj.model_name << " id=" << obj.id << " name=" << obj.name
+     << " score=" << obj.score << " bbox=[x=" << obj.bbox.x << " y=" << obj.bbox.y
+     << " w=" << obj.bbox.w << " h=" << obj.bbox.h << "]";
+  return os;
+}
+
+inline std::ostream& operator<<(std::ostream& os, const InferObjectPtr& obj) {
+  if (!obj) {
+    os << "null";
+  } else {
+    os << *obj;
+  }
+  return os;
+}
+
+/**
  * @struct InferObjs
  *
  * @brief InferObjs is a structure holding inference results.
@@ -467,10 +487,7 @@ inline constexpr char kCustomImagesTag[] = "CustomImages"; /*!< value type in Fr
 
 /**
  * @brief Collection tag for the derived "model input image".
- *
- * 当业务需要为推理生成派生图（如裁剪拼接、传统图像处理增强）时，
- * 由上游处理模块（如 FrameStitcher）将派生图写入此 tag。Preproc 优先读取此 tag，
- * 若不存在则回退到 DataFrame::GetImage()，
+ * 帧级派生图，各推理模块统一的 KEY，可以作用于所有下游推理模块
  *
  * value type in FrameInfo::Collection : ModelInputImagePtr.
  */
@@ -481,9 +498,10 @@ inline constexpr char kModelInputImageTag[] = "ModelInputImage";
  *
  * 与帧级 kModelInputImageTag 构成两个控制面：
  * - 帧级：由上游业务模块（如 FrameStitcher）写入，作用于所有下游推理模块；
- * - 模块级：由本模块的 InputDeriver 写入，仅作用于该模型自己的推理。
- *
- * 解析优先级：模块级 > 帧级 > 原图（见 GetModelInputImage）。
+ * - 模块级：由本模块的 InputDeriver 写入，仅作用于该模型自己的推理
+ *   因此模块级派生图在当前模块得到的信息需要还原到基准图
+
+ * 解析优先级：模块级 > 帧级 > 原图（见 GetModelInputImage）
  */
 inline std::string ModelInputImageTagForModel(const std::string& model_name) {
   return std::string(kModelInputImageTag) + "/" + model_name;
@@ -517,6 +535,7 @@ struct ModelInputImage {
 using ModelInputImagePtr = std::shared_ptr<ModelInputImage>;
 
 
+// 或者帧级输入图，与所在推理模块无关
 inline cv::Mat GetModelInputImage(const FrameInfoPtr& package) {
   if (package->collection.HasValue(kModelInputImageTag)) {
     auto derived = package->collection.Get<ModelInputImagePtr>(kModelInputImageTag);

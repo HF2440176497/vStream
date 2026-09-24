@@ -25,8 +25,9 @@ namespace {
 
 inline constexpr const char* key_config_file = "config_file";
 
-// 分割图在 image_dict 中的 key
-inline constexpr char kSegImageKey[] = "stdc_image";
+// STDC 分割图在 image_dict 中的 key；在 custom_postproc_params 中配置 
+inline constexpr const char* key_stdc_name = "stdc_name";
+inline constexpr char default_stdc_name[] = "stdc_image";
 
 }  // namespace
 
@@ -40,30 +41,13 @@ class Post_STDC_CPU: public Postproc {
    */
   bool Init(const std::map<std::string, std::string> &params) override {
     params_ = params;
-    if (params_.find(key_config_file) != params_.end()) {
-      config_file_ = params_[key_config_file];
-    } else {
-      LOGE(POSTPROC) << "Init config_file must be in custom_postproc_params.";
-      return false;
-    }
-    std::string dir_path;
-    if (params_.find(CNS_JSON_DIR_PARAM_NAME) != params_.end()) {
-      dir_path = params_[CNS_JSON_DIR_PARAM_NAME];
-    }
-    config_file_ = GetPathRelativeToTheJSONFile(config_file_, dir_path);
 
-    LOGI(POSTPROC) << "Init with post conf file: " << config_file_;
-    std::ifstream file(config_file_);
-    if (!file.is_open()) {
-      LOGE(POSTPROC) << "Init Could not open file " << config_file_;
-      return false;
+    stdc_name_ = default_stdc_name;
+    if (params_.find(key_stdc_name) != params_.end()) {
+      if (!params_[key_stdc_name].empty()) {
+        stdc_name_ = params_[key_stdc_name];
+      }
     }
-    nlohmann::ordered_json data = nlohmann::ordered_json::parse(file);
-    if (!data.is_object()) {
-      LOGE(POSTPROC) << "Init config file must be object type.";
-      return false;
-    }
-
     return true;
   }
 
@@ -128,10 +112,13 @@ class Post_STDC_CPU: public Postproc {
           std::make_shared<std::map<std::string, cv::Mat>>());
     }
     auto custom_images = package->collection.Get<CustomImagesPtr>(cnstream::kCustomImagesTag);
-    (*custom_images)[kSegImageKey] = mask;
+    (*custom_images)[stdc_name_] = mask;
 
     return 0;
   }
+
+ private:
+  std::string stdc_name_ = default_stdc_name;
 
  private:
   DECLARE_REFLEX_OBJECT_EX(Post_STDC_CPU, cnstream::Postproc);

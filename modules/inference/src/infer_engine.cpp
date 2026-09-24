@@ -167,6 +167,7 @@ InferEngine::ResultWaitingCard InferEngine::FeedData(std::shared_ptr<FrameInfo> 
     // 帧级门控：仅作用于帧级推理路径
     // Filter 返回 false 的帧跳过推理，原子置位 kSkipFrameTag（uint64 mask）后透传
     if (frame_filter_ && !frame_filter_->Filter(frame_info)) {
+      LOGI(INFER) << frame_info->stream_id << ": Skip frame timestamp [" << frame_info->timestamp << "]";
       frame_info->MarkInferSkipped(module_bit_mask_);
       timeout_helper_.UnlockOperator();
       return card;

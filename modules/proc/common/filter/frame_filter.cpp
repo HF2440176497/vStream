@@ -82,8 +82,10 @@ class FrameFilterByObjs : public FrameFilter {
     objs_holder->mutex_.unlock();
 
     bool any_matched = false;
+    LOGI(FILTER) << "ByObjs timestamp [" << finfo->timestamp << "] objs size=" << objs.size();
     for (const auto& obj : objs) {
       if (inner_filter_->Filter(finfo, obj)) {
+        LOGI(FILTER) << "Frame match obj: " << obj;
         any_matched = true;
         break;
       }
