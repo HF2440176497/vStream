@@ -33,10 +33,19 @@ bool ObjFilterCommon::Filter(const FrameInfoPtr& finfo, const InferObjectPtr& po
   if (rules_.empty()) {
     return true;  // 未配置规则，不过滤
   }
-  // 命中任一规则即保留（规则内条件取与，见 MatchObjRule）
-  for (const auto& rule : rules_) {
-    if (MatchObjRule(rule, pobj)) return true;
+  // 命中任一规则即保留（规则内条件取与）；条件自判断、自描述、自报值
+  std::string miss_desc;
+  for (size_t i = 0; i < rules_.size(); ++i) {
+    const std::string reason = rules_[i].MismatchReason(pobj);
+    if (reason.empty()) {
+      LOGI(FILTER) << "obj keep: hit rule [" << i << "] " << rules_[i].Describe()
+                   << "], obj(" << rules_[i].DescribeObjValues(pobj) << ")";
+      return true;
+    }
+    if (!miss_desc.empty()) miss_desc += " | ";
+    miss_desc += "[" + std::to_string(i) + "] " + reason;
   }
+  LOGI(FILTER) << "miss match desc: " << miss_desc;
   return false;
 }
 

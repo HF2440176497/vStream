@@ -27,9 +27,9 @@ bool ShouldDraw(const MarkConfig& config, const std::shared_ptr<InferObject>& ob
   if (config.rules.empty()) {
     return true;  // 没有配置规则，默认绘制
   }
-  // 只需命中任一规则即可绘制（规则内条件取与，见 MatchObjRule）
+  // 只需命中任一规则即可绘制（规则内条件取与）
   for (const auto& rule : config.rules) {
-    if (MatchObjRule(rule, obj)) return true;
+    if (rule.Match(obj)) return true;
   }
   return false;
 }
