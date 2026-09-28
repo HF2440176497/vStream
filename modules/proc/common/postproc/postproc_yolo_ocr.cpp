@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <limits>
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -30,6 +31,7 @@ inline constexpr const char* key_name = "name";
 inline constexpr const char* key_threshold = "threshold";
 
 inline constexpr const char* key_merge_interval = "merge_interval";
+inline constexpr const char* key_merge_cross_interval = "merge_cross_interval";
 inline constexpr const char* key_max_boxes_num = "max_boxes_num";
 inline constexpr const char* key_nms_iou_threshold = "nms_iou_threshold";
 inline constexpr const char* key_enable_save = "enable_save";
@@ -186,6 +188,9 @@ class Post_YOLOv5_CPU_OCR: public Postproc {
     if (data.find(key_merge_interval) != data.end()) {
       interval_ = data[key_merge_interval].get<float>();
     }
+    if (data.find(key_merge_cross_interval) != data.end()) {
+      merge_cross_interval_ = data[key_merge_cross_interval].get<float>();
+    }
     if (data.find(key_max_boxes_num) != data.end()) {
       max_boxes_num_ = data[key_max_boxes_num].get<int>();
     }
@@ -219,7 +224,10 @@ class Post_YOLOv5_CPU_OCR: public Postproc {
     }
     LOGI(POSTPROC) << "merge_direction: "
                    << (merge_direction_ == MergeDirection::Horizontal ? "horizontal" : "vertical")
-                   << ", interval: " << interval_;
+                   << ", interval: " << interval_
+                   << ", cross_interval: "
+                   << (merge_cross_interval_ == std::numeric_limits<float>::max()
+                           ? "unlimited" : std::to_string(merge_cross_interval_));
     LOGI(POSTPROC) << "item_infos_ size = " << item_infos_.size();
     for (const auto& kv : item_infos_) {
       LOGI(POSTPROC) << "  class " << kv.first
@@ -378,8 +386,17 @@ class Post_YOLOv5_CPU_OCR: public Postproc {
         // 扩展窗口，同时累加外接矩形
         while (end < boxes.size()) {
           const CharBox& curr = boxes[end];
+
+          // 合并轴方向间隔：与当前分组最远边缘的距离
           float gap = horizontal ? (curr.x - group_far) : (curr.y - group_far);
           if (gap > interval_) break;
+
+          // 交叉轴方向间隔：当前框与当前分组外接矩形在另一轴上的距离
+          // （重叠时为负值，视为满足约束）
+          float cross_gap = horizontal
+              ? std::max(min_y - curr.ymax(), curr.y - max_y)
+              : std::max(min_x - curr.xmax(), curr.x - max_x);
+          if (cross_gap > merge_cross_interval_) break;
 
           float curr_far = horizontal ? curr.xmax() : curr.ymax();
           group_far = std::max(group_far, curr_far);
@@ -497,6 +514,7 @@ class Post_YOLOv5_CPU_OCR: public Postproc {
   };
   std::map<int, ItemInfo> item_infos_;
   float interval_ = 50;  // pixel
+  float merge_cross_interval_ = std::numeric_limits<float>::max();  // 交叉轴间隔阈值：合并时约束另一轴方向的最大间隔，默认不限制
   MergeDirection merge_direction_ = MergeDirection::Horizontal;
 
   int max_boxes_num_ = 200;
