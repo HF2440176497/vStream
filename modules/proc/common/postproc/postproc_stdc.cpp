@@ -113,6 +113,8 @@ class Post_STDC_CPU: public Postproc {
     }
     auto custom_images = package->collection.Get<CustomImagesPtr>(cnstream::kCustomImagesTag);
     (*custom_images)[stdc_name_] = mask;
+    LOGI(POSTPROC) << "STDC_CPU stdc_name: " << stdc_name_ << ", shape: " 
+                   << cv::format("(%d, %d, %d)", mask.rows, mask.cols, mask.channels());
 
     return 0;
   }

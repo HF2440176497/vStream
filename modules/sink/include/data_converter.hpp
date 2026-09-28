@@ -159,6 +159,8 @@ inline s_output_data ConvertFrameInfo(const std::shared_ptr<FrameInfo>& frame_in
     auto custom_images = frame_info->collection.Get<CustomImagesPtr>(kCustomImagesTag);
     for (const auto& [key, mat] : *custom_images) {
       data.image_dict[key] = mat;
+      LOGI(DATA_CONVERTER) << "ConvertFrameInfo: found custom image: " << key << "; shape: " 
+                           << cv::format("(%d, %d, %d)", mat.rows, mat.cols, mat.channels());
     }
   }
   // 检测对象（原始框 + 合并框均在 kInferObjsTag 中，通过 type 区分）
