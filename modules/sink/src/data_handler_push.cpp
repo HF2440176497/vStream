@@ -236,7 +236,7 @@ bool PushHandlerIm::InitStream() {
   ret = avcodec_open2(ctx_.codec_ctx, codec, &opts);
   av_dict_free(&opts);
   if (ret < 0) {
-    LOGE(SINK) << "[" << stream_id_ << "]: avcodec_open2 failed";
+    LOGE(SINK) << "[" << stream_id_ << "]: avcodec_open2 failed: " << ret;
     return false;
   }
   // 检查 SPS/PPS extradata（RTMP/FLV 推流关键）：

@@ -9,6 +9,7 @@ data/
 lib/
 bin/
 docs/
+output/
 python/test/*
 !python/test/*.py
 *.md

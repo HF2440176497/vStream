@@ -6,6 +6,7 @@
 #include "cuda/cuda_check.hpp"
 #include "cuda/cnstream_allocator_cuda.hpp"
 #include "cuda/cnstream_cuda_env.hpp"
+#include "cuda/cnstream_cuda_init.hpp"
 
 namespace cnstream {
 
@@ -174,15 +175,38 @@ void ModelLoaderTrt::Logger::log(nvinfer1::ILogger::Severity severity, const cha
 
 ModelLoaderTrt::ModelLoaderTrt(int device_id) : ModelLoader(device_id) {
   device_type_ = DevType::CUDA;
-  cudaSetDevice(device_id_);
-  CHECK_CUDA_RUNTIME(cudaStreamCreate(reinterpret_cast<cudaStream_t*>(&stream_)));
+  CudaInitResult device_ret = RunCudaInit(
+      "set_device",
+      [this]() -> int { return static_cast<int>(cudaSetDevice(device_id_)); },
+      ClassifyCudaRuntimeError);
+  if (!device_ret.ok) {
+    LOGE(MODEL) << "cudaSetDevice failed on device " << device_id_ << "["
+                << device_ret.attempt << " attempt(s), " << device_ret.elapsed_ms
+                << " ms]: " << CudaInitErrorName(device_ret.last_error);
+  }
+  CudaInitResult stream_ret = RunCudaInit(
+      "stream_create",
+      [this]() -> int {
+        return static_cast<int>(cudaStreamCreate(reinterpret_cast<cudaStream_t*>(&stream_)));
+      },
+      ClassifyCudaRuntimeError);
+  if (!stream_ret.ok) {
+    LOGE(MODEL) << "cudaStreamCreate failed on device " << device_id_ << " after "
+                << stream_ret.attempt << " attempt(s), " << stream_ret.elapsed_ms << " ms: "
+                << CudaInitErrorName(stream_ret.last_error);
+  }
 }
 
 bool ModelLoaderTrt::Init(const std::string& engine_path, const InferParams& params) {
   if (engine_path.empty()) {
     LOGE(MODEL) << "Empty engine path";
     return false;
-  }    
+  }
+  if (stream_ == nullptr) {
+    LOGE(MODEL) << "stream is unavailable (cudaStreamCreate failed),"
+                << " skip load: " << engine_path;
+    return false;
+  }
   // Set input ordered index
   SetInputOrderedIndex(params.input_ordered_index);
   return LoadEngine(engine_path);
@@ -217,17 +241,34 @@ bool ModelLoaderTrt::LoadEngine(const std::string& engine_path) {
     LOGE(MODEL) << "Failed to load model file: " << engine_path;
     return false;
   }
-  runtime_ = std::unique_ptr<nvinfer1::IRuntime, TrtDeleter>(nvinfer1::createInferRuntime(logger_));
+  nvinfer1::IRuntime* runtime = nullptr;
+  CudaInitResult runtime_ret = RunCudaInit(
+      "runtime",
+      [this, &runtime]() -> int {
+        runtime = nvinfer1::createInferRuntime(logger_);
+        return runtime != nullptr ? 0 : kCudaInitNoCode;
+      },
+      nullptr);
+  runtime_ = std::unique_ptr<nvinfer1::IRuntime, TrtDeleter>(runtime);
   if (runtime_ == nullptr) {
-    // 模型加载失败只上报、返回 false；不可用 LOGF（LOG(FATAL) 会 abort 掉嵌入 vstream 的宿进程）
-    LOGE(MODEL) << "Failed to create TensorRT runtime";
+    // 模型加载失败只上报、返回 false
+    LOGE(MODEL) << "Failed to create TensorRT runtime [" << runtime_ret.attempt
+                << " attempt(s), " << runtime_ret.elapsed_ms << " ms]";
     return false;
   }
 
-  engine_ = std::unique_ptr<nvinfer1::ICudaEngine, TrtDeleter>(
-      runtime_->deserializeCudaEngine(model_data.data(), model_data.size()));
+  nvinfer1::ICudaEngine* engine = nullptr;
+  CudaInitResult engine_ret = RunCudaInit(
+      "engine",
+      [this, &engine, &model_data]() -> int {
+        engine = runtime_->deserializeCudaEngine(model_data.data(), model_data.size());
+        return engine != nullptr ? 0 : kCudaInitNoCode;
+      },
+      nullptr);
+  engine_ = std::unique_ptr<nvinfer1::ICudaEngine, TrtDeleter>(engine);
   if (engine_ == nullptr) {
-    LOGE(MODEL) << "Failed to deserialize TensorRT engine";
+    LOGE(MODEL) << "Failed to deserialize TensorRT engine [" << engine_ret.attempt
+                << " attempt(s), " << engine_ret.elapsed_ms << " ms]";
     return false;
   }
 
@@ -407,9 +448,20 @@ void ModelLoaderTrt::ReleaseExecutionContext(void* exec_ctx) {
 
 std::unique_ptr<nvinfer1::IExecutionContext, TrtDeleter> ModelLoaderTrt::CreateExecutionContext() {
   if (!engine_) return nullptr;
-  std::unique_ptr<nvinfer1::IExecutionContext, TrtDeleter> context(engine_->createExecutionContext());
+  nvinfer1::IExecutionContext* raw_ctx = nullptr;
+  // 执行上下文会申请设备侧显存（activation）
+  // 闸门串行 + 有界重试；TensorRT 只返回 nullptr，按瞬时争用处理
+  CudaInitResult create_ret = RunCudaInit(
+      "exec_context",
+      [this, &raw_ctx]() -> int {
+        raw_ctx = engine_->createExecutionContext();
+        return raw_ctx != nullptr ? 0 : kCudaInitNoCode;
+      },
+      nullptr);
+  std::unique_ptr<nvinfer1::IExecutionContext, TrtDeleter> context(raw_ctx);
   if (context == nullptr) {
-    LOGE(MODEL) << "Failed to create TensorRT execution context";
+    LOGE(MODEL) << "Failed to create TensorRT execution context [" << create_ret.attempt
+                << " attempt(s), " << create_ret.elapsed_ms << " ms]";
     return nullptr;
   }
   // 动态 shape 模型：每个新建 context 都要按 opt profile 重新 setInputShape，

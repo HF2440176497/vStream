@@ -64,7 +64,14 @@ bool PushHandlerImCUDA::InitDeviceCtx() {
   }
 
   if (!sink_stream_) {
-    CHECK_CUDA_RUNTIME(cudaStreamCreate(reinterpret_cast<cudaStream_t*>(&sink_stream_)));
+    // 建 stream 失败不可继续
+    // 返回 false 由编码线程按既有退避重试整个 InitStream
+    cudaError_t err = cudaStreamCreate(reinterpret_cast<cudaStream_t*>(&sink_stream_));
+    if (err != cudaSuccess) {
+      LOGE(SINK) << "[" << stream_id_ << "]: cudaStreamCreate failed: " << err << " ("
+                 << cudaGetErrorName(err) << ")";
+      return false;
+    }
   }
 
   return true;
