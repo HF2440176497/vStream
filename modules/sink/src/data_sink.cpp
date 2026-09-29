@@ -123,6 +123,10 @@ bool DataSink::LoadStreamConf(const std::string& config_dir_path) {
         LOGE(SINK) << "[" << stream_id << "]: [fps] " << err_msg;
         return false;
       }
+      if (!checker.IsNum({key_output_min_fps}, paramSet, err_msg, false)) {
+        LOGE(SINK) << "[" << stream_id << "]: [min_fps] " << err_msg;
+        return false;
+      }
       if (!checker.IsNum({key_output_width}, paramSet, err_msg, false)) {
         LOGE(SINK) << "[" << stream_id << "]: [width] " << err_msg;
         return false;

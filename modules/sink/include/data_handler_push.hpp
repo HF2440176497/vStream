@@ -147,6 +147,8 @@ class PushHandlerIm {
   std::string output_url_;
   int device_id_ = -1;
   int fps_ = 20;
+  // 输出下限帧率（补帧）：真实帧到达过慢时重推最近一帧维持输出节奏，
+  int min_fps_ = 0;
   int width_ = 640;
   int height_ = 480;
   int bitrate_kbps_ = 1000;
@@ -162,6 +164,7 @@ class PushHandlerIm {
 
   StreamContext ctx_;
   std::recursive_mutex stream_mtx_;
+  std::mutex pts_mtx_;
   int64_t last_pts_ = -1;
 
   AVPixelFormat src_pix_fmt_ = AV_PIX_FMT_RGB24;
@@ -190,6 +193,11 @@ class PushHandlerIm {
 
   ThreadSafeQueue<EncoderTask> encode_queue_{kEncodeQueueSize};
   std::thread encode_thread_;
+
+  // 最近一帧缓存，供 min_fps 补帧重推
+  std::mutex last_frame_mtx_;
+  DataFramePtr last_frame_;
+  AVPixelFormat last_src_fmt_ = AVPixelFormat::AV_PIX_FMT_RGB24;
 
   static constexpr int kMaxReconnectAttempts = 3;
   static constexpr int64_t kReconnectIntervalMs = 1600;

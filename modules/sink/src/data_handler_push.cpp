@@ -18,6 +18,17 @@ bool PushHandlerIm::Open() {
   output_url_   = param_set_.at(key_output_url);
 
   fps_          = GetIntParam(param_set_, key_output_fps).value_or(fps_);
+  min_fps_      = GetIntParam(param_set_, key_output_min_fps).value_or(0);
+  if (min_fps_ < 0) {
+    LOGE(SINK) << "[" << stream_id_ << "]: invalid min_fps " << min_fps_;
+    min_fps_ = 0;
+  } else if (min_fps_ > fps_) {
+    LOGW(SINK) << "[" << stream_id_ << "]: min_fps " << min_fps_
+               << " > fps " << fps_ << ", clamped to fps";
+    min_fps_ = fps_;
+  } else if (min_fps_ > 0) {
+    LOGI(SINK) << "[" << stream_id_ << "]: min_fps enabled, min_fps=" << min_fps_;
+  }
   width_        = GetIntParam(param_set_, key_output_width).value_or(width_);
   height_       = GetIntParam(param_set_, key_output_height).value_or(height_);
   bitrate_kbps_ = GetIntParam(param_set_, key_output_bitrate).value_or(bitrate_kbps_);
@@ -61,6 +72,10 @@ void PushHandlerIm::Stop() {
   if (encode_thread_.joinable()) {
     encode_thread_.join();
   }
+  {
+    std::lock_guard<std::mutex> lk(last_frame_mtx_);
+    last_frame_.reset();
+  }
   first_frame_ = true;
 }
 
@@ -73,6 +88,10 @@ void PushHandlerIm::Close() {
   encode_queue_.Stop();
   if (encode_thread_.joinable()) {
     encode_thread_.join();
+  }
+  {
+    std::lock_guard<std::mutex> lk(last_frame_mtx_);
+    last_frame_.reset();
   }
   ClearStream();
   first_frame_ = true;
@@ -128,6 +147,12 @@ int PushHandlerIm::Process(const std::shared_ptr<FrameInfo> data) {
   task.pts     = ComputePts();
   task.is_eos  = false;
   task.enqueue_time = std::chrono::steady_clock::now();
+
+  {
+    std::lock_guard<std::mutex> lk(last_frame_mtx_);
+    last_frame_   = frame;
+    last_src_fmt_ = it->second;
+  }
 
   if (!encode_queue_.Push(task)) {
     LOGW(SINK) << "[DEBUG-B] encode queue full, dropping frame stream_id=" << stream_id_
@@ -491,9 +516,38 @@ void PushHandlerIm::EncodeWorkerLoop() {
   // 阈值取 3 个帧间隔，与 ControlFps 的 max_lag 一致。
   const int64_t stale_threshold_us =
       static_cast<int64_t>(1000000) / fps_ * 3;
+
+  // 真实帧到达间隔超过 1/min_fps 时，重推最近一帧维持输出下限帧率。
+  // 轮询超时取补帧间隔的一半（上限 100ms），保证补帧时间粒度。
+  const int64_t repeat_interval_us = min_fps_ > 0 ? 1000000 / min_fps_ : 0;
+  const auto wait_timeout = std::chrono::milliseconds(
+      repeat_interval_us > 0
+          ? std::min<int64_t>(100, repeat_interval_us / 2000)
+          : 100);
+  auto last_output_time = std::chrono::steady_clock::now();
   while (IsRunning()) {
-    if (!encode_queue_.WaitAndTryPop(task, std::chrono::milliseconds(100))) {
+    if (!encode_queue_.WaitAndTryPop(task, wait_timeout)) {
       if (!IsRunning()) break;
+      if (repeat_interval_us > 0 && last_frame_) {
+        auto now = std::chrono::steady_clock::now();
+        auto since_output_us = std::chrono::duration_cast<std::chrono::microseconds>(
+            now - last_output_time).count();
+        if (since_output_us >= repeat_interval_us) {
+          EncoderTask repeat_task;
+          {
+            std::lock_guard<std::mutex> lk(last_frame_mtx_);
+            repeat_task.frame   = last_frame_;
+            repeat_task.src_fmt = last_src_fmt_;
+          }
+          repeat_task.pts     = ComputePts();
+          repeat_task.is_eos  = false;
+          repeat_task.enqueue_time = now;
+          if (encode_queue_.Push(repeat_task)) {
+            LOGD(SINK) << "[" << stream_id_ << "]: repeat last frame for min_fps="
+                       << min_fps_ << " since_output_us=" << since_output_us;
+          }
+        }
+      }
       continue;
     }
     if (task.is_eos) {
@@ -509,6 +563,7 @@ void PushHandlerIm::EncodeWorkerLoop() {
                  << " threshold_us=" << stale_threshold_us;
       continue;
     }
+    last_output_time = std::chrono::steady_clock::now();
     std::lock_guard<std::recursive_mutex> lk(stream_mtx_);
     if (!stream_initialized_) {
       if (!InitStream()) {
@@ -575,6 +630,8 @@ int64_t PushHandlerIm::ComputePts() {
   //   - 到达率 > fps 时，ControlFps 已将接受节流到 fps，PTS 间隔 ≈ 1，反映 fps 速率；
   //   - 网络阻塞期间被 ControlFps 丢弃的帧不进入此函数，PTS 自然体现真实间隙，
   //     直播播放器可据此感知延迟并追赶。
+  // 补帧同样调用本函数：PTS 按真实时间推进，与真实帧共用同一时间轴
+  std::lock_guard<std::mutex> lk(pts_mtx_);
   auto now = std::chrono::steady_clock::now();
   auto elapsed_us = std::chrono::duration_cast<std::chrono::microseconds>(
       now - push_start_time_).count();

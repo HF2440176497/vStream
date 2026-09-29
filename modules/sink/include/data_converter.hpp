@@ -149,7 +149,7 @@ inline s_output_data ConvertFrameInfo(const std::shared_ptr<FrameInfo>& frame_in
     auto img_data = frame_info->collection.Get<DataFramePtr>(kDataFrameTag);
     data.image_dict[output_constants::key_original_image] = img_data->GetImage();
   } else {
-    LOGE(DATA_CONVERTER) << "ConvertFrameInfo: DataFrame not found in FrameInfo collection.";
+    LOGE(CONVERTER) << "[ " << frame_info->timestamp << "] " << "DataFrame not found in collection.";
     data.result = output_result::RESULT_UNKNOWN_ERROR;
     return data;
   }
@@ -159,7 +159,7 @@ inline s_output_data ConvertFrameInfo(const std::shared_ptr<FrameInfo>& frame_in
     auto custom_images = frame_info->collection.Get<CustomImagesPtr>(kCustomImagesTag);
     for (const auto& [key, mat] : *custom_images) {
       data.image_dict[key] = mat;
-      LOGI(DATA_CONVERTER) << "ConvertFrameInfo: found custom image: " << key << "; shape: " 
+      LOGI(CONVERTER) << "[ " << frame_info->timestamp << "] found image: " << key << "; shape: " 
                            << cv::format("(%d, %d, %d)", mat.rows, mat.cols, mat.channels());
     }
   }
@@ -173,8 +173,8 @@ inline s_output_data ConvertFrameInfo(const std::shared_ptr<FrameInfo>& frame_in
       }
     }
   } else {
-    LOGE(DATA_CONVERTER) << "ConvertFrameInfo: invariant violated — kInferObjsTag missing"
-                         << " (timestamp=" << data.timestamp << ").";
+    LOGE(CONVERTER) << "[ " << frame_info->timestamp << "] " 
+                    << "invariant violated: kInferObjsTag miss";
     data.result = output_result::RESULT_UNKNOWN_ERROR;
     return data;
   }
@@ -182,7 +182,8 @@ inline s_output_data ConvertFrameInfo(const std::shared_ptr<FrameInfo>& frame_in
   try {
     data.objects_json = nlohmann::json(data.objects).dump();
   } catch (const std::exception& e) {
-    LOGE(DATA_CONVERTER) << "ConvertFrameInfo: failed to serialize objects to json: " << e.what();
+    LOGE(CONVERTER) << "[ " << frame_info->timestamp << "] " 
+                    << "failed to serialize to json: " << e.what();
     data.objects_json.clear();
   }
 

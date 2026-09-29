@@ -21,6 +21,7 @@ inline const std::string key_output_format = "format";
 inline const std::string key_queue_size = "queue_size";
 
 inline const std::string key_output_fps = "fps";
+inline const std::string key_output_min_fps = "min_fps";
 inline const std::string key_output_height = "height";
 inline const std::string key_output_width = "width";
 inline const std::string key_output_bitrate = "bitrate";
