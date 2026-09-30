@@ -469,34 +469,47 @@ class Post_YOLOv5_CPU_OCR: public Postproc {
   }
 
  private:
-  // 二次合并切分规则
-  static size_t SplitIndex(size_t n) {
-    if (n <= 5) return n;
-    switch (n) {
-      case 6: return 3;
-      case 7: return 4;
-      case 8: return 4;
-      case 9: return 5;
-      case 10: return 5;
-      default: return (n + 1) / 2;
+  // 二次合并切分规则（按一次合并框数量 n 分组）：
+  //   n == 0   : 空
+  //   n <= 4   : 全部并为一组
+  //   n = 5/6  : 切两段 [3, 余]
+  //   n = 7/8  : 切两段 [4, 余]
+  //   n >= 9   : 切三段，chunk = ceil(n / 3)
+  static std::vector<size_t> GroupSizes(size_t n) {
+    std::vector<size_t> sizes;
+    if (n == 0) {
+      return sizes;
     }
+    if (n <= 4) {
+      sizes.push_back(n);
+    } else if (n <= 6) {
+      sizes.push_back(3);
+      sizes.push_back(n - 3);
+    } else if (n <= 8) {
+      sizes.push_back(4);
+      sizes.push_back(n - 4);
+    } else {
+      const size_t chunk = (n + 2) / 3;  // 等价于 ceil(n / 3)
+      sizes.push_back(chunk);
+      sizes.push_back(chunk);
+      sizes.push_back(n - 2 * chunk);
+    }
+    return sizes;
   }
 
   // 二次合并：对已排序的一次合并框按数量切分，每组取字符外接矩形
   std::vector<CharBox> SecondMerge(const std::vector<CharBox>& ordered) const {
     std::vector<CharBox> out;
-    const size_t n = ordered.size();
-    if (n == 0) return out;
-    out.reserve(n);
+    if (ordered.size() == 0) return out;
+    out.reserve(ordered.size());
     size_t start = 0;
-    while (start < n) {
-      // 当前分组的左右边界 index
-      size_t end = start + SplitIndex(n - start);
+    for (size_t size : GroupSizes(ordered.size())) {
+      const size_t end = std::min(start + size, ordered.size());
       float min_x = ordered[start].x;
       float min_y = ordered[start].y;
       float max_x = ordered[start].xmax();
       float max_y = ordered[start].ymax();
-      for (size_t i = start + 1; i < end && i < n; ++i) {
+      for (size_t i = start + 1; i < end; ++i) {
         min_x = std::min(min_x, ordered[i].x);
         min_y = std::min(min_y, ordered[i].y);
         max_x = std::max(max_x, ordered[i].xmax());
