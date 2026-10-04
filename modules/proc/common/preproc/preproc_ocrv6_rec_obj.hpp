@@ -22,12 +22,19 @@
 
 namespace cnstream {
 
+namespace {
+
+inline constexpr const char* key_crop_padding = "crop_padding";
+
+}  // namespace
+
+
 /**
  * @brief PPOCRv6 识别 CPU 前处理（对象级）
  *
  * 与 PaddleOCR 框架 RecResizeImg（ppocr/data/imaug/rec_img_aug.py resize_norm_img）对齐：
- *   bbox 裁剪 → 等比 resize 到 h=48（宽上限 = 模型输入宽）→ /255 → -0.5 → /0.5
- *   → 右侧补 0 到模型输入宽 → HWC 转 NCHW。
+ *   bbox 裁剪（可选 crop_padding 边缘外扩，限原图内）→ 等比 resize 到 h=48（宽上限 = 模型输入宽）
+ *   → /255 → -0.5 → /0.5 → 右侧补 0 到模型输入宽 → HWC 转 NCHW。
  * 通道序保持 BGR
  * 输入宽高取自 model loader，静态特化 engine [1,3,48,320] 下即 48/320。
  */
@@ -35,6 +42,15 @@ class Pre_PPOCRv6_rec_Obj : public ObjPreproc {
  public:
   bool Init(const std::map<std::string, std::string> &params) override {
     params_ = params;
+    auto it = params.find(key_crop_padding);
+    if (it != params.end()) {
+      try {
+        crop_padding_ = std::max(0, std::stoi(it->second));
+        LOGU(PREPROC) << "crop_padding value: " << crop_padding_;
+      } catch (const std::exception&) {
+        LOGW(PREPROC) << "Invalid crop_padding value: " << it->second << ", using default 0";
+      }
+    }
     return true;
   }
   /**
@@ -63,11 +79,17 @@ class Pre_PPOCRv6_rec_Obj : public ObjPreproc {
     int input_w  = model->get_width();  // 320
 
     // 裁剪
-    int x = std::max(0, (int)pobj->bbox.x);
-    int y = std::max(0, (int)pobj->bbox.y);
-    int w = std::min((int)pobj->bbox.w, img.cols - x);
-    int h = std::min((int)pobj->bbox.h, img.rows - y);
-    if (w <= 0 || h <= 0) return -1;
+    int bx = std::max(0, (int)pobj->bbox.x);
+    int by = std::max(0, (int)pobj->bbox.y);
+    int bw = std::min((int)pobj->bbox.w, img.cols - bx);
+    int bh = std::min((int)pobj->bbox.h, img.rows - by);
+    if (bw <= 0 || bh <= 0) return -1;
+
+    // 边缘外扩
+    int x = std::max(0, bx - crop_padding_);
+    int y = std::max(0, by - crop_padding_);
+    int w = std::min(bx + bw + crop_padding_, img.cols) - x;
+    int h = std::min(by + bh + crop_padding_, img.rows) - y;
     cv::Rect rect(x, y, w, h);
     cv::Mat crop_img = img(rect).clone();
 
@@ -124,6 +146,7 @@ class Pre_PPOCRv6_rec_Obj : public ObjPreproc {
 
  private:
   std::string model_name_;
+  int crop_padding_ = 0;
 
  private:
   cnstream::DebugImageSaver debug_saver_{false, 500};

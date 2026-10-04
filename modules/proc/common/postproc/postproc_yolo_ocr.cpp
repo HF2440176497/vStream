@@ -471,23 +471,37 @@ class Post_YOLOv5_CPU_OCR: public Postproc {
  private:
   // 二次合并切分规则（按一次合并框数量 n 分组）：
   //   n == 0   : 空
-  //   n <= 4   : 全部并为一组
-  //   n = 5/6  : 切两段 [3, 余]
-  //   n = 7/8  : 切两段 [4, 余]
+  //   n <= 3   : 全部并为一组
+  //   n == 4   : 切两段 [2, 2]
+  //   n == 5   : 切两段 [3, 2]
+  //   n == 6   : 切两段 [3, 3]
+  //   n == 7   : 切三段 [3, 2, 2]
+  //   n == 8   : 切三段 [3, 3, 2]
   //   n >= 9   : 切三段，chunk = ceil(n / 3)
   static std::vector<size_t> GroupSizes(size_t n) {
     std::vector<size_t> sizes;
     if (n == 0) {
       return sizes;
     }
-    if (n <= 4) {
+    if (n <= 3) {
       sizes.push_back(n);
-    } else if (n <= 6) {
+    } else if (n == 4) {
+      sizes.push_back(2);
+      sizes.push_back(n-2);
+    } else if (n == 5) {
       sizes.push_back(3);
-      sizes.push_back(n - 3);
-    } else if (n <= 8) {
-      sizes.push_back(4);
-      sizes.push_back(n - 4);
+      sizes.push_back(n-3);
+    } else if (n == 6) {
+      sizes.push_back(3);
+      sizes.push_back(n-3);
+    } else if (n == 7) {
+      sizes.push_back(3);
+      sizes.push_back(2);
+      sizes.push_back(n-3-2);
+    } else if (n == 8) {
+      sizes.push_back(3);
+      sizes.push_back(3);
+      sizes.push_back(n-3-3);
     } else {
       const size_t chunk = (n + 2) / 3;  // 等价于 ceil(n / 3)
       sizes.push_back(chunk);
@@ -502,8 +516,19 @@ class Post_YOLOv5_CPU_OCR: public Postproc {
     std::vector<CharBox> out;
     if (ordered.size() == 0) return out;
     out.reserve(ordered.size());
+    const std::vector<size_t> group_sizes = GroupSizes(ordered.size());
+    {
+      // 打印本次二次合并的分段明细，如 groups=[3,3,2]（数字为各组并入的框数量）
+      std::string split_str;
+      for (size_t i = 0; i < group_sizes.size(); ++i) {
+        split_str += (i == 0 ? "" : ",");
+        split_str += std::to_string(group_sizes[i]);
+      }
+      LOGU(POSTPROC) << "second_merge: boxes=" << ordered.size()
+                     << ", groups=[" << split_str << "]";
+    }
     size_t start = 0;
-    for (size_t size : GroupSizes(ordered.size())) {
+    for (size_t size : group_sizes) {
       const size_t end = std::min(start + size, ordered.size());
       float min_x = ordered[start].x;
       float min_y = ordered[start].y;
