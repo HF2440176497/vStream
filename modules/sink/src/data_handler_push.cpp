@@ -29,6 +29,15 @@ bool PushHandlerIm::Open() {
   } else if (min_fps_ > 0) {
     LOGI(SINK) << "[" << stream_id_ << "]: min_fps enabled, min_fps=" << min_fps_;
   }
+  keyframe_interval_ms_ = GetIntParam(param_set_, key_output_keyframe_interval_ms).value_or(0);
+  if (keyframe_interval_ms_ < 0) {
+    LOGW(SINK) << "[" << stream_id_ << "]: invalid keyframe_interval_ms "
+               << keyframe_interval_ms_ << ", disabled";
+    keyframe_interval_ms_ = 0;
+  } else if (keyframe_interval_ms_ > 0) {
+    LOGI(SINK) << "[" << stream_id_ << "]: periodic keyframe enabled, interval="
+               << keyframe_interval_ms_ << "ms";
+  }
   width_        = GetIntParam(param_set_, key_output_width).value_or(width_);
   height_       = GetIntParam(param_set_, key_output_height).value_or(height_);
   bitrate_kbps_ = GetIntParam(param_set_, key_output_bitrate).value_or(bitrate_kbps_);
@@ -233,6 +242,7 @@ bool PushHandlerIm::InitStream() {
     av_dict_set(&opts, "min-keyint", gop_str.c_str(), 0);
     av_dict_set(&opts, "scenecut", "0", 0);  // 关闭场景切换检测，避免生成额外关键帧
     av_dict_set(&opts, "force-cfr", "1", 0);
+    av_dict_set(&opts, "forced-idr", "1", 0);  // pict_type=I 时强制生成 IDR 关键帧
     av_dict_set(&opts, "vbv-maxrate", bitrate_str.c_str(), 0);
     av_dict_set(&opts, "vbv-bufsize", bitrate_str.c_str(), 0);
     av_dict_set(&opts, "nal-hrd", "cbr", 0);  // 强制 CBR，暗场/静态画面维持码率
@@ -407,6 +417,11 @@ bool PushHandlerIm::SendFrameFb(const DataFramePtr& frame, AVPixelFormat src_pix
 
 bool PushHandlerIm::EncodeFrame(AVFrame* frame) {
   int ret;
+  if (frame) {
+    // 按墙钟周期强制关键帧：sw_frame/hw_frame 会被复用，必须每帧显式设置 pict_type，
+    // 非强制帧复位为 NONE，否则会一直沿用上一次的强制 I
+    frame->pict_type = ShouldForceKeyframe() ? AV_PICTURE_TYPE_I : AV_PICTURE_TYPE_NONE;
+  }
   while ((ret = avcodec_send_frame(ctx_.codec_ctx, frame)) == AVERROR(EAGAIN)) {
     if (!DrainPackets()) {
       return false;
@@ -618,6 +633,7 @@ void PushHandlerIm::ClearStream() {
   }
   ctx_ = StreamContext();
   stream_initialized_ = false;
+  keyframe_time_valid_ = false;  // 流重建后首帧重新计时，确保首帧为关键帧
   LOGI(SINK) << "[" << stream_id_ << "]: Stream clean done";
 }
 
@@ -641,6 +657,24 @@ int64_t PushHandlerIm::ComputePts() {
   }
   last_pts_ = pts;
   return pts;
+}
+
+bool PushHandlerIm::ShouldForceKeyframe() {
+  if (keyframe_interval_ms_ <= 0) {
+    return false;
+  }
+  auto now = std::chrono::steady_clock::now();
+  if (!keyframe_time_valid_) {
+    // 首帧（或流重建后的首帧）必然强制关键帧
+    keyframe_time_valid_ = true;
+    last_keyframe_time_ = now;
+    return true;
+  }
+  if (now - last_keyframe_time_ >= std::chrono::milliseconds(keyframe_interval_ms_)) {
+    last_keyframe_time_ = now;
+    return true;
+  }
+  return false;
 }
 
 // 存在的问题：last_push_time_ 取 now 时，时间间隔可能不均匀

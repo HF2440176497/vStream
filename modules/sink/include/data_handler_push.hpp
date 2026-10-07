@@ -138,6 +138,8 @@ class PushHandlerIm {
   void EncodeWorkerLoop();
   int64_t ComputePts();
   bool ControlFps();
+  // 按墙钟时间判定是否需要对当前帧强制关键帧（IDR）
+  bool ShouldForceKeyframe();
 
   DataSink *module_ = nullptr;
   std::string stream_id_;
@@ -149,6 +151,11 @@ class PushHandlerIm {
   int fps_ = 20;
   // 输出下限帧率（补帧）：真实帧到达过慢时重推最近一帧维持输出节奏，
   int min_fps_ = 0;
+  // 周期强制关键帧（按墙钟时间）：>0 时距上次关键帧超过该毫秒数即强制当前帧为 IDR。
+  // 与帧率解耦，保证低帧率/慢线速下 I 帧时间间隔仍有上界（否则 GOP 按帧数计会随时间拉长）。
+  int keyframe_interval_ms_ = 0;
+  std::chrono::steady_clock::time_point last_keyframe_time_{};
+  bool keyframe_time_valid_ = false;
   int width_ = 640;
   int height_ = 480;
   int bitrate_kbps_ = 1000;

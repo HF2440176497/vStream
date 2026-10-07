@@ -22,7 +22,7 @@ ModelValidator::ModelValidator(const std::string& model_path,
   if (it != device_type_map.end()) {
     device_type_ = it->second;
   } else {
-    LOGE(MODEL_VALIDATOR) << "Unknown device_type: " << device_type << ", fallback to CPU";
+    LOGE(VALIDATE) << "Unknown device_type: " << device_type << ", fallback to CPU";
     device_type_ = DevType::CPU;
     device_id_ = -1;
   }
@@ -44,14 +44,14 @@ ModelValidator::~ModelValidator() {
 
 bool ModelValidator::Load() {
   if (model_path_.empty()) {
-    LOGE(MODEL_VALIDATOR) << "model_path is empty";
+    LOGE(VALIDATE) << "model_path is empty";
     return false;
   }
 
   auto& factory = ModelLoaderFactory::Instance();
   model_loader_ = factory.CreateModelLoader(device_type_, device_id_);
   if (!model_loader_) {
-    LOGE(MODEL_VALIDATOR) << "CreateModelLoader failed, device: " << DevType2Str(device_type_)
+    LOGE(VALIDATE) << "CreateModelLoader failed, device: " << DevType2Str(device_type_)
                           << ", id: " << device_id_;
     return false;
   }
@@ -62,12 +62,12 @@ bool ModelValidator::Load() {
   params.input_ordered_index = input_ordered_index_;
 
   if (!model_loader_->Init(model_path_, params)) {
-    LOGE(MODEL_VALIDATOR) << "ModelLoader::Init failed, path: " << model_path_;
+    LOGE(VALIDATE) << "ModelLoader::Init failed, path: " << model_path_;
     return false;
   }
 
   if (!model_loader_->IsValid()) {
-    LOGE(MODEL_VALIDATOR) << "Model not valid after init: " << model_path_;
+    LOGE(VALIDATE) << "Model not valid after init: " << model_path_;
     return false;
   }
 
@@ -76,13 +76,13 @@ bool ModelValidator::Load() {
   // Create MemOp for device-aware memory operations
   memop_ = MemOpFactory::Instance().CreateMemOp(device_type_, device_id_);
   if (!memop_) {
-    LOGE(MODEL_VALIDATOR) << "CreateMemOp failed, device: " << DevType2Str(device_type_);
+    LOGE(VALIDATE) << "CreateMemOp failed, device: " << DevType2Str(device_type_);
     return false;
   }
 
   AllocateBuffers();
 
-  LOGI(MODEL_VALIDATOR) << "Model loaded: " << model_path_
+  LOGI(VALIDATE) << "Model loaded: " << model_path_
                         << " | device: " << DevType2Str(device_type_)
                         << " | batch: " << model_loader_->get_batch_size()
                         << " | input: " << model_loader_->get_width()
@@ -156,16 +156,16 @@ void ModelValidator::AllocateBuffers() {
     size_t byte_size = elem_count * dsize;
 
     if (batch_size != 1) {
-      LOGE(MODEL_VALIDATOR) << "Batch size must be 1 for image validation";
+      LOGE(VALIDATE) << "Batch size must be 1 for image validation";
       return;
     }
     
-    LOGE(MODEL_VALIDATOR) << "Allocate input[" << i << "] shape=" << shape
+    LOGE(VALIDATE) << "Allocate input[" << i << "] shape=" << shape
                           << ", dtype=" << DataTypeToString(data_type);
     cpu_input_bufs_[i].assign(elem_count, 0.0f);  // 分配缓冲区
     dev_input_bufs_[i] = memop_->Allocate(byte_size);
     if (!dev_input_bufs_[i]) {
-      LOGE(MODEL_VALIDATOR) << "Allocate input[" << i << "] device buffer failed, size=" << byte_size;
+      LOGE(VALIDATE) << "Allocate input[" << i << "] device buffer failed, size=" << byte_size;
     }
   }
 
@@ -179,16 +179,16 @@ void ModelValidator::AllocateBuffers() {
     size_t byte_size = elem_count * dsize;
 
     if (batch_size != 1) {
-      LOGE(MODEL_VALIDATOR) << "Batch size must be 1 for image validation";
+      LOGE(VALIDATE) << "Batch size must be 1 for image validation";
       return;
     }
 
-    LOGE(MODEL_VALIDATOR) << "Allocate output[" << i << "] shape=" << shape
+    LOGE(VALIDATE) << "Allocate output[" << i << "] shape=" << shape
                           << ", dtype=" << DataTypeToString(data_type);
     cpu_output_bufs_[i].assign(elem_count, 0.0f);
     dev_output_bufs_[i] = memop_->Allocate(byte_size);
     if (!dev_output_bufs_[i]) {
-      LOGE(MODEL_VALIDATOR) << "Allocate output[" << i << "] device buffer failed, size=" << byte_size;
+      LOGE(VALIDATE) << "Allocate output[" << i << "] device buffer failed, size=" << byte_size;
     }
   }
 }
@@ -202,12 +202,12 @@ ModelValidator::Infer(const std::vector<std::vector<float>>& inputs) {
   std::vector<std::vector<float>> results;
 
   if (!IsLoaded()) {
-    LOGE(MODEL_VALIDATOR) << "Model not loaded, call Load() first";
+    LOGE(VALIDATE) << "Model not loaded, call Load() first";
     return results;
   }
 
   if (inputs.size() != model_loader_->InputNum()) {
-    LOGE(MODEL_VALIDATOR) << "Input count mismatch: got " << inputs.size()
+    LOGE(VALIDATE) << "Input count mismatch: got " << inputs.size()
                           << ", expected " << model_loader_->InputNum();
     return results;
   }
@@ -216,7 +216,7 @@ ModelValidator::Infer(const std::vector<std::vector<float>>& inputs) {
   for (uint32_t i = 0; i < inputs.size(); ++i) {
     size_t expected = static_cast<size_t>(model_loader_->InputShape(i).DataCount());
     if (inputs[i].size() != expected) {
-      LOGE(MODEL_VALIDATOR) << "Input[" << i << "] size mismatch: got " << inputs[i].size()
+      LOGE(VALIDATE) << "Input[" << i << "] size mismatch: got " << inputs[i].size()
                             << ", expected " << expected;
       return results;
     }
@@ -227,7 +227,7 @@ ModelValidator::Infer(const std::vector<std::vector<float>>& inputs) {
 
   // Run inference
   if (!model_loader_->RunSync(exec_ctx_, dev_input_bufs_, dev_output_bufs_)) {
-    LOGE(MODEL_VALIDATOR) << "RunSync failed";
+    LOGE(VALIDATE) << "RunSync failed";
     return results;
   }
 
@@ -318,7 +318,7 @@ E2EResult ModelValidator::RunE2E(
   auto t_end = std::chrono::high_resolution_clock::now();
   result.latency_ms = std::chrono::duration<double, std::milli>(t_end - t_start).count();
 
-  LOGI(MODEL_VALIDATOR) << "E2E done: " << result.detections.size()
+  LOGI(VALIDATE) << "E2E done: " << result.detections.size()
                         << " detections, " << result.latency_ms << " ms";
   return result;
 }
@@ -337,14 +337,14 @@ std::vector<BenchmarkResult> ModelValidator::Benchmark(
   std::vector<BenchmarkResult> results;
 
   if (!IsLoaded()) {
-    LOGE(MODEL_VALIDATOR) << "Model not loaded";
+    LOGE(VALIDATE) << "Model not loaded";
     return results;
   }
 
   // Currently only batch_size=1 is supported (single image validation)
   for (int bs : batch_sizes) {
     if (bs != 1) {
-      LOGW(MODEL_VALIDATOR) << "batch_size=" << bs << " not supported yet, skipping";
+      LOGW(VALIDATE) << "batch_size=" << bs << " not supported yet, skipping";
       continue;
     }
 
@@ -356,7 +356,7 @@ std::vector<BenchmarkResult> ModelValidator::Benchmark(
       E2EResult tmp = RunE2E(image, preproc_name, postproc_name,
                              preproc_params, postproc_params);
       if (!tmp.error.empty()) {
-        LOGW(MODEL_VALIDATOR) << "Warmup failed: " << tmp.error;
+        LOGW(VALIDATE) << "Warmup failed: " << tmp.error;
       }
     }
 
@@ -385,7 +385,7 @@ std::vector<BenchmarkResult> ModelValidator::Benchmark(
       r.fps = r.avg_ms > 0 ? 1000.0 / r.avg_ms : 0.0;
     }
 
-    LOGI(MODEL_VALIDATOR) << "Benchmark bs=" << bs
+    LOGI(VALIDATE) << "Benchmark bs=" << bs
                           << " | avg=" << r.avg_ms << "ms"
                           << " | p99=" << r.p99_ms << "ms"
                           << " | fps=" << r.fps
@@ -441,7 +441,7 @@ bool ModelValidator::RunPreproc(Preproc* preproc, const FrameInfoPtr& frame_info
 
   int ret = preproc->Execute(input_ptrs, model_loader_.get(), frame_info);
   if (ret != 0) {
-    LOGE(MODEL_VALIDATOR) << "Preproc::Execute returned " << ret;
+    LOGE(VALIDATE) << "Preproc::Execute returned " << ret;
     return false;
   }
   return true;
@@ -457,7 +457,7 @@ bool ModelValidator::RunInference() {
 
   // RunSync
   if (!model_loader_->RunSync(exec_ctx_, dev_input_bufs_, dev_output_bufs_)) {
-    LOGE(MODEL_VALIDATOR) << "RunSync failed";
+    LOGE(VALIDATE) << "RunSync failed";
     return false;
   }
 
@@ -485,7 +485,7 @@ bool ModelValidator::RunPostproc(Postproc* postproc, const FrameInfoPtr& frame_i
 
   int ret = postproc->Execute(output_ptrs, model_loader_.get(), frame_info);
   if (ret != 0) {
-    LOGE(MODEL_VALIDATOR) << "Postproc::Execute returned " << ret;
+    LOGE(VALIDATE) << "Postproc::Execute returned " << ret;
     return false;
   }
   return true;

@@ -21,8 +21,6 @@
 
 namespace cnstream {
 
-#define MODEL_VALIDATOR "ModelValidator"
-
 /// @brief Single tensor descriptor (name, shape, dtype)
 struct ModelTensorInfo {
   std::string name;
