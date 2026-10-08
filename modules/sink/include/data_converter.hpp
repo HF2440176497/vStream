@@ -159,7 +159,7 @@ inline s_output_data ConvertFrameInfo(const std::shared_ptr<FrameInfo>& frame_in
     auto custom_images = frame_info->collection.Get<CustomImagesPtr>(kCustomImagesTag);
     for (const auto& [key, mat] : *custom_images) {
       data.image_dict[key] = mat;
-      LOGI(CONVERTER) << "[ " << frame_info->timestamp << "] found image: " << key << "; shape: " 
+      LOGI(CONVERTER) << "[" << frame_info->timestamp << "] found image: " << key << "; shape: " 
                            << cv::format("(%d, %d, %d)", mat.rows, mat.cols, mat.channels());
     }
   }
