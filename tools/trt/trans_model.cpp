@@ -178,22 +178,27 @@ static void ApplyPrecisionFlags(IBuilderConfig* builder_config, const CompileCon
       cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, device));
   const bool tf32_capable = (major >= 8);  // TF32 自 Ampere(sm80) 起支持
 
-  bool tf32_applied = true;
   if (config.tf32) {
-    tf32_applied = builder_config->setFlag(BuilderFlag::kTF32);
+    builder_config->setFlag(BuilderFlag::kTF32);
   } else {
-    tf32_applied = builder_config->clearFlag(BuilderFlag::kTF32);
+    builder_config->clearFlag(BuilderFlag::kTF32);
   }
 
-  bool fp16_applied = true;
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
   if (config.fp16) {
-    fp16_applied = builder_config->setFlag(BuilderFlag::kFP16);
+    builder_config->setFlag(BuilderFlag::kFP16);
   } else {
-    fp16_applied = builder_config->clearFlag(BuilderFlag::kFP16);
+    builder_config->clearFlag(BuilderFlag::kFP16);
   }
 
   const bool tf32_on = builder_config->getFlag(BuilderFlag::kTF32);
   const bool fp16_on = builder_config->getFlag(BuilderFlag::kFP16);
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
   std::cout << "========== Precision Flags ==========" << std::endl;
   std::cout << "  Device " << device << ": compute capability " << major << "." << minor
@@ -212,10 +217,10 @@ static void ApplyPrecisionFlags(IBuilderConfig* builder_config, const CompileCon
     std::cout << "  NOTE: can not support TF32" << std::endl;
   }
 
-  if (!tf32_applied) {
+  if (config.tf32 && !tf32_on) {
     std::cout << "  WARNING: Set kTF32 not effective" << std::endl;
   }
-  if (config.fp16 && !fp16_applied) {
+  if (config.fp16 && !fp16_on) {
     std::cout << "  WARNING: Set kFP16 not effective" << std::endl;
   }
   std::cout << "=====================================" << std::endl;
