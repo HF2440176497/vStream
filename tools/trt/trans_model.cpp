@@ -155,6 +155,74 @@ CompileOutput::CompileOutput(const char* file) : type_(CompileOutputType::File),
 
 
 /**
+ * @brief 应用并回显精度相关的 BuilderFlag
+ *
+ * kTF32 "Allow (but not require) computations on tensors of type
+ * DataType::kFLOAT to use TF32" —— 它是「许可」而非「强制」：
+ *   - TF32 只影响计算精度，不改变张量类型（网络里的张量仍是 FP32）。
+ *
+ * TF32 的精度特征：指数位与 FP32 相同（8 位，动态范围不受影响），
+ * 尾数 10 位（同 FP16），累加仍是 FP32。相对误差量级约 1e-3
+ *
+ */
+static void ApplyPrecisionFlags(IBuilderConfig* builder_config, const CompileConfig& config) {
+  int device = 0;
+  if (!CHECK_CUDA_RUNTIME(cudaGetDevice(&device))) {
+    std::cout << "WARNING: cudaGetDevice failed, skip device capability probe" << std::endl;
+  }
+  int major = 0;
+  int minor = 0;
+  CHECK_CUDA_RUNTIME(
+      cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device));
+  CHECK_CUDA_RUNTIME(
+      cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, device));
+  const bool tf32_capable = (major >= 8);  // TF32 自 Ampere(sm80) 起支持
+
+  bool tf32_applied = true;
+  if (config.tf32) {
+    tf32_applied = builder_config->setFlag(BuilderFlag::kTF32);
+  } else {
+    tf32_applied = builder_config->clearFlag(BuilderFlag::kTF32);
+  }
+
+  bool fp16_applied = true;
+  if (config.fp16) {
+    fp16_applied = builder_config->setFlag(BuilderFlag::kFP16);
+  } else {
+    fp16_applied = builder_config->clearFlag(BuilderFlag::kFP16);
+  }
+
+  const bool tf32_on = builder_config->getFlag(BuilderFlag::kTF32);
+  const bool fp16_on = builder_config->getFlag(BuilderFlag::kFP16);
+
+  std::cout << "========== Precision Flags ==========" << std::endl;
+  std::cout << "  Device " << device << ": compute capability " << major << "." << minor
+            << " [TF32 capable: " << (tf32_capable ? "YES" : "NO") << "]" << std::endl;
+  std::cout << "  TF32 : " << (tf32_on ? "ON" : "OFF")
+            << "   [requested: " << (config.tf32 ? "ON" : "OFF") << "]" << std::endl;
+  std::cout << "  FP16 : " << (fp16_on ? "ON" : "OFF")
+            << "   [requested: " << (config.fp16 ? "ON" : "OFF") << "]" << std::endl;
+
+  if (!tf32_on && tf32_capable) {
+    std::cout << "  NOTE: TF32 off，FP32 conv/mul use real FP32"
+              << std::endl;
+  } else if (tf32_on && tf32_capable) {
+    std::cout << "  NOTE: TF32 on，FP32 may use 10-bit tail" << std::endl;
+  } else if (tf32_on && !tf32_capable) {
+    std::cout << "  NOTE: can not support TF32" << std::endl;
+  }
+
+  if (!tf32_applied) {
+    std::cout << "  WARNING: Set kTF32 not effective" << std::endl;
+  }
+  if (config.fp16 && !fp16_applied) {
+    std::cout << "  WARNING: Set kFP16 not effective" << std::endl;
+  }
+  std::cout << "=====================================" << std::endl;
+}
+
+
+/**
  * @param source 模型源 (ONNX 文件路径或内存数据)
  * @param saveto 输出配置 (File: 写入磁盘; Memory: 不写盘, 由返回值返回)
  * @param config 编译配置
@@ -250,6 +318,9 @@ std::vector<uint8_t> compile(const ModelSource& source, const CompileOutput& sav
   size_t workspace_size = config.max_workspace_size > 0 ? config.max_workspace_size : (2ULL << 30);
   builder_config->setMemoryPoolLimit(MemoryPoolType::kWORKSPACE, workspace_size);
   std::cout << "Workspace limit: " << workspace_size / 1024.0 / 1024.0 << " MB" << std::endl;
+
+  // 必须在 buildEngineWithConfig 之前设置
+  ApplyPrecisionFlags(builder_config.get(), config);
 
   // 记录每个输入最终采用的 opt 形状，供 build 后做 context 级输出解析检查
   std::map<std::string, nvinfer1::Dims> opt_dims_map;
@@ -578,6 +649,22 @@ static bool LoadConfigFromJson(const std::string& config_file,
     config->strict_qdq = data["strict_qdq"].get<bool>();
   }
 
+  if (data.find("tf32") != data.end()) {
+    if (!data["tf32"].is_boolean()) {
+      std::cerr << "Config field 'tf32' must be a boolean (true/false)." << std::endl;
+      return false;
+    }
+    config->tf32 = data["tf32"].get<bool>();
+  }
+
+  if (data.find("fp16") != data.end()) {
+    if (!data["fp16"].is_boolean()) {
+      std::cerr << "Config field 'fp16' must be a boolean (true/false)." << std::endl;
+      return false;
+    }
+    config->fp16 = data["fp16"].get<bool>();
+  }
+
   if (data.find("profile_shapes") != data.end()) {
     if (!ParseProfileShapes(data, config)) {
       return false;
@@ -602,7 +689,9 @@ static void PrintUsage(const char* program) {
   std::cerr << "Optional config fields: max_workspace_size, strict_qdq, "
             << "log_level (INTERNAL_ERROR|ERROR|WARNING|INFO), "
             << "profile_shapes ({\"<input>\": {\"min\": [..], \"opt\": [..], \"max\": [..]}}; "
-            << "required for inputs with dynamic dims, min=opt=max pins a static shape)"
+            << "required for inputs with dynamic dims, min=opt=max pins a static shape), "
+            << "tf32 (bool, default true; set false to force true FP32 on FP32 layers), "
+            << "fp16 (bool, default false; allow FP16 kernels)"
             << std::endl;
 }
 

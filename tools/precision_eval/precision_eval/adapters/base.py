@@ -1,20 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-模型适配器接口
-
-  core/      只回答「两个张量差多少」，不认识任何模型；
-  adapters/  回答「这个差异对这个模型意味着什么」，是唯一允许出现
-             预处理公式、字符表、CTC、NMS、类别名等概念的地方。
-
-新增模型类型时，只需要：
+模型适配器接口，新增模型类型时，只需要：
   1. 在本目录加一个 <model>.py，继承 ModelAdapter；
   2. 在 ../model_types.json 登记（module / class / steps / description）。
 
 """
 
 
-class ModelAdapter(object):
-    # ---- 元信息（供 cli list 展示）----
+class ModelAdapter:
     name = "base"
     description = ""
     # 该模型需要的输入物，供用户判断要准备什么
@@ -24,7 +17,7 @@ class ModelAdapter(object):
     provides_preprocess = False   # 能否把图片转成模型输入张量（决定 dump 是否可用）
     provides_decision = False     # 能否做模型特定的解码与决策层对比
 
-    # 若该模型需要字符表/标签表，填它在 params 里的键名；
+    # 若该模型需要字符表/标签表，charset_param 是 params 里的键名；
     # cli 会据此把它打包进 corpus，并在容器侧自动回退读取。
     charset_param = None
 

@@ -1,15 +1,11 @@
 # -*- coding: utf-8 -*-
-"""推理后端 —— 与模型类型无关。
+"""
+推理后端 —— 与模型类型无关。
 
 两个后端，接口一致：
-    OnnxRuntimeBackend  本机可用（只要装了 onnxruntime）
-    TrtBackend          部署容器可用（走 vStream 的 ModelValidator）
+    OnnxRuntimeBackend  本机可用（onnxruntime）
+    TrtBackend          部署容器可用（ModelValidator）
 
-统一约定：run(array_nd) -> ndarray
-  - 输入是已按正确 shape 组织好的 ndarray
-  - 输出是模型的第 0 个输出张量
-
-这里刻意不引入任何 OCR / 检测相关的概念。
 """
 
 import numpy as np

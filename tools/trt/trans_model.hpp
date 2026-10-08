@@ -35,11 +35,19 @@ struct CompileConfig {
   // 全静态模型会忽略此配置
   std::map<std::string, ProfileShape> profile_shapes;
 
-  bool strict_qdq = true;
-  int  min_compute_capability = 75;
+  // 是否允许 TensorRT 对 FP32 层使用 TF32（TensorFloat-32）。
+  // TensorRT 自身默认开启，关闭后 FP32 层走 FP32，数值更精确但可能更慢。
+  // 仅对 compute capability >= 8.0 的设备（Ampere/Ada/Hopper/Blackwell）有意义。
+  // 默认 true = 与 TensorRT 原生默认一致，保持既有行为不变。
+  bool tf32 = true;
 
-  std::string calibration_cache_file;
-  std::vector<std::vector<uint8_t>> calibration_data;
+  // 是否允许使用 FP16 kernel。默认关闭。"许可"而非"强制"。
+  bool fp16 = false;
+
+  // 是否以 strongly-typed 网络构建（对应 TensorRT 的 kSTRONGLY_TYPED）。
+  // 主要用于 QDQ / 量化模型：要求所有张量显式声明精度，builder 不做隐式降精度。
+  // 注意：TensorRT 11.0 起只支持 strongly-typed 网络，该开关届时将成为默认行为。
+  bool strict_qdq = true;
 };
 
 class ModelSource {
@@ -69,7 +77,6 @@ class CompileOutput {
 
   CompileOutputType    type_;
   std::string          file_;
-  std::vector<uint8_t> data_;
 };
 
 
