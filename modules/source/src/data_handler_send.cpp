@@ -2,6 +2,8 @@
 #include "cnstream_source.hpp"  // DataSource
 #include "data_handler_send.hpp"
 
+#include <stdexcept>
+
 
 namespace cnstream {
 
@@ -26,32 +28,36 @@ SendHandler::~SendHandler() {
   }
 }
 
-int SendHandler::Send(const SendFrame& send_frame) {
-  if (send_frame.image.empty()) {
-    LOGE(SOURCE) << "[" << stream_id_ << "]: image is empty";
-    return -1;
-  }
-  if (impl_->Push(send_frame)) {
-    return 0;
-  }
-  LOGW(SOURCE) << "[" << stream_id_ << "]: send frame failed";
-  return -1;
-}
-
-int SendHandler::Send(uint64_t pts, std::string frame_id_s, const cv::Mat &image) {
+int SendHandler::Send(const SendFrame& send_frame, int wait_ms) {
   if (!impl_) {
     LOGE(SOURCE) << "[" << stream_id_ << "] handler is not valid";
-    return -1;
+    return static_cast<int>(SendRet::ERR_PARAM);
+  }
+  if (send_frame.image.empty()) {
+    LOGE(SOURCE) << "[" << stream_id_ << "]: image is empty";
+    return static_cast<int>(SendRet::ERR_PARAM);
+  }
+  SendRet ret = impl_->Push(send_frame, wait_ms);
+  if (ret != SendRet::OK) {
+    LOGW(SOURCE) << "[" << stream_id_ << "]: send frame failed, ret=" << static_cast<int>(ret);
+  }
+  return static_cast<int>(ret);
+}
+
+int SendHandler::Send(uint64_t pts, std::string frame_id_s, const cv::Mat &image, int wait_ms) {
+  if (!impl_) {
+    LOGE(SOURCE) << "[" << stream_id_ << "] handler is not valid";
+    return static_cast<int>(SendRet::ERR_PARAM);
   }
   if (image.empty()) {
     LOGE(SOURCE) << "[" << stream_id_ << "]: image is not valid";
-    return -1;
+    return static_cast<int>(SendRet::ERR_PARAM);
   }
-  if (impl_->Push(SendFrame{pts, frame_id_s, image})) {
-    return 0;
+  SendRet ret = impl_->Push(SendFrame{pts, frame_id_s, image}, wait_ms);
+  if (ret != SendRet::OK) {
+    LOGW(SOURCE) << "[" << stream_id_ << "]: send frame failed, ret=" << static_cast<int>(ret);
   }
-  LOGW(SOURCE) << "[" << stream_id_ << "]: send frame failed";
-  return -1;
+  return static_cast<int>(ret);
 }
 
 
@@ -95,15 +101,46 @@ bool SendHandler::SetHandlerParams(const ModuleParamSet& params) {
     ModuleParamSet stream_params = ds->GetStreamParams(stream_id_);
     if (!stream_params.empty()) {
       impl_->param_set_ = stream_params;
+      impl_->SetupQueue();
       return true;
     }
   }
   impl_->param_set_ = params;
+  impl_->SetupQueue();
   return true;
 }
 
-bool SendHandlerImpl::Push(const SendFrame& send_frame) {
-  return image_queue_.Push(send_frame);
+void SendHandlerImpl::SetupQueue() {
+  auto it = param_set_.find(key_send_queue_size);
+  if (it != param_set_.end()) {
+    try {
+      int size = std::stoi(it->second);
+      if (size > 0) {
+        queue_size_ = static_cast<uint32_t>(size);
+      } else {
+        LOGW(SOURCE) << "[" << stream_id_ << "]: queue_size must be positive, use default "
+                     << queue_size_;
+      }
+    } catch (const std::exception&) {
+      LOGW(SOURCE) << "[" << stream_id_ << "]: invalid queue_size '" << it->second
+                   << "', use default " << queue_size_;
+    }
+  }
+  // SetHandlerParams 在 Open 之前调用，此时队列必为空
+  image_queue_ = std::make_unique<ThreadSafeQueue<SendFrame>>(queue_size_);
+}
+
+SendRet SendHandlerImpl::Push(const SendFrame& send_frame, int wait_ms) {
+  if (!image_queue_) {
+    return SendRet::ERR_STOPPED;
+  }
+  if (image_queue_->WaitAndTryPush(send_frame, std::chrono::milliseconds(wait_ms))) {
+    return SendRet::OK;
+  }
+  if (!running_.load() || !image_queue_) {
+    return SendRet::ERR_STOPPED;
+  }
+  return SendRet::ERR_TIMEOUT;
 }
 
 bool SendHandlerImpl::Open() {
@@ -113,9 +150,10 @@ bool SendHandlerImpl::Open() {
 }
 
 void SendHandlerImpl::Stop() {
-  image_queue_.Stop();
-  if (running_.load()) {
-    running_.store(false);
+  // 先置 running_ 为 false 再停队列：保证 Push 失败时能正确判定为 ERR_STOPPED
+  running_.store(false);
+  if (image_queue_) {
+    image_queue_->Stop();  // 唤醒所有阻塞在 WaitAndTryPush 上的生产者
   }
 }
 
@@ -130,7 +168,7 @@ void SendHandlerImpl::Loop() {
 
   while (running_.load()) {
     SendFrame send_frame;
-    if (!image_queue_.TryPop(send_frame)) {  // Non block pop
+    if (!image_queue_->TryPop(send_frame)) {  // Non block pop
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
       continue;
     }
@@ -145,8 +183,8 @@ void SendHandlerImpl::Loop() {
 
     uint8_t* buffer = new (std::nothrow) uint8_t[data_size];
     if (!buffer) {
-      LOGE(SOURCE) << "SendHandlerImpl: Failed to allocate memory for image data";
-      return;
+      LOGE(SOURCE) << "SendHandlerImpl: Failed to allocate for image data, skip this frame";
+      continue;
     }
     for (int i = 0; i < send_frame.image.rows; ++i) {
       memcpy(buffer + i * stride,

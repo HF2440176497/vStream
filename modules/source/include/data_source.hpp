@@ -160,6 +160,16 @@ class PullHandler : public SourceHandler {
 
 class SendHandlerImpl;
 
+/**
+ * @brief Send 返回码，用于区分失败原因
+ */
+enum class SendRet {
+  OK = 0,             // 入队成功
+  ERR_PARAM = -1,     // 参数非法
+  ERR_TIMEOUT = -2,   // 队列满且等待超时，可重试（背压）
+  ERR_STOPPED = -3,   // 不可重试
+};
+
 class SendHandler : public SourceHandler {
  public:
   static std::shared_ptr<SourceHandler> Create(DataSource *module, const std::string &stream_id);
@@ -170,9 +180,17 @@ class SendHandler : public SourceHandler {
   void Close() override;
 
   bool SetHandlerParams(const ModuleParamSet& params) override;
-  
-  int Send(const SendFrame& send_frame);
-  int Send(uint64_t pts, std::string frame_id_s, const cv::Mat &image);
+
+  /**
+   * @brief 发送一帧数据
+   * @param wait_ms 队列满时的等待策略：
+   *                < 0 一直阻塞；
+   *                == 0 非阻塞（丢弃式，默认）；
+   *                > 0 最多等待 wait_ms 毫秒
+   * @return SendRet::OK 成功；ERR_PARAM 参数非法；ERR_TIMEOUT 超时；ERR_STOPPED 已停止
+   */
+  int Send(const SendFrame& send_frame, int wait_ms = 0);
+  int Send(uint64_t pts, std::string frame_id_s, const cv::Mat &image, int wait_ms = 0);
 
  private:
   explicit SendHandler(DataSource *module, const std::string &stream_id);

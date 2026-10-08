@@ -40,10 +40,21 @@ class ThreadSafeQueue {
 
   bool TryPop(T& value);
   void WaitAndPop(T& value);
+  /**
+   * @brief 带等待的出队
+   * @param rel_time < 0 一直阻塞；== 0 非阻塞；> 0 等待最多 rel_time
+   * @return true 取出成功；false 队列已 Stop 或等待超时
+   */
   bool WaitAndTryPop(T& value, const std::chrono::microseconds rel_time);
 
   bool Push(const T& new_value);
   void WaitAndPush(const T& new_value);
+  /**
+   * @brief 带等待的入队
+   * @param rel_time < 0 一直阻塞；== 0 非阻塞；> 0 等待最多 rel_time
+   * @return true 入队成功；false 队列已 Stop 或等待超时
+   */
+  bool WaitAndTryPush(const T& new_value, const std::chrono::milliseconds rel_time);
   void Stop(bool clear_queue = true);
 
   bool Empty() {
@@ -114,22 +125,22 @@ void ThreadSafeQueue<T>::WaitAndPop(T& value) {
 
 template <typename T>
 bool ThreadSafeQueue<T>::WaitAndTryPop(T& value, const std::chrono::microseconds rel_time) {
-  if (!run_) {
-    return false;
-  }
   std::unique_lock<std::mutex> lk(data_m_);
-  if (notempty_cond_.wait_for(lk, rel_time, [&] { return !run_ || !q_.empty(); })) {
-    if (!run_) {
-      return false;
-    }
-    value = q_.front();
-    q_.pop();
-    lk.unlock();
-    notfull_cond_.notify_one();
-    return true;
+  bool ready = false;
+  if (rel_time.count() < 0) {
+    notempty_cond_.wait(lk, [&] { return !run_ || !q_.empty(); });
+    ready = true;
   } else {
+    ready = notempty_cond_.wait_for(lk, rel_time, [&] { return !run_ || !q_.empty(); });
+  }
+  if (!ready || !run_) {
     return false;
   }
+  value = q_.front();
+  q_.pop();
+  lk.unlock();
+  notfull_cond_.notify_one();
+  return true;
 }
 
 template <typename T>
@@ -143,6 +154,26 @@ bool ThreadSafeQueue<T>::Push(const T& new_value) {
   }
   if (max_size_ > 0 && q_.size() >= max_size_) {
     return false;
+  }
+  q_.push(new_value);
+  lk.unlock();
+  notempty_cond_.notify_one();
+  return true;
+}
+
+template <typename T>
+bool ThreadSafeQueue<T>::WaitAndTryPush(const T& new_value, const std::chrono::milliseconds rel_time) {
+  std::unique_lock<std::mutex> lk(data_m_);
+  if (rel_time.count() < 0) {
+    notfull_cond_.wait(lk, [&] { return !run_ || max_size_ == 0 || q_.size() < max_size_; });
+  } else {
+    notfull_cond_.wait_for(lk, rel_time, [&] { return !run_ || max_size_ == 0 || q_.size() < max_size_; });
+  }
+  if (!run_) {
+    return false;  // Stop() 唤醒
+  }
+  if (max_size_ > 0 && q_.size() >= max_size_) {
+    return false;  // 等待超时，队列仍满
   }
   q_.push(new_value);
   lk.unlock();

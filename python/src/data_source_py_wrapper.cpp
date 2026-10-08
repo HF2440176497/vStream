@@ -98,6 +98,13 @@ void DataHandlerWrapper(const py::module &m) {
           frame.image = ArrayToMat(image);  // deep copy
         });
 
+  py::enum_<SendRet>(m, "SendRet")
+      .value("OK", SendRet::OK)
+      .value("ERR_PARAM", SendRet::ERR_PARAM)
+      .value("ERR_TIMEOUT", SendRet::ERR_TIMEOUT)
+      .value("ERR_STOPPED", SendRet::ERR_STOPPED)
+      .export_values();
+
   py::class_<SendHandler, std::shared_ptr<SendHandler>, SourceHandler>(m, "SendHandler")
       .def(py::init([](DataSource *module, const std::string &stream_id) {
         auto send_handler = SendHandler::Create(module, stream_id);
@@ -108,14 +115,16 @@ void DataHandlerWrapper(const py::module &m) {
       .def("open", &SendHandler::Open)
       .def("stop", &SendHandler::Stop)
       .def("close", &SendHandler::Close)
-      .def("send", [](SendHandler& self, uint64_t pts, const std::string& frame_id_s, py::array_t<uint8_t> image) {
+      .def("send", [](SendHandler& self, uint64_t pts, const std::string& frame_id_s,
+                      py::array_t<uint8_t> image, int wait_ms) {
         cv::Mat mat = ArrayToMat(image);  // must hold GIL for numpy buffer access
         py::gil_scoped_release release;
-        return self.Send(pts, frame_id_s, mat);
-      }, py::arg("pts"), py::arg("frame_id_s"), py::arg("image"))
-      .def("send_frame", [](SendHandler& self, const SendFrame& frame) {
-        return self.Send(frame);
-      }, py::arg("frame"),
+        return self.Send(pts, frame_id_s, mat, wait_ms);
+      }, py::arg("pts"), py::arg("frame_id_s"), py::arg("image"),
+         py::arg("wait_ms") = -1)  // Python 端默认阻塞式，避免批量发送丢帧
+      .def("send_frame", [](SendHandler& self, const SendFrame& frame, int wait_ms) {
+        return self.Send(frame, wait_ms);
+      }, py::arg("frame"), py::arg("wait_ms") = -1,
          py::call_guard<py::gil_scoped_release>());
 
 
