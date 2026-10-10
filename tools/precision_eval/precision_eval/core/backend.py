@@ -38,7 +38,7 @@ class OnnxRuntimeBackend(Backend):
 
     name = "onnxruntime"
 
-    def __init__(self, model_path, input_index=0, output_index=0, providers=None, verbose=False):
+    def __init__(self, model_path, providers=None, input_index=0, output_index=0, verbose=False):
         import onnxruntime as ort
 
         self.model_path = model_path

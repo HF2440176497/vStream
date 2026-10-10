@@ -301,6 +301,20 @@ class PPOCRRecAdapter(ModelAdapter):
     # ------------------------------------------------------------------
     # 自检
     # ------------------------------------------------------------------
+    @staticmethod
+    def _static_dim(d):
+        """
+        shape 维度 -> int；符号/动态维度（如 'Reshape_498_o0__d2'）返回 None
+        """
+        if isinstance(d, bool):
+            return None
+        if isinstance(d, int):
+            return d
+        try:
+            return int(str(d).strip())
+        except ValueError:
+            return None
+
     def validate(self, model_info):
         warns = []
         out_shapes = model_info.get("output_shapes") or []
@@ -312,8 +326,10 @@ class PPOCRRecAdapter(ModelAdapter):
             warns.append("期望 3 维输出 [1, T, C]，实际 %r" % (last,))
             return warns
 
-        num_classes = int(last[2])
-        if self._raw_chars is not None:
+        num_classes = self._static_dim(last[2])
+        if num_classes is None:
+            warns.append("输出类别数维度为动态（%r），跳过字典类别数自检" % (last[2],))
+        elif self._raw_chars is not None:
             _chars, matched = self.resolve_for_classes(num_classes)
             if not matched:
                 warns.append(
@@ -324,8 +340,9 @@ class PPOCRRecAdapter(ModelAdapter):
         elif self.chars is None:
             warns.append("未提供 charset_path，决策层将不可用（只做数值对比）")
 
-        time_steps = int(last[1])
-        if self.input_width and time_steps != self.input_width // 8:
+        # 时间步维度动态（宽度动态导出的识别模型常见）时运行时才有值，跳过静态检查
+        time_steps = self._static_dim(last[1])
+        if time_steps is not None and self.input_width and time_steps != self.input_width // 8:
             warns.append(
                 "时间步 %d 与输入宽 %d 不成 1/8 关系，确认 input_shape 是否正确"
                 % (time_steps, self.input_width))
