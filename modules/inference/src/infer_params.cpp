@@ -300,6 +300,28 @@ void InferParamManager::RegisterAll(ParamRegister *pregister) {
   };
   ASSERT(RegisterParam(pregister, param));
 
+  param.name = "shape_mode";
+  param.desc_str =
+      "Optional. How the pipeline treats input shapes. "
+      "'static': fix the input shape to the OPT profile at load time (default, historical behavior). "
+      "'dynamic': allocate buffers at the MAX profile and set the actual input shape per batch, "
+      "which requires batch_size == 1, a profile whose max covers the needed width, "
+      "and preproc/postproc that implement the RunShapes overloads. "
+      "Falls back to 'static' with a warning when the prerequisites are not met.";
+  param.default_value = "static";
+  param.type = "string";
+  param.parser = [](const std::string &value, InferParams *param_set) -> bool {
+    if (value == "static") {
+      param_set->shape_mode = ShapeMode::STATIC;
+      return true;
+    } else if (value == "dynamic") {
+      param_set->shape_mode = ShapeMode::DYNAMIC;
+      return true;
+    }
+    return false;  // 非法值直接拒绝，避免静默回落到默认
+  };
+  ASSERT(RegisterParam(pregister, param));
+
   param.name = "custom_preproc_params";
   param.desc_str =
       "Optional. Custom preprocessing parameters. After the inferencer module creates an instance of "

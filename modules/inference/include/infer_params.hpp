@@ -31,6 +31,19 @@
 
 namespace cnstream {
 
+/**
+ * @brief 输入形状的处理模式
+ *
+ * - STATIC ：加载时按 OPT profile 定形
+ * - DYNAMIC：缓冲区按 kMAX 分配，每批由前处理填报实际形状，后端 setInputShape 后执行。
+ *            生效前提：engine profile 的 max 覆盖所需范围、batch_size == 1、
+ *            且该模型前后处理已接入 RunShapes。
+ */
+enum class ShapeMode {
+  STATIC,
+  DYNAMIC,
+};
+
 struct InferParams {
   DevType device_type = DevType::CPU;
   uint32_t device_id = -1;
@@ -50,6 +63,7 @@ struct InferParams {
   std::string input_derive_name;  // 模块输入派生组件，仅支持 object_infer=false
   std::string dump_resized_image_dir = "";  // debug option, dump images(offline-model's input) before infer.
   bool saving_infer_input = false;
+  ShapeMode shape_mode = ShapeMode::STATIC;
   std::map<std::string, std::string> custom_preproc_params;
   std::map<std::string, std::string> custom_postproc_params;
   std::map<std::string, std::string> custom_frame_filter_params;

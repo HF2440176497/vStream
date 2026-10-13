@@ -37,6 +37,7 @@
 
 #include "cnstream_frame.hpp"
 #include "cnstream_frame_va.hpp"
+#include "run_shape.hpp"
 
 namespace cnstream {
 
@@ -91,6 +92,21 @@ class Postproc : virtual public ReflexObjectEx<Postproc> {
                       const FrameInfoPtr& package) { return 0; }
 
   /**
+   * @brief 带形状契约的后处理
+   *
+   * @param[in] rs 动态模式下输出尺寸随输入变化，
+   *               后处理必须用 rs->outputs[].actual 取真实尺寸，
+   *               不能用 model->OutputShape()（缓冲区上限）。
+   *
+   * 框架侧统一调用本重载
+   */
+  virtual int Execute(const std::vector<float*>& net_outputs, ModelLoader* model,
+                      const FrameInfoPtr& package, const RunShapes* rs) {
+    (void)rs;
+    return Execute(net_outputs, model, package);
+  }
+
+  /**
    * @brief Execute post processing on network outputs.
    *
    * @param[in] net_outputs Network outputs, and the data is stored on the MLU.
@@ -105,6 +121,12 @@ class Postproc : virtual public ReflexObjectEx<Postproc> {
    */
   virtual int Execute(const std::vector<void*>& net_outputs, ModelLoader* model,
                       const std::vector<FrameInfoPtr> &packages) { return 0; }
+
+  virtual int Execute(const std::vector<void*>& net_outputs, ModelLoader* model,
+                      const std::vector<FrameInfoPtr> &packages, const RunShapes* rs) {
+    (void)rs;
+    return Execute(net_outputs, model, packages);
+  }
 
  protected:
   std::map<std::string, std::string> params_;
@@ -159,6 +181,21 @@ class ObjPostproc : virtual public ReflexObjectEx<ObjPostproc> {
                       const FrameInfoPtr& finfo, const std::shared_ptr<InferObject>& pobj) { return 0; }
 
   /**
+   * @brief 带形状契约的后处理
+   *
+   * @param[in] rs 本次推理的形状契约。动态模式下必须用 rs->outputs[].actual
+   *               取真实输出尺寸（如 CTC 的时间步 T）。允许为 null（未启用时）
+   *
+   * 框架侧统一调用本重载
+   */
+  virtual int Execute(const std::vector<float*>& outputs, ModelLoader* model,
+                      const FrameInfoPtr& finfo, const std::shared_ptr<InferObject>& pobj,
+                      const RunShapes* rs) {
+    (void)rs;
+    return Execute(outputs, model, finfo, pobj);
+  }
+
+  /**
    * @brief Execute post processing on network outputs.
    *
    * @return Returns 0 if successful, otherwise returns -1.
@@ -170,6 +207,13 @@ class ObjPostproc : virtual public ReflexObjectEx<ObjPostproc> {
   virtual int Execute(const std::vector<void*>& outputs, ModelLoader* model,
                       const std::vector<std::pair<FrameInfoPtr, std::shared_ptr<InferObject>>>& obj_infos) {
     return 0;
+  }
+
+  virtual int Execute(const std::vector<void*>& outputs, ModelLoader* model,
+                      const std::vector<std::pair<FrameInfoPtr, std::shared_ptr<InferObject>>>& obj_infos,
+                      const RunShapes* rs) {
+    (void)rs;
+    return Execute(outputs, model, obj_infos);
   }
 
  protected:

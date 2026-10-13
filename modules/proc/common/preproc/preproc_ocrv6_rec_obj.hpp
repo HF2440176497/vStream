@@ -59,6 +59,20 @@ class Pre_PPOCRv6_rec_Obj : public ObjPreproc {
    */
   virtual int Execute(const std::vector<float*>& cpu_outputs, ModelLoader* model,
                       const FrameInfoPtr& finfo, const std::shared_ptr<InferObject>& pobj) override {
+    return Execute(cpu_outputs, model, finfo, pobj, nullptr);
+  }
+
+  /**
+   * @brief 带形状契约的前处理（动态画布宽度）
+   *
+   * 画布宽度取「该行保持原比例所需宽度 R」在 [kMIN, kMAX] 内的值，
+   *
+   * 静态模式下 min == max == 定形宽度
+   *
+   */
+  virtual int Execute(const std::vector<float*>& cpu_outputs, ModelLoader* model,
+                      const FrameInfoPtr& finfo, const std::shared_ptr<InferObject>& pobj,
+                      RunShapes* rs) override {
 
     LOGD(PREPROC) << "Pre_PPOCRv6 Execute";
     auto start_time = std::chrono::steady_clock::now();
@@ -75,8 +89,25 @@ class Pre_PPOCRv6_rec_Obj : public ObjPreproc {
     cv::Mat img = GetModelInputImage(finfo, model->get_name());  // 模块级派生图 > 帧级派生图 > 原图
     if (img.empty()) return -1;
 
+    // 定形宽度（静态模式）；动态模式下改由形状契约给出上下限
     int input_h = model->get_height();  // 48
-    int input_w  = model->get_width();  // 320
+    int input_w = model->get_width();
+    int min_w = input_w;
+    int max_w = input_w;
+
+    if (rs && input_index >= 0) {
+      if (input_index < static_cast<int>(rs->inputs.size()) &&
+          rs->inputs[input_index].max.ndims() >= 4) {
+            input_h = rs->inputs[input_index].max.H();
+            max_w   = rs->inputs[input_index].max.W();
+            min_w   = max_w;
+            if (rs->inputs[input_index].min.ndims() >= 4) {
+              min_w = rs->inputs[input_index].min.W();
+            } else {
+              LOGW(PREPROC) << "RunShapes min is not 4D, default to max: " << min_w;
+            }
+        }
+    }
 
     // 裁剪
     int bx = std::max(0, (int)pobj->bbox.x);
@@ -103,7 +134,9 @@ class Pre_PPOCRv6_rec_Obj : public ObjPreproc {
     OnCropped(crop_img);
 
     float ratio = float(crop_img.cols) / float(crop_img.rows);
-    int resize_w = std::min(int(ceilf(input_h * ratio)), input_w);
+    int need_w   = int(ceilf(input_h * ratio));               // 保持原比例所需宽度 R
+    int canvas_w = std::min(std::max(need_w, min_w), max_w);  // 画布宽度
+    int resize_w = std::min(need_w, canvas_w);                // 文字实际占用宽度
     cv::Mat resize_img;
     cv::resize(crop_img, resize_img, cv::Size(resize_w, input_h), 0, 0, cv::INTER_LINEAR);
 
@@ -119,7 +152,7 @@ class Pre_PPOCRv6_rec_Obj : public ObjPreproc {
     cv::divide(resize_img, cv::Scalar(0.5f, 0.5f, 0.5f), resize_img);
 
     cv::copyMakeBorder(resize_img, resize_img, 0, 0, 0,
-                    input_w - resize_img.cols,
+                    canvas_w - resize_img.cols,
                     cv::BORDER_CONSTANT, {0, 0, 0});
 
     // NCHW 拷贝单个 batch 的输入
@@ -128,7 +161,15 @@ class Pre_PPOCRv6_rec_Obj : public ObjPreproc {
 
     float* cpu_output = cpu_outputs[input_index];
     for (int c = 0; c < 3; c++) {
-        memcpy(cpu_output + c * input_h * input_w, channels[c].ptr<float>(), input_h * input_w * sizeof(float));
+      memcpy(cpu_output + c * input_h * canvas_w, 
+            channels[c].ptr<float>(),
+            input_h * canvas_w * sizeof(float));
+    }
+
+    // 回填本行实际使用的画布宽度，供后端 setInputShape
+    if (rs && input_index >= 0 &&
+        input_index < static_cast<int>(rs->inputs.size())) {
+      rs->inputs[input_index].actual = TensorShape(1, 3, input_h, canvas_w);
     }
 
     double dr_ms = std::chrono::duration<double,std::milli>(

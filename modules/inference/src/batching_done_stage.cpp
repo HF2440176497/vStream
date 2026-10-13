@@ -66,15 +66,23 @@ std::vector<std::shared_ptr<InferTask>> H2DBatchingDoneStage::BatchingDone(const
       LOGU(H2D) << "bidx: " << bidx << "; [" << finfos[bidx].first->stream_id << "], ts: " << finfos[bidx].first->timestamp;
     }
 
+    // 形状契约随批流动：cpu 侧 -> device 侧
+    if (cpu_value.run && net_value.run) {
+      *net_value.run = *cpu_value.run;
+    }
+
     for (int i = 0; i < model_->InputNum(); i++) {
       void* src_cpu = cpu_value.ptrs[i].get();
       void* dst_net = net_value.ptrs[i].get();
       auto input_data_type = model_->InputDataType(i);
-      size_t data_size = net_value.datas[i].shape.DataCount() * data_type_size(input_data_type);
-
-      // cpu shape 与 net shape 应该一致
-      // LOGU(H2D) << " index: " << i << "; cpu shape: " << cpu_value.datas[i].shape << "; net shape:" << net_value.datas[i].shape << std::endl;
-      // LOGU(H2D) << " index: " << i << "; count:" << net_value.datas[i].shape.DataCount() << ", data_size: " << data_size << std::endl;
+      // 动态模式只拷贝 actual 大小；无形状契约时回落到缓冲区形状（与历史一致）
+      const TensorShape* actual = nullptr;
+      if (cpu_value.run != nullptr && i < static_cast<int>(cpu_value.run->inputs.size())) {
+        actual = &cpu_value.run->inputs[i].actual;
+      }
+      size_t data_size = (actual != nullptr ? 
+                          actual->DataCount(): 
+                          net_value.datas[i].shape.DataCount()) * data_type_size(input_data_type);
 
       memop_->CopyFromHostAsync(dst_net, src_cpu, data_size, model_->GetStream());
     }
@@ -139,7 +147,11 @@ std::vector<std::shared_ptr<InferTask>> InferBatchingDoneStage::BatchingDone(con
     if (!dump_resized_image_dir_.empty()) {
       // dump_resized_image(net_input_value, dump_resized_image_dir_);
     }
-    model_->RunSync(exec_ctx_, input_value.ptrs, output_value.ptrs);
+    // 输入侧与输出侧的契约各自传入：
+    //   in_shapes  = 输入资源（前处理写入的 inputs[].actual）
+    //   out_shapes = 输出资源约（后端回填 outputs[].actual，供 D2H / 后处理消费）
+    model_->RunSync(exec_ctx_, input_value.ptrs, output_value.ptrs,
+                    input_value.run.get(), output_value.run.get());
 
     if (profiler_) {
       for (const auto& finfo : finfos) {
@@ -177,11 +189,23 @@ std::vector<std::shared_ptr<InferTask>> D2HBatchingDoneStage::BatchingDone(const
       LOGU(D2H) << "bidx: " << bidx << "; [" << finfos[bidx].first->stream_id << "], ts: " << finfos[bidx].first->timestamp;
     }
 
+    // 形状契约随批流动：device 侧 -> cpu 侧
+    if (net_output_value.run && cpu_output_value.run) {
+      *cpu_output_value.run = *net_output_value.run;
+    }
+
     for (int i = 0; i < model_->OutputNum(); i++) {
       void* src_net = net_output_value.ptrs[i].get();
       void* dst_cpu = cpu_output_value.ptrs[i].get();
       auto output_data_type = model_->OutputDataType(i);
-      size_t data_size = net_output_value.datas[i].shape.DataCount() * data_type_size(output_data_type);
+      // 动态模式只回拷 actual 大小（输出尺寸随输入变化）；否则回落到缓冲区形状
+      const TensorShape* actual = nullptr;
+      if (net_output_value.run != nullptr && i < static_cast<int>(net_output_value.run->outputs.size())) {
+        actual = &net_output_value.run->outputs[i].actual;
+      }
+      size_t data_size = (actual != nullptr ? 
+                          actual->DataCount(): 
+                          net_output_value.datas[i].shape.DataCount()) * data_type_size(output_data_type);
       memop_->CopyToHostAsync(dst_cpu, src_net, data_size, model_->GetStream());
     }
     memop_->SyncStream(model_->GetStream());
@@ -244,7 +268,8 @@ std::vector<std::shared_ptr<InferTask>> PostprocessingBatchingDoneStage::Batchin
             cpu_outputs.push_back(reinterpret_cast<float*>(cpu_output_value.datas[output_idx].Offset(bidx)));
           }
           if (!cnstream::IsStreamRemoved(finfo.first->stream_id)) {
-            this->postprocessor_->Execute(cpu_outputs, this->model_, finfo.first);
+            this->postprocessor_->Execute(cpu_outputs, this->model_, finfo.first,
+                                          cpu_output_value.run.get());
             // 输入派生还原：把本模型产物从模块派生图坐标还原回基准图坐标
             if (this->input_deriver_) {
               this->input_deriver_->Restore(finfo.first, this->model_->get_name());
@@ -282,7 +307,8 @@ std::vector<std::shared_ptr<InferTask>> PostprocessingBatchingDoneStage::Batchin
     std::vector<std::shared_ptr<FrameInfo>> batched_finfos;
     for (const auto& it : finfos) batched_finfos.push_back(it.first);
 
-    this->postprocessor_->Execute(net_outputs, this->model_, batched_finfos);
+    this->postprocessor_->Execute(net_outputs, this->model_, batched_finfos,
+                                  net_output_value.run.get());
     // 输入派生还原：把本模型产物从模块派生图坐标还原回基准图坐标
     if (this->input_deriver_) {
       for (const auto& finfo : batched_finfos) {
@@ -337,7 +363,8 @@ std::vector<std::shared_ptr<InferTask>> ObjPostprocessingBatchingDoneStage::ObjB
             cpu_outputs.push_back(reinterpret_cast<float*>(cpu_output_value.datas[output_idx].Offset(bidx)));
           }
           if (!cnstream::IsStreamRemoved(finfo.first->stream_id)) {
-            this->postprocessor_->Execute(cpu_outputs, this->model_, finfo.first, obj);
+            this->postprocessor_->Execute(cpu_outputs, this->model_, finfo.first, obj,
+                                          cpu_output_value.run.get());
           }
           return 0;
         });
@@ -375,7 +402,8 @@ std::vector<std::shared_ptr<InferTask>> ObjPostprocessingBatchingDoneStage::ObjB
           batched_objs.push_back(std::make_pair(std::move(finfo.first), std::move(obj)));
         }
 
-        this->postprocessor_->Execute(net_outputs, this->model_, batched_objs);
+        this->postprocessor_->Execute(net_outputs, this->model_, batched_objs,
+                                      net_output_value.run.get());
         return 0;
       });
   tasks.push_back(task);

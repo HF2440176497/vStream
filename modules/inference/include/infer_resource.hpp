@@ -28,6 +28,7 @@
 #include "cnstream_frame_va.hpp"
 #include "exception.hpp"
 #include "queuing_server.hpp"
+#include "run_shape.hpp"
 #include "tensor.hpp"
 
 namespace cnstream {
@@ -67,7 +68,26 @@ struct IOResValue {
   // size == input/output tensor num
   std::vector<std::shared_ptr<void>> ptrs {};  // RAII 内存，在 Resource 析构时自动释放
   std::vector<IOResData> datas {};
+
+  // 本次推理的形状契约。
+  // WaitResourceByTicket() 是按值返回 IOResValue 的拷贝，
+  // 值成员的修改不会写回资源，下游看不到；shared_ptr 让所有拷贝共享同一对象。
+  std::shared_ptr<RunShapes> run {};
 };  // struct IOResValue
+
+/**
+ * @brief 每批开始：把形状契约的 actual 复位为 max
+ *
+ * 防御性措施：避免上一帧残留的 actual 在本帧前处理未回填时被继续使用。
+ * 复位后即使前处理完全不碰 rs，actual == max 也等价于历史静态行为。
+ *
+ * @param run 允许为 null（资源未携带形状契约时直接返回）
+ */
+inline void ResetRunShapesActual(RunShapes* run) {
+  if (!run) return;
+  for (auto& s : run->inputs) s.actual = s.max;
+  for (auto& s : run->outputs) s.actual = s.max;
+}
 
 // InferResource 规定获取 value_ 的接口
 // 派生的子类再实现 Allocate 的方法

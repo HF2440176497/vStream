@@ -5,6 +5,7 @@
 #include <thread>
 
 #include "infer_task.hpp"
+#include "infer_resource.hpp"
 #include "model_loader.hpp"
 #include "input_deriver.hpp"
 #include "preproc.hpp"
@@ -84,7 +85,9 @@ void CpuPreprocessingBatchingStage::ProcessOneFrame(std::shared_ptr<FrameInfo> f
     input_deriver_->Derive(finfo, model_->get_name());
   }
 
-  preprocessor_->Execute(cpu_outputs, model_, finfo);
+  // 形状契约随批流动：先把 actual 复位为 max，再由前处理回填本帧实际值
+  ResetRunShapesActual(value.run.get());
+  preprocessor_->Execute(cpu_outputs, model_, finfo, value.run.get());
 }
 
 }  // namespace cnstream

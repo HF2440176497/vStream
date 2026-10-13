@@ -36,6 +36,7 @@
 #include "cnstream_frame.hpp"
 #include "cnstream_frame_va.hpp"
 #include "reflex_object.h"
+#include "run_shape.hpp"
 
 namespace cnstream {
 
@@ -85,6 +86,19 @@ class Preproc : virtual public ReflexObjectEx<Preproc> {
    */
   virtual int Execute(const std::vector<float*>& net_inputs, ModelLoader* model,
                       const FrameInfoPtr& package) = 0;
+
+  /**
+   * @brief 带形状契约的前处理（运行期动态形状入口，帧级）
+   *
+   * @param[in,out] rs 形状契约。前处理应从中读取 inputs[].max / inputs[].min
+   *                   作为可写入上限与下界，并在写完后回填 inputs[].actual。
+   *                   允许为 null（未启用时）。
+   */
+  virtual int Execute(const std::vector<float*>& net_inputs, ModelLoader* model,
+                      const FrameInfoPtr& package, RunShapes* rs) {
+    (void)rs;
+    return Execute(net_inputs, model, package);
+  }
 
  protected:
   std::map<std::string, std::string> params_;
@@ -139,6 +153,21 @@ class ObjPreproc : virtual public ReflexObjectEx<ObjPreproc> {
    */
   virtual int Execute(const std::vector<float*>& net_inputs, ModelLoader* model,
                       const FrameInfoPtr& finfo, const std::shared_ptr<InferObject>& pobj) = 0;
+
+  /**
+   * @brief 带形状契约的前处理（运行期动态形状入口，对象级）
+   *
+   * @param[in,out] rs 形状契约。读取 inputs[].min / inputs[].max 决定画布宽度，
+   *                   写完后回填 inputs[].actual；允许为 null（未启用时）。
+   *
+   * @note 形状必须由 Execute 在写数据的同时回填
+   */
+  virtual int Execute(const std::vector<float*>& net_inputs, ModelLoader* model,
+                      const FrameInfoPtr& finfo, const std::shared_ptr<InferObject>& pobj,
+                      RunShapes* rs) {
+    (void)rs;
+    return Execute(net_inputs, model, finfo, pobj);
+  }
 
  protected:
   std::map<std::string, std::string> params_;

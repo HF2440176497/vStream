@@ -52,6 +52,19 @@ class ModelLoaderTrt : public ModelLoader {
                std::vector<std::shared_ptr<void>> inputs,
                std::vector<std::shared_ptr<void>> outputs) override;
 
+  /**
+   * @brief 带形状契约的推理（运行期动态形状入口）
+   */
+  bool RunSync(void* exec_ctx,
+               std::vector<std::shared_ptr<void>> inputs,
+               std::vector<std::shared_ptr<void>> outputs,
+               RunShapes* in_shapes,
+               RunShapes* out_shapes) override;
+
+  void FillRunShapeCaps(RunShapes* rs) override;
+  TensorShape InputShapeMax(uint32_t index) const override;
+  TensorShape OutputShapeMax(uint32_t index) const override;
+
   void* AcquireExecutionContext() override;
   void ReleaseExecutionContext(void* exec_ctx) override;
 

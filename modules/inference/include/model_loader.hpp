@@ -10,6 +10,7 @@
 #include "data_source_param.hpp"
 #include "tensor.hpp"
 #include "infer_params.hpp"
+#include "run_shape.hpp"
 
 namespace cnstream {
 
@@ -109,6 +110,66 @@ class ModelLoader {
                        std::vector<std::shared_ptr<void>> inputs,
                        std::vector<std::shared_ptr<void>> outputs) = 0;
 
+  /**
+   * @brief 运行期动态维度调用接口
+   *
+   * 输入侧与输出侧的形状契约分别传入
+   *
+   * @param[in]  in_shapes  输入侧契约，来自输入资源。后端只读 inputs[].actual，
+   *                        即前处理在写数据时回填的本次尺寸。
+   * @param[out] out_shapes 输出侧契约，来自输出资源。后端把本次真实输出尺寸
+   *                        写进 outputs[].actual，供 D2H / 后处理消费。
+   */
+  virtual bool RunSync(void* exec_ctx,
+                       std::vector<std::shared_ptr<void>> inputs,
+                       std::vector<std::shared_ptr<void>> outputs,
+                       RunShapes* in_shapes,
+                       RunShapes* out_shapes) {
+    (void)in_shapes;
+    (void)out_shapes;
+    return RunSync(exec_ctx, inputs, outputs);
+  }
+
+  /**
+   * @brief 填充形状能力（静态部分）到 rs：min / max / actual
+   *
+   * 基类默认实现按当前的 InputShape/OutputShape 填充
+   * 支持动态形状的后端覆写为 profile 的 kMIN/kMAX
+   */
+  virtual void FillRunShapeCaps(RunShapes* rs) {
+    if (!rs) return;
+    rs->dynamic = false;
+    rs->inputs.clear();
+    rs->outputs.clear();
+    for (uint32_t i = 0; i < InputNum(); ++i) {
+      RunShape s;
+      s.min = s.max = s.actual = InputShape(i);
+      rs->inputs.push_back(s);
+    }
+    for (uint32_t i = 0; i < OutputNum(); ++i) {
+      RunShape s;
+      s.min = s.max = s.actual = OutputShape(i);
+      rs->outputs.push_back(s);
+    }
+  }
+
+  /**
+   * @brief 加载期缓存的形状能力
+   */
+  const RunShapes& GetRunShapeCaps() {
+    if (!caps_init_) {
+      FillRunShapeCaps(&caps_);
+      caps_init_ = true;
+    }
+    return caps_;
+  }
+
+  /**
+   * @brief 缓冲区尺寸所用的形状上限
+   */
+  virtual TensorShape InputShapeMax(uint32_t index) const { return InputShape(index); }
+  virtual TensorShape OutputShapeMax(uint32_t index) const { return OutputShape(index); }
+
 #ifdef VSTREAM_UNIT_TEST
  public:
 #else
@@ -121,6 +182,11 @@ class ModelLoader {
 
   std::vector<TensorShape>   input_shapes_;
   std::vector<TensorShape>   output_shapes_;
+  // 缓冲区尺寸上限（Dynamic 时来自 profile kMAX）；默认与上面相同，由后端按需填
+  std::vector<TensorShape>   input_shapes_max_;
+  std::vector<TensorShape>   output_shapes_max_;
+  // 形状下界（Dynamic 时来自 profile kMIN）；默认与上面相同，前处理据此 clamp
+  std::vector<TensorShape>   input_shapes_min_;
   std::vector<DataType>      input_data_types_;
   std::vector<DataType>      output_data_types_;
   std::vector<std::string>   input_names_;
@@ -132,6 +198,12 @@ class ModelLoader {
 
   // note: 图像模型需要确定 input_tensor_index 才能确定 batch_size
   uint32_t                   input_ordered_index_;
+
+  // 输入形状处理模式
+  ShapeMode                  shape_mode_ = ShapeMode::STATIC;
+  // 加载期缓存的形状能力，供 IOResource::Allocate() 拷贝
+  RunShapes                  caps_;
+  bool                       caps_init_ = false;
 };
 
 
@@ -158,7 +230,8 @@ class ModelLoaderFactory {
   void PrintRegisteredCreators() {
     LOGI(MODEL_LOADER_FACTORY) << "PrintRegisteredCreators size: " << creators_.size();
     for (const auto& pair : creators_) {
-      LOGI(MODEL_LOADER_FACTORY) << DevType2Str(pair.first) << " -> Creator Func Address: " << &pair.second;
+      LOGI(MODEL_LOADER_FACTORY) << DevType2Str(pair.first) 
+      << " -> Creator Func Address: " << &pair.second;
     }
   }
 

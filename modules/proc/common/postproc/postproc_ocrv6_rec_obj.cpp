@@ -30,11 +30,7 @@ inline constexpr const char* key_save_interval_ms = "save_interval_ms";
 
 /**
  * @brief PPOCRv6 识别后处理（CTC 贪婪解码）
- *
- * 与 PaddleOCR CTCLabelDecode（ppocr/postprocess/rec_postprocess.py）对齐：
- *   每个时间步 argmax → 跳过 blank(索引 0) → 合并连续重复索引 → 置信度取保留字符概率均值。
- * 字典拼装顺序（同 BaseRecLabelDecode.__init__，rec_postprocess.py:41-47）：
- *   [0] blank + [1..N] label 文件字符 + [N+1] 空格，PP-OCRv6 下 N=18708，合计 18710 类。
+ * [0] blank + [1..N] label 文件字符 + [N+1] 空格，PP-OCRv6 下 N=18708，合计 18710 类。
  */
 class Post_PPOCRv6_rec_Obj : public ObjPostproc {
  public:
@@ -90,6 +86,12 @@ class Post_PPOCRv6_rec_Obj : public ObjPostproc {
 
   int Execute(const std::vector<float*>& outputs, ModelLoader* model,
               const FrameInfoPtr& finfo, const std::shared_ptr<InferObject>& pobj) override {
+    return Execute(outputs, model, finfo, pobj, nullptr);
+  }
+
+  int Execute(const std::vector<float*>& outputs, ModelLoader* model,
+              const FrameInfoPtr& finfo, const std::shared_ptr<InferObject>& pobj,
+              const RunShapes* rs) override {
 
     LOGD(POSTPROC) << "PPOCRv6 Execute";
     auto start_time = std::chrono::steady_clock::now();
@@ -100,6 +102,12 @@ class Post_PPOCRv6_rec_Obj : public ObjPostproc {
     int output_index = 0;
     const float* output = outputs[output_index];
     TensorShape output_shape = model->OutputShape(output_index);
+    if (rs &&
+        output_index < static_cast<int>(rs->outputs.size()) &&
+        rs->outputs[output_index].actual.ndims() >= 3) {
+      output_shape = rs->outputs[output_index].actual;
+      LOGI(POSTPROC) << "PPOCRv6 dynamic output shape: " << output_shape;
+    }
 
     if (output_shape.ndims() != 3) {
         LOGE(POSTPROC) << "PPOCRv6 output shape " << output_shape;
@@ -110,7 +118,7 @@ class Post_PPOCRv6_rec_Obj : public ObjPostproc {
         return -1;
     }
 
-    uint32_t rows = output_shape.shape(1);  // 40 (静态宽度 320 时)
+    uint32_t rows = output_shape.shape(1);  // 动态模式下 为本次实际时间步 T
     uint32_t cols = output_shape.shape(2);  // 18710
 
     // 字典与模型输出类别数强校验：不匹配说明 label 文件与 engine 不配套，

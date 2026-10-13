@@ -60,8 +60,13 @@ static IOResValue allocate_input_iovalue(ModelLoader* model, std::shared_ptr<Mem
   value.datas.resize(input_num);
   value.ptrs.resize(input_num);
 
+  // 形状契约：拷贝后端缓存的能力（min/max/dynamic），保证 actual == max 的不变式
+  value.run = std::make_shared<RunShapes>();
+  *value.run = model->GetRunShapeCaps();
+
   for (int idx = 0; idx < input_num; ++idx) {
-    auto shape = model->InputShape(idx);
+    // 动态模式下按 profile kMAX 分配
+    auto shape = model->InputShapeMax(idx);
     auto data_type = model->InputDataType(idx);
     size_t data_size = shape.DataCount() * data_type_size(data_type);
     size_t batch_offset = (shape.DataCount() / shape.N()) * data_type_size(data_type);
@@ -89,8 +94,13 @@ static IOResValue allocate_output_iovalue(ModelLoader* model, std::shared_ptr<Me
   value.datas.resize(output_num);
   value.ptrs.resize(output_num);
 
+  // 同输入侧：拷贝形状能力，并兑现 actual == max 的不变式
+  value.run = std::make_shared<RunShapes>();
+  *value.run = model->GetRunShapeCaps();
+
   for (int idx = 0; idx < output_num; ++idx) {
-    auto shape = model->OutputShape(idx);
+    // 动态模式下输出随输入变化（如 T = W/8），按 kMAX 对应的输出尺寸分配
+    auto shape = model->OutputShapeMax(idx);
     auto data_type = model->OutputDataType(idx);
     size_t data_size = shape.DataCount() * data_type_size(data_type);
     size_t batch_offset = (shape.DataCount() / shape.N()) * data_type_size(data_type);

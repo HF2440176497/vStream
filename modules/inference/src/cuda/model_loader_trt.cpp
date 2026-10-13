@@ -53,6 +53,20 @@ static bool is_static_shape(const nvinfer1::Dims& dims) {
   return true;
 }
 
+// TensorShape -> nvinfer1::Dims；要求各维均已解析且为正
+static bool tensor_shape_to_dims(const TensorShape& s, nvinfer1::Dims* out) {
+  if (!out) return false;
+  int ndims = s.ndims();
+  if (ndims <= 0 || ndims > nvinfer1::Dims::MAX_DIMS) return false;
+  out->nbDims = ndims;
+  for (int i = 0; i < ndims; ++i) {
+    int d = s.shape(i);
+    if (d <= 0) return false;
+    out->d[i] = d;
+  }
+  return true;
+}
+
 static std::string dims_to_str(const nvinfer1::Dims& dims) {
   if (dims.nbDims <= 0) return "(invalid)";
   std::string result = "(";
@@ -209,6 +223,7 @@ bool ModelLoaderTrt::Init(const std::string& engine_path, const InferParams& par
   }
   // Set input ordered index
   SetInputOrderedIndex(params.input_ordered_index);
+  shape_mode_ = params.shape_mode;
   return LoadEngine(engine_path);
 }
 
@@ -284,12 +299,18 @@ bool ModelLoaderTrt::LoadEngine(const std::string& engine_path) {
   context_.reset();
   name_ = utils::get_filename_without_ext(engine_path);
   engine_path_ = engine_path;
+  // 形状能力（min/max/dynamic）在此定型并缓存
+  FillRunShapeCaps(&caps_);
+  caps_init_ = true;
   return true;
 }
 
 bool ModelLoaderTrt::ParseBindings() {
   input_shapes_.clear();
   output_shapes_.clear();
+  input_shapes_min_.clear();
+  input_shapes_max_.clear();
+  output_shapes_max_.clear();
   input_data_types_.clear();
   output_data_types_.clear();
   input_names_.clear();
@@ -342,18 +363,53 @@ bool ModelLoaderTrt::ParseBindings() {
   input_name_ = input_names_[input_ordered_index_];
 
   int input_num = 0;
+  bool has_dynamic_input = false;
   for (auto& input_name : input_names_) {
     nvinfer1::Dims dims = engine_->getTensorShape(input_name.c_str());
 
     if (has_dynamic_dims(dims)) {
+      has_dynamic_input = true;
       auto opt_profile_index = context_->getOptimizationProfile();
+      nvinfer1::Dims min_dims = engine_->getProfileShape(input_name.c_str(),
+                                                         opt_profile_index,
+                                                         nvinfer1::OptProfileSelector::kMIN);
       nvinfer1::Dims opt_dims = engine_->getProfileShape(input_name.c_str(),
                                                          opt_profile_index,
                                                          nvinfer1::OptProfileSelector::kOPT);
+      nvinfer1::Dims max_dims = engine_->getProfileShape(input_name.c_str(),
+                                                         opt_profile_index,
+                                                         nvinfer1::OptProfileSelector::kMAX);
       if (!is_static_shape(opt_dims)) {
         LOGE(MODEL) << "Input tensor '" << input_name << "' dims unresolved: " << dims_to_str(opt_dims)
                     << " (engine dims: " << dims_to_str(dims) << ", profile index: " << opt_profile_index << ")";
         return false;
+      }
+      // kMIN / kMAX 必须同样可解析
+      if (!is_static_shape(min_dims) || !is_static_shape(max_dims)) {
+        if (shape_mode_ == ShapeMode::DYNAMIC) {
+          LOGE(MODEL) << "Input tensor '" << input_name << "' profile min/max unresolved: min "
+                      << dims_to_str(min_dims) << ", max " << dims_to_str(max_dims)
+                      << "; required by shape_mode=dynamic";
+          return false;
+        }
+        LOGW(MODEL) << "Input tensor '" << input_name << "' profile min/max unresolved: min "
+                    << dims_to_str(min_dims) << ", max " << dims_to_str(max_dims)
+                    << "; fall back to kOPT for both";
+        min_dims = opt_dims;
+        max_dims = opt_dims;
+      }
+      // 运行期动态形状要求 batch(N) 恒为 1：
+      // IOResData::batch_offset N>1 时每批形状一变就会错位。这里在加载期直接拒绝
+      if (shape_mode_ == ShapeMode::DYNAMIC) {
+        if (min_dims.nbDims <= 0 || opt_dims.nbDims <= 0 || max_dims.nbDims <= 0 ||
+            min_dims.d[0] != 1 || opt_dims.d[0] != 1 || max_dims.d[0] != 1) {
+          LOGE(MODEL) << "shape_mode=dynamic requires batch(N)==1 in the optimization profile, "
+                      << "but input '" << input_name << "' has min/opt/max N = "
+                      << (min_dims.nbDims > 0 ? min_dims.d[0] : -1) << "/"
+                      << (opt_dims.nbDims > 0 ? opt_dims.d[0] : -1) << "/"
+                      << (max_dims.nbDims > 0 ? max_dims.d[0] : -1);
+          return false;
+        }
       }
       if (!context_->setInputShape(input_name.c_str(), opt_dims)) {
         LOGE(MODEL) << "setInputShape failed for input tensor: " << input_name
@@ -361,14 +417,29 @@ bool ModelLoaderTrt::ParseBindings() {
         return false;
       }
       dims = opt_dims;
-    } else if (!is_static_shape(dims)) {
-      LOGE(MODEL) << "Input tensor '" << input_name << "' has invalid dims: " << dims_to_str(dims);
-      return false;
+      input_shapes_min_.push_back(TensorShape(dims_to_vector(min_dims)));
+      input_shapes_max_.push_back(TensorShape(dims_to_vector(max_dims)));
+    } else {
+      if (!is_static_shape(dims)) {
+        LOGE(MODEL) << "Input tensor '" << input_name << "' has invalid dims: " << dims_to_str(dims);
+        return false;
+      }
+      // 全静态输入：下限/上限就是定形形状，Dynamic 模式下 clamp 会自然退化为常量
+      input_shapes_min_.push_back(TensorShape(dims_to_vector(dims)));
+      input_shapes_max_.push_back(TensorShape(dims_to_vector(dims)));
     }
 
-    LOGI(MODEL) << "input_name [" << input_num++ << "]: " << input_name << "; dims: " << dims_to_str(dims);
+    LOGI(MODEL) << "input_name [" << input_num++ << "]: " << input_name << "; dims: " << dims_to_str(dims)
+                << "; min: " << input_shapes_min_.back().ToString()
+                << " max: " << input_shapes_max_.back().ToString();
     input_shapes_.push_back(TensorShape(dims_to_vector(dims)));  // 对应 input_names_ 顺序
   }  // end of input_names_
+
+  if (shape_mode_ == ShapeMode::DYNAMIC && !has_dynamic_input) {
+    LOGE(MODEL) << "shape_mode=dynamic requested but the engine has no dynamic input dims; "
+                   "falling back to static";
+    shape_mode_ = ShapeMode::STATIC;
+  }
 
   int output_num = 0;
   for (auto& output_name : output_names_) {
@@ -390,6 +461,56 @@ bool ModelLoaderTrt::ParseBindings() {
     LOGI(MODEL) << "output_name [" << output_num++ << "]: " << output_name << "; dims: " << dims_to_str(dims);
     output_shapes_.push_back(TensorShape(dims_to_vector(dims)));  // 对应 output_names_ 顺序
   }  // end of output_names_
+
+  if (shape_mode_ != ShapeMode::DYNAMIC) {
+    // 静态模式：上限即定形形状，缓冲区尺寸与历史一致
+    output_shapes_max_ = output_shapes_;
+    return true;
+  }
+
+  // 动态模式：输出尺寸依赖输入宽度（如 T = W/8），只有把输入设成 MAX
+  // 之后才能拿到「最大输出尺寸」。缓冲区必须按它分配，否则会越界写。
+  for (size_t i = 0; i < input_names_.size(); ++i) {
+    nvinfer1::Dims dims = engine_->getTensorShape(input_names_[i].c_str());
+    if (!has_dynamic_dims(dims)) continue;
+    nvinfer1::Dims max_dims = engine_->getProfileShape(input_names_[i].c_str(),
+                                                       context_->getOptimizationProfile(),
+                                                       nvinfer1::OptProfileSelector::kMAX);
+    if (!is_static_shape(max_dims)) {
+      LOGE(MODEL) << "Input tensor '" << input_names_[i] << "' kMAX dims unresolved: "
+                  << dims_to_str(max_dims);
+      return false;
+    }
+    if (!context_->setInputShape(input_names_[i].c_str(), max_dims)) {
+      LOGE(MODEL) << "setInputShape(kMAX) failed for input tensor: " << input_names_[i]
+                  << ", dims: " << dims_to_str(max_dims);
+      return false;
+    }
+  }
+
+  for (auto& output_name : output_names_) {
+    nvinfer1::Dims dims = context_->getTensorShape(output_name.c_str());
+    if (!is_static_shape(dims)) {
+      LOGE(MODEL) << "Output tensor '" << output_name << "' dims unresolved at kMAX profile: "
+                  << dims_to_str(dims);
+      return false;
+    }
+    output_shapes_max_.push_back(TensorShape(dims_to_vector(dims)));
+    LOGI(MODEL) << "output at kMAX: " << output_name << "; dims: " << dims_to_str(dims);
+  }
+
+  // 还原到 OPT，避免把探测状态留给后续逻辑（context_ 随后会被释放）
+  for (size_t i = 0; i < input_names_.size(); ++i) {
+    nvinfer1::Dims dims = engine_->getTensorShape(input_names_[i].c_str());
+    if (!has_dynamic_dims(dims)) continue;
+    nvinfer1::Dims opt_dims = engine_->getProfileShape(input_names_[i].c_str(),
+                                                       context_->getOptimizationProfile(),
+                                                       nvinfer1::OptProfileSelector::kOPT);
+    if (!is_static_shape(opt_dims) ||
+        !context_->setInputShape(input_names_[i].c_str(), opt_dims)) {
+      LOGW(MODEL) << "restore input '" << input_names_[i] << "' to kOPT failed";
+    }
+  }
   return true;
 }  // end of ParseBindings
 
@@ -429,6 +550,130 @@ bool ModelLoaderTrt::RunSync(void* exec_ctx,
     return false;
   }
   return CHECK_CUDA_RUNTIME(cudaStreamSynchronize(stream_));
+}
+
+bool ModelLoaderTrt::RunSync(void* exec_ctx,
+                             std::vector<std::shared_ptr<void>> inputs,
+                             std::vector<std::shared_ptr<void>> outputs,
+                             RunShapes* in_shapes,
+                             RunShapes* out_shapes) {
+  CudaDeviceGuard guard(device_id_);
+  nvinfer1::IExecutionContext* context = static_cast<nvinfer1::IExecutionContext*>(exec_ctx);
+  if (context == nullptr) {
+    LOGE(MODEL) << "execution context is null, acquire it via AcquireExecutionContext() first";
+    return false;
+  }
+  if (inputs.size() != input_names_.size() || outputs.size() != output_names_.size()) {
+    LOGE(MODEL) << "Tensor count mismatch: inputs " << inputs.size() << " vs " << input_names_.size()
+                << ", outputs " << outputs.size() << " vs " << output_names_.size();
+    return false;
+  }
+
+  // 动态维度需要两侧契约都在：从输入侧读 actual 设形状，把实测输出写进输出侧
+  const bool dynamic = (in_shapes != nullptr) && in_shapes->dynamic && (out_shapes != nullptr);
+  if (dynamic && (in_shapes->inputs.size() != inputs.size() ||
+                  out_shapes->outputs.size() != outputs.size())) {
+    LOGE(MODEL) << "RunShapes size mismatch: shape inputs " << in_shapes->inputs.size() << " vs " << inputs.size()
+                << ", shape outputs " << out_shapes->outputs.size() << " vs " << outputs.size();
+    return false;
+  }
+
+  // 1) 先设形状：setInputShape 须在绑地址之前
+  if (dynamic) {
+    for (size_t i = 0; i < inputs.size(); ++i) {
+      // 越界收敛到 [min, max]，避免 TRT 直接失败；前处理算出的宽度异常时这里兜底
+      const TensorShape& want = in_shapes->inputs[i].actual;
+      const TensorShape& lo = in_shapes->inputs[i].min;
+      const TensorShape& hi = in_shapes->inputs[i].max;
+      if (lo.ndims() != want.ndims() || hi.ndims() != want.ndims()) {
+        LOGE(MODEL) << "run input shape rank mismatch for '" << input_names_[i] << "': "
+                    << want.ToString() << ", min " << lo.ToString() << ", max " << hi.ToString();
+        return false;
+      }
+      std::vector<int> clamped(want.ndims());
+      for (int d = 0; d < want.ndims(); ++d) {
+        int v = want.shape(d);
+        if (v < lo.shape(d)) {
+          LOGE(MODEL) << "input[" << i << "] dim " << d << " = " << v
+                      << " below min " << lo.shape(d) << ", clamped";
+          v = lo.shape(d);
+        } else if (v > hi.shape(d)) {
+          LOGE(MODEL) << "input[" << i << "] dim " << d << " = " << v
+                      << " above max " << hi.shape(d) << ", clamped";
+          v = hi.shape(d);
+        }
+        clamped[d] = v;
+      }
+
+      nvinfer1::Dims dims;
+      if (!tensor_shape_to_dims(TensorShape(clamped), &dims)) {
+        LOGE(MODEL) << "invalid run input shape for '" << input_names_[i] << "': " << want.ToString();
+        return false;
+      }
+      if (!context->setInputShape(input_names_[i].c_str(), dims)) {
+        LOGE(MODEL) << "setInputShape failed for input tensor: " << input_names_[i]
+                    << ", dims: " << dims_to_str(dims);
+        return false;  // 不继续 enqueue，否则会跑在错误形状上
+      }
+      // 动态维度时，打印实际的输入形状
+      LOGI(MODEL) << "setInputShape for input: " << input_names_[i]
+                  << ", dims: " << dims_to_str(dims);
+    }  // end for inputs
+  }
+
+  // 2) 再绑地址
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    context->setInputTensorAddress(input_names_[i].c_str(), inputs[i].get());
+  }
+  for (size_t i = 0; i < outputs.size(); ++i) {
+    context->setOutputTensorAddress(output_names_[i].c_str(), outputs[i].get());
+  }
+
+  // 3) 执行
+  bool execute_result = context->enqueueV3(stream_);
+  if (!execute_result) {
+    auto code = cudaGetLastError();
+    LOGF(MODEL) << "execute fail, code: " << code << ", message: " << cudaGetErrorName(code) << ", " << cudaGetErrorString(code);
+    return false;
+  }
+
+  // 4) 把实测输出尺寸回填到输出侧契约（下游 D2H 拷贝量、后处理依赖此处）
+  if (dynamic) {
+    for (size_t i = 0; i < outputs.size(); ++i) {
+      out_shapes->outputs[i].actual =
+          TensorShape(dims_to_vector(context->getTensorShape(output_names_[i].c_str())));
+    }
+  }
+  return CHECK_CUDA_RUNTIME(cudaStreamSynchronize(stream_));
+}
+
+void ModelLoaderTrt::FillRunShapeCaps(RunShapes* rs) {
+  if (!rs) return;
+  rs->dynamic = (shape_mode_ == ShapeMode::DYNAMIC);
+  rs->inputs.clear();
+  rs->outputs.clear();
+  for (uint32_t i = 0; i < InputNum(); ++i) {
+    RunShape s;
+    s.min = (i < input_shapes_min_.size()) ? input_shapes_min_[i] : InputShape(i);
+    s.max = (i < input_shapes_max_.size()) ? input_shapes_max_[i] : InputShape(i);
+    s.actual = s.max;  // 不变式：actual 必须初始化，否则未接入的前后处理会拿到空形状
+    rs->inputs.push_back(s);
+  }
+  for (uint32_t i = 0; i < OutputNum(); ++i) {
+    RunShape s;
+    s.min = OutputShape(i);  // 输出下界不参与决策，给定形值
+    s.max = (i < output_shapes_max_.size()) ? output_shapes_max_[i] : OutputShape(i);
+    s.actual = s.max;
+    rs->outputs.push_back(s);
+  }
+}
+
+TensorShape ModelLoaderTrt::InputShapeMax(uint32_t index) const {
+  return (index < input_shapes_max_.size()) ? input_shapes_max_[index] : InputShape(index);
+}
+
+TensorShape ModelLoaderTrt::OutputShapeMax(uint32_t index) const {
+  return (index < output_shapes_max_.size()) ? output_shapes_max_[index] : OutputShape(index);
 }
 
 void* ModelLoaderTrt::AcquireExecutionContext() {

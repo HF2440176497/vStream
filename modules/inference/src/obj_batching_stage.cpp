@@ -75,7 +75,9 @@ void CpuPreprocessingObjBatchingStage::ProcessOneObject(std::shared_ptr<FrameInf
   for (auto it : value.datas) {
     cpu_outputs.push_back(reinterpret_cast<float*>(it.Offset(batch_idx)));
   }
-  preprocessor_->Execute(cpu_outputs, model_, finfo, obj);
+  // 形状契约随批流动：先把 actual 复位为 max，再由前处理回填本对象实际值
+  ResetRunShapesActual(value.run.get());
+  preprocessor_->Execute(cpu_outputs, model_, finfo, obj, value.run.get());
 }
 
 }  // namespace cnstream
