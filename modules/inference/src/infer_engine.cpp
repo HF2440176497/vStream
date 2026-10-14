@@ -24,6 +24,11 @@
 
 namespace cnstream {
 
+namespace {
+// 票据冻结判定阈值（持有队首票据的任务异常退出/被丢弃）
+constexpr uint32_t kTicketFreezeTimeoutMs = 5000;
+}  // namespace
+
 
 InferEngine::InferEngine(const InferOptions& options)
     : model_(options.model()),
@@ -118,6 +123,22 @@ void InferEngine::StageAssemble() {
   cpu_output_res_ = config.cpu_output_res;
   net_input_res_ = config.net_input_res;
   net_output_res_ = config.net_output_res;
+
+  // 票据冻结看门狗：等待超时后上报并强制弹出队首票据自救。
+  // 一张票据泄漏会让其后所有阶段永久阻塞
+  std::vector<QueuingServer*> queuing_servers = {cpu_input_res_.get(), cpu_output_res_.get(),
+                                                 net_input_res_.get(), net_output_res_.get()};
+  for (auto* server : queuing_servers) {
+    if (server == nullptr) continue;
+    server->SetFreezeWatch(kTicketFreezeTimeoutMs, true,
+                           [this](const std::string& msg) {
+                             if (error_func_) {
+                               error_func_(msg);
+                             } else {
+                               LOGE(INFER) << "[" << module_name_ << "] " << msg;
+                             }
+                           });
+  }
 }
 
 /**

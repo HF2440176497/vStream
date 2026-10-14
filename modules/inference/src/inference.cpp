@@ -343,6 +343,9 @@ Inference::Inference(const std::string& name) : Module(name) {
 }
 
 Inference::~Inference() {
+  // 必须显式关闭：
+  // InferencePrivate 持有各 pipeline 线程的 InferContext（线程池线程 + 回传线程）
+  Close();
   param_manager_.reset();
 }
 

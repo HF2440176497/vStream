@@ -21,6 +21,9 @@
 #ifndef MODULES_INFERENCE_SRC_QUEUING_SERVER_HPP_
 #define MODULES_INFERENCE_SRC_QUEUING_SERVER_HPP_
 
+#include <chrono>
+#include <cstdint>
+#include <functional>
 #include <future>
 #include <initializer_list>
 #include <mutex>
@@ -34,6 +37,9 @@ struct QueuingTicketRoot {
   uint32_t reserved_time = 0;
   // 看门狗诊断用：push 时分配的全局唯一票据 id，用于比对“我是谁/队首是谁”
   uint64_t id = 0;
+  // 是否已被 Call() 唤醒过。promise::set_value 只能调一次，重复调用会抛
+  // future_error；强制自救路径可能重复唤醒同一张票，这里做幂等保护
+  bool called = false;
 };
 
 /**
@@ -59,13 +65,38 @@ class QueuingServer {
   // 日志标识：定位哪个资源（模块/缓冲）发生等待阻塞
   void SetName(const std::string& name) { name_ = name; }
 
+  using FreezeHandler = std::function<void(const std::string&)>;
+
+  /**
+   * @brief 冻结看门狗：等待超过后主动上报，并可选强制自救
+   * @param timeout_ms    超过该时长判定为冻结；<=0 表示永不自救（只保留告警日志）
+   * @param force_release 是否强制弹出队首票据来解除阻塞
+   * @param handler       冻结上报回调
+   *
+   * @note 原理：票据被置位只有两种可能（成为队首 / 队首被弹出后 Call）。
+   *       若长时间既不前进也无进展，说明持有队首票据的任务已经不可能归还
+   *       因此默认策略是上报一次后强制弹出队首票据，让流水线继续运行。
+   *       若宁可卡死也不能有并发访问，把 force_release 设为 false。
+   */
+  void SetFreezeWatch(uint32_t timeout_ms, bool force_release, FreezeHandler handler);
+
  private:
   void Call();
+  /**
+   * @brief 强制解除队首票据，用于冻结自救
+   * @return true 已采取措施（要么补唤醒自己，要么弹出队首）
+   */
+  bool ForceReleaseHead(uint64_t waiter_id);
   std::queue<QueuingTicketRoot> tickets_q_;
   QueuingTicket reserved_ticket_;
   bool reserved_ = false;
   std::string name_ = "unnamed";
   std::mutex mtx_;
+
+  // 冻结看门狗配置
+  uint32_t freeze_timeout_ms_ = 0;     // 0 = 未启用（只告警）
+  bool force_release_ = false;
+  FreezeHandler freeze_handler_ = nullptr;
 };
 
 /**

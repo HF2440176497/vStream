@@ -115,6 +115,33 @@ void QueuingServer::DeallingDone() {
   }
 }
 
+void QueuingServer::SetFreezeWatch(uint32_t timeout_ms, bool force_release, FreezeHandler handler) {
+  std::lock_guard<std::mutex> lk(mtx_);
+  freeze_timeout_ms_ = timeout_ms;
+  force_release_ = force_release;
+  freeze_handler_ = std::move(handler);
+}
+
+bool QueuingServer::ForceReleaseHead(uint64_t waiter_id) {
+  std::lock_guard<std::mutex> lk(mtx_);  // 与 Call() 的调用约定一致：持锁调用
+  if (tickets_q_.empty()) {
+    return false;
+  }
+  if (tickets_q_.front().id == waiter_id) {
+    // 自己是队首却没被唤醒：取号/唤醒路径异常，补一次唤醒
+    LOGW(QUEUING) << "[" << name_ << "] self-heal: re-call head ticket #" << waiter_id;
+    Call();
+    return true;
+  }
+  // 队首票据疑似泄漏（持有者已不可能归还）：强制弹出并唤醒下一个
+  const uint64_t victim = tickets_q_.front().id;
+  tickets_q_.pop();
+  Call();
+  LOGW(QUEUING) << "[" << name_ << "] self-heal: force released leaked head ticket #"
+                << victim << " for waiter #" << waiter_id;
+  return true;
+}
+
 void QueuingServer::WaitByTicket(QueuingTicket* pticket) {
   if (pticket == nullptr) return;
   // 基于以下核心语义：
@@ -125,8 +152,21 @@ void QueuingServer::WaitByTicket(QueuingTicket* pticket) {
   // 首次等待 1s, 后续每 10s 会重复检查
   const auto kFirstWarn = std::chrono::milliseconds(1000);
   const auto kRepeatWarn = std::chrono::milliseconds(10000);
+  uint32_t freeze_timeout_ms = 0;
+  bool force_release = false;
+  FreezeHandler freeze_handler = nullptr;
+  {
+    // 快照一次配置：等待期间不再持锁访问成员，避免与 SetFreezeWatch 竞争
+    std::lock_guard<std::mutex> lk(mtx_);
+    freeze_timeout_ms = freeze_timeout_ms_;
+    force_release = force_release_;
+    freeze_handler = freeze_handler_;
+  }
   auto status = pticket->fut.wait_for(kFirstWarn);
   auto waited = kFirstWarn;
+  // 自救去重：同一个队首只强制释放一次，避免把票据队列一路弹空
+  uint64_t released_head_id = 0;
+  bool reported = false;
   while (status != std::future_status::ready) {
     size_t pending = 0;
     uint64_t head_id = 0;
@@ -155,6 +195,25 @@ void QueuingServer::WaitByTicket(QueuingTicket* pticket) {
                     << "]. Head ticket #" << head_id
                     << " not released: the task holding it exited without DeallingDone.";
     }
+
+    // 冻结自救：等待超过阈值后先上报一次，再强制弹出队首票据解除阻塞。
+    // 未配置（freeze_timeout_ms == 0 / force_release == false）时退化为「只告警、继续等」。
+    if (force_release && freeze_timeout_ms > 0 &&
+        waited >= std::chrono::milliseconds(freeze_timeout_ms) && head_id != released_head_id) {
+      if (!reported) {
+        reported = true;
+        std::string diag = "[" + name_ + "] ticket pipeline frozen: ticket #" +
+                           std::to_string(pticket->id) + " waited " +
+                           std::to_string(waited.count()) + "ms [head=" +
+                           std::to_string(head_id) + ", pending=" + std::to_string(pending) +
+                           "], force releasing head ticket";
+        LOGW(QUEUING) << diag;
+        if (freeze_handler) freeze_handler(diag);
+      }
+      released_head_id = head_id;
+      ForceReleaseHead(pticket->id);
+    }
+
     status = pticket->fut.wait_for(kRepeatWarn);
     waited += kRepeatWarn;
   }
@@ -168,6 +227,12 @@ void QueuingServer::WaitByTicket(QueuingTicket* pticket) {
 void QueuingServer::Call() {
   if (!tickets_q_.empty()) {
     QueuingTicketRoot& ticket_root = tickets_q_.front();
+    if (ticket_root.called) {
+      // 幂等保护：
+      // 自救路径可能对同一张票重复 Call
+      return;
+    }
+    ticket_root.called = true;
     ticket_root.root.set_value();
   }
 }

@@ -83,7 +83,7 @@ InferTaskSptr InferThreadPool::PopTask() {
 
   q_pop_cond_.wait(lk, [this]() -> bool { return task_q_.size() > 0 || !running_; });
 
-  if (!running_) return nullptr;
+  if (!running_ && task_q_.empty()) return nullptr;
 
   auto task = task_q_.front();
   task_q_.pop();
