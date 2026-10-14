@@ -29,6 +29,7 @@
 #include <mutex>
 #include <queue>
 #include <string>
+#include <utility>  // std::move
 #include <vector>
 
 

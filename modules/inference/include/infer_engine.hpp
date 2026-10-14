@@ -21,7 +21,9 @@
 #ifndef MODULES_INFERENCE_INFER_ENGINE_HPP_
 #define MODULES_INFERENCE_INFER_ENGINE_HPP_
 
+#include <chrono>  // ResultWaitingCard::WaitFor 用到 std::chrono::milliseconds
 #include <condition_variable>
+#include <cstdint>
 #include <functional>
 #include <future>
 #include <memory>
@@ -55,13 +57,9 @@ class InferEngine {
     explicit ResultWaitingCard(std::shared_ptr<std::promise<void>> ret_promise)
         : promise_(ret_promise),
           fut_(promise_ ? promise_->get_future().share() : std::shared_future<void>()) {}
-    void WaitForCall() const {
-      if (fut_.valid()) {
-        fut_.get();
-      }
-    }
     /**
-     * @brief 限时等待帧结果，供关闭路径轮询退出标志使用
+     * @brief 限时等待帧结果
+     * @note 由调用方轮询退出标志
      * @note promise 一旦置位，wait_for 会立刻返回 ready，不引入额外送达延迟；
      *       超时值只影响「检测到关闭」的粒度
      */

@@ -91,6 +91,7 @@ void InferTransDataHelper::Loop() {
     if (!running_.load()) break;
     // 可中断等待：关闭中的状态，不再下发给下游模块
     if (!WaitResultWithExit(card)) break;
+    if (!running_.load()) break;
 
     if (infer_) {
       if (!finfo->IsEos() && infer_->GetProfiler()) {

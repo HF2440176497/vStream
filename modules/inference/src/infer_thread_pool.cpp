@@ -54,6 +54,7 @@ void InferThreadPool::Destroy() {
 
   lk.lock();
   threads_.clear();
+  // 关闭即丢弃：清空残留任务 任务对象析构会释放其持有的 AutoSetDone
   while (!task_q_.empty()) {
     task_q_.pop();
   }
@@ -83,7 +84,8 @@ InferTaskSptr InferThreadPool::PopTask() {
 
   q_pop_cond_.wait(lk, [this]() -> bool { return task_q_.size() > 0 || !running_; });
 
-  if (!running_ && task_q_.empty()) return nullptr;
+  // 关闭即丢弃队列中的剩余任务，尽早退出（不做排空）
+  if (!running_) return nullptr;
 
   auto task = task_q_.front();
   task_q_.pop();

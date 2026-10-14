@@ -181,17 +181,17 @@ void QueuingServer::WaitByTicket(QueuingTicket* pticket) {
     }
     // 队列已空，但是没有复位 future
     if (pending == 0) {
-      LOGW(QUEUING) << "[" << name_ << "] ticket #" << pticket->id << " waited="
+      LOGW(QUEUING) << "[" << name_ << "] #" << pticket->id << " waited="
                     << waited.count() << "ms, queue is EMPTY: "
-                    << "this ticket was popped but its future was never set.";
+                    << "ticket was popped but its future was never set.";
     } else if (head_id == pticket->id) {
-      LOGW(QUEUING) << "[" << name_ << "] ticket #" << pticket->id << " waited="
+      LOGW(QUEUING) << "[" << name_ << "] #" << pticket->id << " waited="
                     << waited.count() << "ms, this ticket is the head but never called: "
-                    << "anomaly in PickUp/Call path [head_reserved=" << head_reserved << "].";
+                    << "anomaly in PickUp/Call path [Head Reserved: " << head_reserved << "].";
     } else {
-      LOGW(QUEUING) << "[" << name_ << "] ticket #" << pticket->id << " waited="
+      LOGW(QUEUING) << "[" << name_ << "] #" << pticket->id << " waited="
                     << waited.count() << "ms, blocked behind head #" << head_id
-                    << " [head_reserved=" << head_reserved << ", pending=" << pending
+                    << " [Head Reserved: " << head_reserved << ", Pend: " << pending
                     << "]. Head ticket #" << head_id
                     << " not released: the task holding it exited without DeallingDone.";
     }
@@ -202,12 +202,12 @@ void QueuingServer::WaitByTicket(QueuingTicket* pticket) {
         waited >= std::chrono::milliseconds(freeze_timeout_ms) && head_id != released_head_id) {
       if (!reported) {
         reported = true;
-        std::string diag = "[" + name_ + "] ticket pipeline frozen: ticket #" +
+        std::string diag = "[" + name_ + "] pipeline frozen: #" +
                            std::to_string(pticket->id) + " waited " +
-                           std::to_string(waited.count()) + "ms [head=" +
-                           std::to_string(head_id) + ", pending=" + std::to_string(pending) +
+                           std::to_string(waited.count()) + "ms [Head: " +
+                           std::to_string(head_id) + ", Pend: " + std::to_string(pending) +
                            "], force releasing head ticket";
-        LOGW(QUEUING) << diag;
+        LOGE(QUEUING) << diag;
         if (freeze_handler) freeze_handler(diag);
       }
       released_head_id = head_id;

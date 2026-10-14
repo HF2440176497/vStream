@@ -78,6 +78,34 @@ void CudaMemOp::SyncStream(void* stream) {
   }
 }
 
+void* CudaMemOp::CreateEvent() {
+  CudaDeviceGuard guard(device_id_);
+  cudaEvent_t event = nullptr;
+  if (!CHECK_CUDA_RUNTIME(cudaEventCreateWithFlags(&event, cudaEventDisableTiming))) {
+    if (event) cudaEventDestroy(event);
+    return nullptr;
+  }
+  return static_cast<void*>(event);
+}
+
+bool CudaMemOp::RecordEvent(void* event, void* stream) {
+  if (!event || !stream) return false;
+  CudaDeviceGuard guard(device_id_);
+  return CHECK_CUDA_RUNTIME(cudaEventRecord(static_cast<cudaEvent_t>(event), static_cast<cudaStream_t>(stream)));
+}
+
+bool CudaMemOp::WaitEvent(void* event) {
+  if (!event) return false;
+  CudaDeviceGuard guard(device_id_);
+  return CHECK_CUDA_RUNTIME(cudaEventSynchronize(static_cast<cudaEvent_t>(event)));
+}
+
+void CudaMemOp::DestroyEvent(void* event) {
+  if (!event) return;
+  CudaDeviceGuard guard(device_id_);
+  CHECK_CUDA_RUNTIME(cudaEventDestroy(static_cast<cudaEvent_t>(event)));
+}
+
 /**
  * @brief dst_mem 分配的内存使用 GetStride_8U_C3 对齐后的 stride，
  *        确保满足 NPP 函数的对齐要求（4 字节对齐）。

@@ -69,6 +69,25 @@ class MemOp {
   virtual void CopyToHostAsync(void* dst, const void* src, size_t size, void* stream = nullptr);
   virtual void SyncStream(void* stream = nullptr);
 
+  /**
+   * @brief event 同步原语（平台可选能力，用于替代整流同步 SyncStream）
+   *
+   * 语义差别（以同一条 stream 为例）：
+   *   SyncStream(stream)  : 等待「调用时刻该流上所有已提交的工作」
+   *   Record+WaitEvent    : 等待「RecordEvent 之前已提交的工作」
+   *
+   * 生命周期由调用方负责：CreateEvent() 创建、DestroyEvent() 销毁。
+   * 同一个 event 可以反复 Record（覆盖式记录）。
+   */
+  virtual void* CreateEvent();
+  /**
+   * @return true 成功；false 失败
+   * @note 必须检查返回值
+   */
+  virtual bool RecordEvent(void* event, void* stream);
+  virtual bool WaitEvent(void* event);
+  virtual void DestroyEvent(void* event);
+
   virtual int GetDeviceId() const;
   virtual std::unique_ptr<CNSyncedMemory> CreateSyncedMemory(size_t size);
   virtual int ConvertImageFormat(CNSyncedMemory* dst_mem, DataFormat dst_fmt, const DecodeFrame* src_frame,

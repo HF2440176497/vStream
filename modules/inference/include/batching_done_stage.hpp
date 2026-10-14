@@ -111,13 +111,18 @@ class H2DBatchingDoneStage : public BatchingDoneStage {
       net_input_res_(net_input_res) {
         if (model) {
           memop_ = MemOpFactory::Instance().CreateMemOp(model->GetDeviceType(), model->GetDeviceId());
+          // 本 Stage 独占的 CUDA event：只等自己这批的拷贝完成，不等流上的其它工作。
+          // 非 CUDA 后端，回落整流同步，行为不变。
+          if (memop_) event_ = memop_->CreateEvent();
         }
       }
+  ~H2DBatchingDoneStage();
   std::vector<std::shared_ptr<InferTask>> BatchingDone(const BatchingDoneInput& finfos) override;
  private:
   std::shared_ptr<CpuInputResource> cpu_input_res_;
   std::shared_ptr<NetInputResource> net_input_res_;
   std::shared_ptr<MemOp> memop_;
+  void* event_ = nullptr;
 };  // class H2DBatchingDoneStage
 
 
@@ -132,7 +137,7 @@ class InferBatchingDoneStage : public BatchingDoneStage {
  private:
   std::shared_ptr<IOResource> input_res_;
   std::shared_ptr<IOResource> output_res_;
-  // 本流水线独占的执行上下文（TRT 多流水线并发时互不干扰；RKNN/CPU 为 nullptr）
+  // 本流水线独占的执行上下文（TRT 多流水线并发时互不干扰；RKNN/CPU 为 null）
   void* exec_ctx_ = nullptr;
 };  // class InferBatchingDoneStage
 
@@ -147,8 +152,10 @@ class D2HBatchingDoneStage : public BatchingDoneStage {
       cpu_output_res_(cpu_output_res) {
         if (model) {
           memop_ = MemOpFactory::Instance().CreateMemOp(model->GetDeviceType(), model->GetDeviceId());
+          if (memop_) event_ = memop_->CreateEvent();
         }
       }
+  ~D2HBatchingDoneStage();
 
   std::vector<std::shared_ptr<InferTask>> BatchingDone(const BatchingDoneInput& finfos) override;
 
@@ -156,6 +163,7 @@ class D2HBatchingDoneStage : public BatchingDoneStage {
   std::shared_ptr<NetOutputResource> net_output_res_;
   std::shared_ptr<CpuOutputResource> cpu_output_res_;
   std::shared_ptr<MemOp> memop_;
+  void* event_ = nullptr;
 };  // class D2HBatchingDoneStage
 
 class PostprocessingBatchingDoneStage : public BatchingDoneStage {

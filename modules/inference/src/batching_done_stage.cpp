@@ -40,6 +40,13 @@
 namespace cnstream {
 
 
+H2DBatchingDoneStage::~H2DBatchingDoneStage() {
+  if (memop_ && event_) {
+    memop_->DestroyEvent(event_);
+  }
+  event_ = nullptr;
+}
+
 std::vector<std::shared_ptr<InferTask>> H2DBatchingDoneStage::BatchingDone(const BatchingDoneInput& finfos) {
   std::vector<InferTaskSptr> tasks;
   InferTaskSptr task;
@@ -89,7 +96,13 @@ std::vector<std::shared_ptr<InferTask>> H2DBatchingDoneStage::BatchingDone(const
 
     // 异步拷贝可能尚未执行，必须等其完成后再释放 cpu_input 票据：
     // 否则下一批预处理将覆写仍在被 GPU 读取的源 buffer（输入撕裂）
-    memop_->SyncStream(model_->GetStream());
+    //
+    // 用 event 而非整流同步：只等「本批这次拷贝」，不等流上其它任务提交的工作。
+    // 任一步失败都必须回落整流同步
+    void* infer_stream = model_->GetStream();
+    if (!(event_ && memop_->RecordEvent(event_, infer_stream) && memop_->WaitEvent(event_))) {
+      memop_->SyncStream(infer_stream);
+    }
 
     return 0;
   });
@@ -178,6 +191,13 @@ std::vector<std::shared_ptr<InferTask>> InferBatchingDoneStage::BatchingDone(con
 }
 
 
+D2HBatchingDoneStage::~D2HBatchingDoneStage() {
+  if (memop_ && event_) {
+    memop_->DestroyEvent(event_);
+  }
+  event_ = nullptr;
+}
+
 std::vector<std::shared_ptr<InferTask>> D2HBatchingDoneStage::BatchingDone(const BatchingDoneInput& finfos) {
   std::vector<InferTaskSptr> tasks;
   InferTaskSptr task;
@@ -220,7 +240,12 @@ std::vector<std::shared_ptr<InferTask>> D2HBatchingDoneStage::BatchingDone(const
                           net_output_value.datas[i].shape.DataCount()) * data_type_size(output_data_type);
       memop_->CopyToHostAsync(dst_cpu, src_net, data_size, model_->GetStream());
     }
-    memop_->SyncStream(model_->GetStream());
+    // 同 H2D：只等本批这次回拷完成。record/wait 任一步失败都回落整流同步，
+    // 避免「没等拷贝就释放票据」
+    void* infer_stream = model_->GetStream();
+    if (!(event_ && memop_->RecordEvent(event_, infer_stream) && memop_->WaitEvent(event_))) {
+      memop_->SyncStream(infer_stream);
+    }
 
     return 0;
   });

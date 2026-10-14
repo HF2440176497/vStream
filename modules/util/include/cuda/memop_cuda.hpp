@@ -26,6 +26,10 @@ class CudaMemOp : public MemOp {
   void CopyFromHostAsync(void* dst, const void* src, size_t size, void* stream = nullptr) override;
   void CopyToHostAsync(void* dst, const void* src, size_t size, void* stream = nullptr) override;
   void SyncStream(void* stream = nullptr) override;
+  void* CreateEvent() override;
+  bool RecordEvent(void* event, void* stream) override;
+  bool WaitEvent(void* event) override;
+  void DestroyEvent(void* event) override;
   int ConvertImageFormat(CNSyncedMemory* dst_mem, DataFormat dst_fmt, const DecodeFrame* src_frame,
                         void* stream = nullptr) override;
 

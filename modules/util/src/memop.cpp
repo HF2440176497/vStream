@@ -124,6 +124,21 @@ void MemOp::SyncStream(void* stream) {
   // CPU: no-op
 }
 
+void* MemOp::CreateEvent() { return nullptr; }
+
+bool MemOp::RecordEvent(void* event, void* stream) {
+  (void)event;
+  (void)stream;
+  return false;  // 不支持：让调用方回落 SyncStream
+}
+
+bool MemOp::WaitEvent(void* event) {
+  (void)event;
+  return false;
+}
+
+void MemOp::DestroyEvent(void* event) { (void)event; }
+
 int MemOp::GetDeviceId() const { return -1; }
 
 std::unique_ptr<CNSyncedMemory> MemOp::CreateSyncedMemory(size_t size) {
