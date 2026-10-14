@@ -65,6 +65,12 @@ aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR}/core/src/profiler profiler_srcs
 
 add_library(vstream_core SHARED ${core_srcs} ${private_srcs} ${profiler_srcs})
 
+# backward-cpp: 崩溃时自动打印堆栈。
+# BACKWARD_ENABLE 是对象文件，直接加入源文件可保证其中注册
+# 信号处理器的全局对象（backward::SignalHandling sh）一定被链入共享库；
+# 若改为链接 `backward` 静态库目标，该对象无外部符号引用、可能被链接器丢弃。
+target_sources(vstream_core PRIVATE ${BACKWARD_ENABLE})
+
 target_include_directories(vstream_core 
  PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/core/include
@@ -75,6 +81,7 @@ target_include_directories(vstream_core
 target_link_libraries(vstream_core 
  PRIVATE
   ${VSTREAM_FRAMEWORK_3RDPARTY_LIBS}
+  Backward::Backward  # include 目录、BACKWARD_HAS_* 宏定义及 libdw 等依赖库
 )
 
 # unitest

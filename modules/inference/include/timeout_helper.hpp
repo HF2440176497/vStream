@@ -40,6 +40,12 @@ class TimeoutHelper {
 
   int SetTimeout(float timeout);
   int Reset(const std::function<void()>& func);
+  /**
+   * @brief 停止超时线程并解除回调绑定，可重复调用
+   * @note 必须在持有者（InferEngine）释放其线程池/资源之前调用：
+   *       否则超时回调可能在对象半析构状态下被触发
+   */
+  void Stop();
 
  private:
   enum State { STATE_NO_FUNC = 0, STATE_RESET, STATE_DO, STATE_EXIT } state_ = STATE_NO_FUNC;

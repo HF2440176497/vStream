@@ -65,6 +65,10 @@ InferEngine::~InferEngine() {
   running_ = false;
   cv_.notify_all();
 
+  // 先停掉超时线程，再回收线程池：
+  // 其回调就是 BatchingDone()，会访问 thread_pool_ 与各类资源
+  timeout_helper_.Stop();
+
   if (timeout_thread_.joinable()) {
     timeout_thread_.join();
   }
@@ -191,12 +195,16 @@ InferEngine::ResultWaitingCard InferEngine::FeedData(std::shared_ptr<FrameInfo> 
 }
 
 /**
- * TODO: 简便起见，强制提交时 需要长度满足 batchsize_
+ * @note: BatchingDone() 会改动 batched_finfos_/batched_objs_ 并获取各阶段的 ticket，
+ * 必须与 FeedData 及超时回调互斥（三者共用 timeout_helper_ 的同一把锁），
+ * 否则同一批会被提交两次，多出来的票据会打乱 FIFO 计数。
  */
 void InferEngine::ForceBatchingDone() {
+  timeout_helper_.LockOperator();
   if (batched_finfos_.size() == batchsize_) {
     BatchingDone();
   }
+  timeout_helper_.UnlockOperator();
 }
 
 // 正常调用：batched_finfos_.size == batch_size_

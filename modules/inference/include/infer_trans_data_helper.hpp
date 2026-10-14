@@ -46,6 +46,14 @@ class InferTransDataHelper {
 
  private:
   void Loop();
+  /**
+   * @brief 等待帧结果，但能被关闭打断
+   * @note 直接 WaitForCall() 会无限阻塞：析构时的 join 依赖 promise 被置位，
+   *       而未满批次的 promise 只由 InferEngine 持有。这里改为可中断的限时等待，
+   *       保证 Loop 线程在析构时必定退出。
+   * @return true 结果已就绪（可以继续下发）；false 关闭中，调用方应丢弃该帧
+   */
+  bool WaitResultWithExit(const InferEngine::ResultWaitingCard& card);
   std::mutex mtx_;
   std::condition_variable cond_not_full_;
   std::condition_variable cond_not_empty_;

@@ -106,6 +106,11 @@ InferBatchingDoneStage::InferBatchingDoneStage(ModelLoader* model,
       input_res_(input_res),
       output_res_(output_res),
       exec_ctx_(model ? model->AcquireExecutionContext() : nullptr) {
+  // CUDA/TRT 后端必须拿到独占执行上下文，否则每次 RunSync 都会失败
+  // CPU/RKNN 后端不提供上下文，只在 CUDA 上告警一次。
+  if (model && exec_ctx_ == nullptr && model->GetDeviceType() == DevType::CUDA) {
+    LOGE(STAGE) << "AcquireExecutionContext failed: inference will always fail on this pipeline";
+  }
 }
 
 InferBatchingDoneStage::~InferBatchingDoneStage() {
@@ -150,13 +155,20 @@ std::vector<std::shared_ptr<InferTask>> InferBatchingDoneStage::BatchingDone(con
     // 输入侧与输出侧的契约各自传入：
     //   in_shapes  = 输入资源（前处理写入的 inputs[].actual）
     //   out_shapes = 输出资源约（后端回填 outputs[].actual，供 D2H / 后处理消费）
-    model_->RunSync(exec_ctx_, input_value.ptrs, output_value.ptrs,
-                    input_value.run.get(), output_value.run.get());
+    bool infer_ok = model_->RunSync(exec_ctx_, input_value.ptrs, output_value.ptrs,
+                                    input_value.run.get(), output_value.run.get());
 
     if (profiler_) {
       for (const auto& finfo : finfos) {
         profiler_->RecordProcessEnd(kMODEL_PROFILER_NAME, std::make_pair(finfo.first->stream_id, finfo.first->timestamp));
       }
+    }
+
+    if (!infer_ok) {
+      // 输出缓冲未被写入，下游 D2H/后处理会拿到上一批的残留数据
+      LOGE(STAGE) << "[" << module_name_ << "] RunSync failed, " << finfos.size()
+                  << " frame(s) will be stale output";
+      return -1;
     }
 
     return 0;

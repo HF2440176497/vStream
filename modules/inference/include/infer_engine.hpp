@@ -52,15 +52,27 @@ class InferEngine {
  public:
   class ResultWaitingCard {
    public:
-    explicit ResultWaitingCard(std::shared_ptr<std::promise<void>> ret_promise) : promise_(ret_promise) {}
-    void WaitForCall() {
-      if (promise_) {
-        promise_->get_future().share().get();
+    explicit ResultWaitingCard(std::shared_ptr<std::promise<void>> ret_promise)
+        : promise_(ret_promise),
+          fut_(promise_ ? promise_->get_future().share() : std::shared_future<void>()) {}
+    void WaitForCall() const {
+      if (fut_.valid()) {
+        fut_.get();
       }
+    }
+    /**
+     * @brief 限时等待帧结果，供关闭路径轮询退出标志使用
+     * @note promise 一旦置位，wait_for 会立刻返回 ready，不引入额外送达延迟；
+     *       超时值只影响「检测到关闭」的粒度
+     */
+    bool WaitFor(uint32_t timeout_ms) const {
+      if (!fut_.valid()) return true;
+      return fut_.wait_for(std::chrono::milliseconds(timeout_ms)) == std::future_status::ready;
     }
 
    private:
     std::shared_ptr<std::promise<void>> promise_;
+    std::shared_future<void> fut_;
   };
 
   explicit InferEngine(const InferOptions& options);
@@ -105,8 +117,11 @@ class InferEngine {
 
   InferOptions options_;
 
-  TimeoutHelper timeout_helper_;
+  // 声明顺序决定析构顺序（逆序）：timeout_helper_ 必须比 thread_pool_ 先析构，
+  // 否则超时线程会晚于线程池被回收，可能在回调里访问已析构的 thread_pool_。
+  // 另见 ~InferEngine 开头的 timeout_helper_.Stop()。
   std::shared_ptr<InferThreadPool> thread_pool_ = nullptr;
+  TimeoutHelper timeout_helper_;
   std::function<void(const std::string& err_msg)> error_func_;
   ModuleProfiler* profiler_ = nullptr;
 

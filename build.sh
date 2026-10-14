@@ -14,6 +14,7 @@ ENABLE_PYTHON_API="ON"
 ENABLE_TOOLS="ON"
 JOBS=$(nproc 2>/dev/null || echo 4)
 CLEAN_BUILD="OFF"
+RELEASE_DEBUG_INFO="OFF"
 
 # 打包相关默认值
 ENABLE_PACKAGE="OFF"
@@ -32,6 +33,11 @@ usage() {
   -b, --build-dir DIR               CMake 构建目录 (默认: \${PROJECT_ROOT}/build)
   -j, --jobs N                      并行编译任务数 (默认: \$(nproc))
   --clean                           构建前先清理构建目录
+
+  --release-debug / --no-release-debug
+                                    Release 构建是否保留调试符号(-g) (默认: --no-release-debug)
+                                    开启后崩溃堆栈(backward-cpp + libdw)可解析到
+                                    函数名/文件/行号，产物体积会增大
 
   --cuda / --no-cuda                启用/禁用 CUDA 支持 (默认: --cuda)
   --rockchip                        RK(aarch64) 交叉编译: 自动使用 build-rk 目录并关闭 CUDA
@@ -61,6 +67,9 @@ usage() {
 
   # 清理后重新构建
   $0 --clean -t Release
+
+  # Release 构建并保留调试符号
+  $0 -t Release --release-debug --no-tests
 
   # 精简 DEB 打包 (Release, 不含第三方依赖, 由基础镜像提供)
   $0 -t Release --package --no-bundle-deps --cpack
@@ -97,6 +106,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         --clean)
             CLEAN_BUILD="ON"
+            shift
+            ;;
+        --release-debug)
+            RELEASE_DEBUG_INFO="ON"
+            shift
+            ;;
+        --no-release-debug)
+            RELEASE_DEBUG_INFO="OFF"
             shift
             ;;
         --cuda)
@@ -198,6 +215,7 @@ echo "============================================"
 printf "  %-14s: %s\n" "Project Root  " "${PROJECT_ROOT}"
 printf "  %-14s: %s\n" "Build Dir     " "${BUILD_DIR}"
 printf "  %-14s: %s\n" "Build Type    " "${BUILD_TYPE}"
+printf "  %-14s: %s\n" "Release Debug " "${RELEASE_DEBUG_INFO}"
 printf "  %-14s: %s\n" "Parallel Jobs " "${JOBS}"
 printf "  %-14s: %s\n" "Clean Build   " "${CLEAN_BUILD}"
 printf "  %-14s: %s\n" "CUDA Support  " "${ENABLE_CUDA}"
@@ -225,6 +243,7 @@ mkdir -p "${BUILD_DIR}"
 CMAKE_OPTIONS=(
     -DCMAKE_BUILD_TYPE="${BUILD_TYPE}"
     -DCMAKE_INSTALL_PREFIX="${INSTALL_PREFIX}"
+    -DVSTREAM_RELEASE_WITH_DEBUG_INFO="${RELEASE_DEBUG_INFO}"
     -DVSTREAM_USE_CUDA="${ENABLE_CUDA}"
     -DVSTREAM_BUILD_TESTS="${ENABLE_TESTS}"
     -DVSTREAM_BUILD_TOOLS="${ENABLE_TOOLS}"

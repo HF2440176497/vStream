@@ -546,7 +546,9 @@ bool ModelLoaderTrt::RunSync(void* exec_ctx,
   bool execute_result = context->enqueueV3(stream_);
   if (!execute_result) {
     auto code = cudaGetLastError();
-    LOGF(MODEL) << "execute fail, code: " << code << ", message: " << cudaGetErrorName(code) << ", " << cudaGetErrorString(code);
+    // 执行失败是运行期可恢复错误（显存瞬时不足/形状越界等），不能 LOG(FATAL) 直接 abort，
+    // 交由调用方按返回值处置
+    LOGE(MODEL) << "execute fail, code: " << code << ", message: " << cudaGetErrorName(code) << ", " << cudaGetErrorString(code);
     return false;
   }
   return CHECK_CUDA_RUNTIME(cudaStreamSynchronize(stream_));
@@ -633,7 +635,7 @@ bool ModelLoaderTrt::RunSync(void* exec_ctx,
   bool execute_result = context->enqueueV3(stream_);
   if (!execute_result) {
     auto code = cudaGetLastError();
-    LOGF(MODEL) << "execute fail, code: " << code << ", message: " << cudaGetErrorName(code) << ", " << cudaGetErrorString(code);
+    LOGE(MODEL) << "execute fail, code: " << code << ", message: " << cudaGetErrorName(code) << ", " << cudaGetErrorString(code);
     return false;
   }
 

@@ -31,11 +31,18 @@ namespace cnstream {
 TimeoutHelper::TimeoutHelper() { handle_th_ = std::thread(&TimeoutHelper::HandleFunc, this); }
 
 TimeoutHelper::~TimeoutHelper() {
-  std::unique_lock<std::mutex> lk(mtx_);
-  state_ = STATE_EXIT;
-  lk.unlock();
-  cond_.notify_all();
+  Stop();
   if (handle_th_.joinable()) handle_th_.join();
+}
+
+void TimeoutHelper::Stop() {
+  {
+    std::lock_guard<std::mutex> lk(mtx_);
+    if (STATE_EXIT == state_) return;
+    state_ = STATE_EXIT;
+    func_ = NULL;  // 解除回调绑定
+  }
+  cond_.notify_all();
 }
 
 int TimeoutHelper::SetTimeout(float timeout) {

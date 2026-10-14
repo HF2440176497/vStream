@@ -47,6 +47,15 @@ InferTransDataHelper::~InferTransDataHelper() {
   if (th_.joinable()) th_.join();
 }
 
+bool InferTransDataHelper::WaitResultWithExit(const InferEngine::ResultWaitingCard& card) {
+  // kPollMs 是「检测关闭」的轮询粒度：promise 置位后 WaitFor 立即返回，不影响帧延迟
+  const uint32_t kPollMs = 100;
+  while (running_.load()) {
+    if (card.WaitFor(kPollMs)) return true;
+  }
+  return false;  // 关闭中：结果不会再到来，交由调用方丢弃
+}
+
 void InferTransDataHelper::SubmitData(
     const std::pair<std::shared_ptr<FrameInfo>, InferEngine::ResultWaitingCard>& data) {
   std::unique_lock<std::mutex> lk(mtx_);
@@ -80,7 +89,8 @@ void InferTransDataHelper::Loop() {
     auto finfo = data.first;
     auto card = data.second;
     if (!running_.load()) break;
-    card.WaitForCall();  // TODO: 有可能会阻塞
+    // 可中断等待：关闭中的状态，不再下发给下游模块
+    if (!WaitResultWithExit(card)) break;
 
     if (infer_) {
       if (!finfo->IsEos() && infer_->GetProfiler()) {

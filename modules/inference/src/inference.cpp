@@ -47,10 +47,15 @@
 namespace cnstream {
 
 // 调度器 context
+// 成员声明顺序即决定析构顺序（逆序析构）：
+// 必须让 engine 先于 trans_data_helper 析构。
+// 未凑满的批次，其帧结果 promise（AutoSetDone）只被 InferEngine::batched_finfos_ 持有，
+// 若 trans_data_helper 先析构，其 Loop 线程会阻塞在 card.WaitForCall() 上等待一个
+// 「只有 engine 析构才会置位」的 promise，join 永久阻塞 —— 表现为模块关闭时挂死。
 struct InferContext {
-  std::shared_ptr<InferEngine> engine;
-  std::shared_ptr<InferTransDataHelper> trans_data_helper;
+  std::shared_ptr<InferTransDataHelper> trans_data_helper;  // 后析构
   uint32_t drop_count = 0;
+  std::shared_ptr<InferEngine> engine;                      // 先析构
 };  // struct InferContext
 
 using InferContextSptr = std::shared_ptr<InferContext>;

@@ -57,6 +57,10 @@ option(VSTREAM_BUILD_TOOLS "build tools" ON)
 option(VSTREAM_BUILD_LIBYUV "build libyuv" ON)
 option(VSTREAM_BUILD_PYBIND11 "build pybind11" ON)
 
+# Release 构建是否保留调试符号（-g），默认关闭：
+# 开启后 backward-cpp + libdw 可将崩溃堆栈解析到函数名/文件/行号，产物体积增大；
+option(VSTREAM_RELEASE_WITH_DEBUG_INFO "keep debug symbols (-g) in Release builds" OFF)
+
 # 打包相关选项
 option(VSTREAM_PACKAGE "Enable CPack packaging support" OFF)
 option(VSTREAM_PACKAGE_BUNDLE_DEPS
@@ -70,12 +74,19 @@ option(VSTREAM_PACKAGE_INCLUDE_TESTS
 
 # Release 构建类型编译器优化
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
+  if(VSTREAM_RELEASE_WITH_DEBUG_INFO)
+    set(VSTREAM_RELEASE_FLAGS "-O2 -DNDEBUG -g")
+    message(STATUS "Release build: keeping debug symbols (-g) for crash stacktraces")
+  else()
+    set(VSTREAM_RELEASE_FLAGS "-O2 -DNDEBUG")
+    message(STATUS "Release build: no debug symbols, crash stacktraces will show addresses only")
+  endif()
   if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    set(CMAKE_CXX_FLAGS_RELEASE "-O2 -DNDEBUG" CACHE STRING "C++ flags for Release" FORCE)
-    set(CMAKE_C_FLAGS_RELEASE "-O2 -DNDEBUG" CACHE STRING "C flags for Release" FORCE)
+    set(CMAKE_CXX_FLAGS_RELEASE "${VSTREAM_RELEASE_FLAGS}" CACHE STRING "C++ flags for Release" FORCE)
+    set(CMAKE_C_FLAGS_RELEASE "${VSTREAM_RELEASE_FLAGS}" CACHE STRING "C flags for Release" FORCE)
   endif()
   if(VSTREAM_USE_CUDA AND CMAKE_CUDA_COMPILER_ID MATCHES "NVIDIA")
-    set(CMAKE_CUDA_FLAGS_RELEASE "-O2 -DNDEBUG" CACHE STRING "CUDA flags for Release" FORCE)
+    set(CMAKE_CUDA_FLAGS_RELEASE "${VSTREAM_RELEASE_FLAGS}" CACHE STRING "CUDA flags for Release" FORCE)
   endif()
 endif()
 
