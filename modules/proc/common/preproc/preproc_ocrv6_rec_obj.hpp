@@ -137,8 +137,11 @@ class Pre_PPOCRv6_rec_Obj : public ObjPreproc {
     int need_w   = int(ceilf(input_h * ratio));               // 保持原比例所需宽度 R
     int canvas_w = std::min(std::max(need_w, min_w), max_w);  // 画布宽度
     int resize_w = std::min(need_w, canvas_w);                // 文字实际占用宽度
+    
+    LOGI(PREPROC) << "For crop ratio: " << ratio << "; need w: " << need_w << "; while canvas w: " << canvas_w;
     cv::Mat resize_img;
     cv::resize(crop_img, resize_img, cv::Size(resize_w, input_h), 0, 0, cv::INTER_LINEAR);
+    LOGI(PREPROC) << "final resize shape: w: " << resize_img.cols << "; h: " << resize_img.rows ;
 
 #ifdef VSTREAM_UNIT_TEST
     if (debug_saver_.enable()) {

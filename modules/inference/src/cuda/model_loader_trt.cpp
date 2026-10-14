@@ -346,7 +346,7 @@ bool ModelLoaderTrt::ParseBindings() {
       output_names_.push_back(bind_name);
       output_data_types_.push_back(data_type);
     } else {
-      LOGW(MODEL) << "WARNING: Unsupport IO mode: " << trt_io_mode_to_str(io_mode) << " for tensor: " << bind_name;
+      LOGW(MODEL) << "Unsupported IO mode: " << trt_io_mode_to_str(io_mode) << " for tensor: " << bind_name;
       continue;
     }
     bind_name_index_map_[bind_name] = i;
@@ -356,7 +356,7 @@ bool ModelLoaderTrt::ParseBindings() {
       LOGW(MODEL) << "Model with " << input_names_.size() << " inputs, choose input index: " << input_ordered_index_;
   }
   if (input_ordered_index_ < 0 || input_ordered_index_ >= static_cast<int>(input_names_.size())) {
-    LOGE(MODEL) << "input_ordered_index_ out of range: " << input_ordered_index_
+    LOGE(MODEL) << "input_ordered_index out of range: " << input_ordered_index_
                 << ", input count: " << input_names_.size();
     return false;
   }
@@ -380,19 +380,19 @@ bool ModelLoaderTrt::ParseBindings() {
                                                          opt_profile_index,
                                                          nvinfer1::OptProfileSelector::kMAX);
       if (!is_static_shape(opt_dims)) {
-        LOGE(MODEL) << "Input tensor '" << input_name << "' dims unresolved: " << dims_to_str(opt_dims)
+        LOGE(MODEL) << "Input [" << input_name << "] dims unresolved: " << dims_to_str(opt_dims)
                     << " (engine dims: " << dims_to_str(dims) << ", profile index: " << opt_profile_index << ")";
         return false;
       }
       // kMIN / kMAX 必须同样可解析
       if (!is_static_shape(min_dims) || !is_static_shape(max_dims)) {
         if (shape_mode_ == ShapeMode::DYNAMIC) {
-          LOGE(MODEL) << "Input tensor '" << input_name << "' profile min/max unresolved: min "
+          LOGE(MODEL) << "Input [" << input_name << "] profile min/max unresolved: min "
                       << dims_to_str(min_dims) << ", max " << dims_to_str(max_dims)
                       << "; required by shape_mode=dynamic";
           return false;
         }
-        LOGW(MODEL) << "Input tensor '" << input_name << "' profile min/max unresolved: min "
+        LOGW(MODEL) << "Input [" << input_name << "] profile min/max unresolved: min "
                     << dims_to_str(min_dims) << ", max " << dims_to_str(max_dims)
                     << "; fall back to kOPT for both";
         min_dims = opt_dims;
@@ -403,7 +403,7 @@ bool ModelLoaderTrt::ParseBindings() {
       if (shape_mode_ == ShapeMode::DYNAMIC) {
         if (min_dims.nbDims <= 0 || opt_dims.nbDims <= 0 || max_dims.nbDims <= 0 ||
             min_dims.d[0] != 1 || opt_dims.d[0] != 1 || max_dims.d[0] != 1) {
-          LOGE(MODEL) << "shape_mode=dynamic requires batch(N)==1 in the optimization profile, "
+          LOGE(MODEL) << "DYNAMIC requires batch(N)==1 in the optimization profile, "
                       << "but input '" << input_name << "' has min/opt/max N = "
                       << (min_dims.nbDims > 0 ? min_dims.d[0] : -1) << "/"
                       << (opt_dims.nbDims > 0 ? opt_dims.d[0] : -1) << "/"
@@ -412,8 +412,8 @@ bool ModelLoaderTrt::ParseBindings() {
         }
       }
       if (!context_->setInputShape(input_name.c_str(), opt_dims)) {
-        LOGE(MODEL) << "setInputShape failed for input tensor: " << input_name
-                    << ", dims: " << dims_to_str(opt_dims);
+        LOGE(MODEL) << "setInputShape failed for input: [" << input_name
+                    << "] dims: " << dims_to_str(opt_dims);
         return false;
       }
       dims = opt_dims;
@@ -421,7 +421,7 @@ bool ModelLoaderTrt::ParseBindings() {
       input_shapes_max_.push_back(TensorShape(dims_to_vector(max_dims)));
     } else {
       if (!is_static_shape(dims)) {
-        LOGE(MODEL) << "Input tensor '" << input_name << "' has invalid dims: " << dims_to_str(dims);
+        LOGE(MODEL) << "Input [" << input_name << "] has invalid dims: " << dims_to_str(dims);
         return false;
       }
       // 全静态输入：下限/上限就是定形形状，Dynamic 模式下 clamp 会自然退化为常量
@@ -429,15 +429,15 @@ bool ModelLoaderTrt::ParseBindings() {
       input_shapes_max_.push_back(TensorShape(dims_to_vector(dims)));
     }
 
-    LOGI(MODEL) << "input_name [" << input_num++ << "]: " << input_name << "; dims: " << dims_to_str(dims)
+    LOGI(MODEL) << "Input [" << input_num++ << "]: " << input_name << "; dims: " << dims_to_str(dims)
                 << "; min: " << input_shapes_min_.back().ToString()
                 << " max: " << input_shapes_max_.back().ToString();
     input_shapes_.push_back(TensorShape(dims_to_vector(dims)));  // 对应 input_names_ 顺序
   }  // end of input_names_
 
   if (shape_mode_ == ShapeMode::DYNAMIC && !has_dynamic_input) {
-    LOGE(MODEL) << "shape_mode=dynamic requested but the engine has no dynamic input dims; "
-                   "falling back to static";
+    LOGE(MODEL) << "DYNAMIC but the engine has no dynamic input dims; "
+                   "back to static";
     shape_mode_ = ShapeMode::STATIC;
   }
 
@@ -446,19 +446,18 @@ bool ModelLoaderTrt::ParseBindings() {
     nvinfer1::Dims dims = engine_->getTensorShape(output_name.c_str());
 
     if (has_dynamic_dims(dims)) {
-      // 形状依赖输入的输出（如 sizes 由 Shape/Concat 计算出的 Resize）在运行期解析：
+      // 形状依赖输入的输出在运行期解析：
       // 此时输入 shape 已按 opt profile 设置，可拿到具体维度；
-      // 数据相关的输出仍为 -1，本类不支持
+      // 如果数据相关的输出仍为 -1，应当报错
       dims = context_->getTensorShape(output_name.c_str());
     }
     if (!is_static_shape(dims)) {
-      LOGE(MODEL) << "Output tensor '" << output_name << "' dims unresolved: " << dims_to_str(dims)
-                  << ". ModelLoaderTrt requires static output shapes; rebuild the engine with "
-                     "output dims resolved (e.g. constant-fold the ONNX sizes path)";
+      LOGE(MODEL) << "Output [" << output_name << "] dims unresolved: " << dims_to_str(dims)
+                  << ". Requires static output shapes";
       return false;
     }
 
-    LOGI(MODEL) << "output_name [" << output_num++ << "]: " << output_name << "; dims: " << dims_to_str(dims);
+    LOGI(MODEL) << "Output [" << output_num++ << "]: " << output_name << "; dims: " << dims_to_str(dims);
     output_shapes_.push_back(TensorShape(dims_to_vector(dims)));  // 对应 output_names_ 顺序
   }  // end of output_names_
 
@@ -477,12 +476,12 @@ bool ModelLoaderTrt::ParseBindings() {
                                                        context_->getOptimizationProfile(),
                                                        nvinfer1::OptProfileSelector::kMAX);
     if (!is_static_shape(max_dims)) {
-      LOGE(MODEL) << "Input tensor '" << input_names_[i] << "' kMAX dims unresolved: "
+      LOGE(MODEL) << "Input [" << input_names_[i] << "] kMAX dims unresolved: "
                   << dims_to_str(max_dims);
       return false;
     }
     if (!context_->setInputShape(input_names_[i].c_str(), max_dims)) {
-      LOGE(MODEL) << "setInputShape(kMAX) failed for input tensor: " << input_names_[i]
+      LOGE(MODEL) << "setInputShape(kMAX) failed for input: " << input_names_[i]
                   << ", dims: " << dims_to_str(max_dims);
       return false;
     }
@@ -491,12 +490,12 @@ bool ModelLoaderTrt::ParseBindings() {
   for (auto& output_name : output_names_) {
     nvinfer1::Dims dims = context_->getTensorShape(output_name.c_str());
     if (!is_static_shape(dims)) {
-      LOGE(MODEL) << "Output tensor '" << output_name << "' dims unresolved at kMAX profile: "
+      LOGE(MODEL) << "Output [" << output_name << "] dims unresolved at kMAX profile: "
                   << dims_to_str(dims);
       return false;
     }
     output_shapes_max_.push_back(TensorShape(dims_to_vector(dims)));
-    LOGI(MODEL) << "output at kMAX: " << output_name << "; dims: " << dims_to_str(dims);
+    LOGI(MODEL) << "Output at kMAX: " << output_name << "; dims: " << dims_to_str(dims);
   }
 
   // 还原到 OPT，避免把探测状态留给后续逻辑（context_ 随后会被释放）
@@ -508,7 +507,7 @@ bool ModelLoaderTrt::ParseBindings() {
                                                        nvinfer1::OptProfileSelector::kOPT);
     if (!is_static_shape(opt_dims) ||
         !context_->setInputShape(input_names_[i].c_str(), opt_dims)) {
-      LOGW(MODEL) << "restore input '" << input_names_[i] << "' to kOPT failed";
+      LOGE(MODEL) << "restore input [" << input_names_[i] << "] to kOPT failed";
     }
   }
   return true;
@@ -596,11 +595,11 @@ bool ModelLoaderTrt::RunSync(void* exec_ctx,
       for (int d = 0; d < want.ndims(); ++d) {
         int v = want.shape(d);
         if (v < lo.shape(d)) {
-          LOGE(MODEL) << "input[" << i << "] dim " << d << " = " << v
+          LOGE(MODEL) << "Input [" << i << "] dim " << d << " = " << v
                       << " below min " << lo.shape(d) << ", clamped";
           v = lo.shape(d);
         } else if (v > hi.shape(d)) {
-          LOGE(MODEL) << "input[" << i << "] dim " << d << " = " << v
+          LOGE(MODEL) << "Input [" << i << "] dim " << d << " = " << v
                       << " above max " << hi.shape(d) << ", clamped";
           v = hi.shape(d);
         }
@@ -609,7 +608,7 @@ bool ModelLoaderTrt::RunSync(void* exec_ctx,
 
       nvinfer1::Dims dims;
       if (!tensor_shape_to_dims(TensorShape(clamped), &dims)) {
-        LOGE(MODEL) << "invalid run input shape for '" << input_names_[i] << "': " << want.ToString();
+        LOGE(MODEL) << "Invalid run input shape for '" << input_names_[i] << "': " << want.ToString();
         return false;
       }
       if (!context->setInputShape(input_names_[i].c_str(), dims)) {
@@ -644,6 +643,7 @@ bool ModelLoaderTrt::RunSync(void* exec_ctx,
     for (size_t i = 0; i < outputs.size(); ++i) {
       out_shapes->outputs[i].actual =
           TensorShape(dims_to_vector(context->getTensorShape(output_names_[i].c_str())));
+      LOGI(MODEL) << "Output [" << i << "] actual: " << out_shapes->outputs[i].actual.ToString();
     }
   }
   return CHECK_CUDA_RUNTIME(cudaStreamSynchronize(stream_));
@@ -721,7 +721,7 @@ std::unique_ptr<nvinfer1::IExecutionContext, TrtDeleter> ModelLoaderTrt::CreateE
                                                        context->getOptimizationProfile(),
                                                        nvinfer1::OptProfileSelector::kOPT);
     if (!is_static_shape(opt_dims)) {
-      LOGE(MODEL) << "Input tensor '" << name << "' dims unresolved: " << dims_to_str(opt_dims);
+      LOGE(MODEL) << "Input [" << name << "] dims unresolved: " << dims_to_str(opt_dims);
       return nullptr;
     }
     if (!context->setInputShape(name.c_str(), opt_dims)) {
