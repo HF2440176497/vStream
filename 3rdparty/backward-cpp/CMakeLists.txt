@@ -71,6 +71,8 @@ endif()
 add_library(backward_object OBJECT backward.cpp)
 target_compile_definitions(backward_object PRIVATE ${BACKWARD_DEFINITIONS})
 target_include_directories(backward_object PRIVATE ${BACKWARD_INCLUDE_DIRS})
+# NOTE: 该对象文件在项目中会被链入共享库，以 -fPIC 编译
+set_target_properties(backward_object PROPERTIES POSITION_INDEPENDENT_CODE ON)
 set(BACKWARD_ENABLE $<TARGET_OBJECTS:backward_object> CACHE STRING
 	"Link with this object to setup backward automatically")
 

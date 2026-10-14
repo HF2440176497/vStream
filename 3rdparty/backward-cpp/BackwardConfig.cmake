@@ -234,7 +234,8 @@ foreach(var ${BACKWARD_DEFINITIONS})
 endforeach()
 
 if (NOT TARGET Backward::Backward)
-	add_library(Backward::Backward INTERFACE IMPORTED)
+	# IMPORTED 目标默认仅创建目录及其子目录可见；加 GLOBAL 使兄弟目录（如 framework/）也能链接
+	add_library(Backward::Backward INTERFACE IMPORTED GLOBAL)
 	set_target_properties(Backward::Backward PROPERTIES
 	    INTERFACE_INCLUDE_DIRECTORIES "${BACKWARD_INCLUDE_DIRS}"
 	    INTERFACE_COMPILE_DEFINITIONS "${BACKWARD_DEFINITIONS}"
