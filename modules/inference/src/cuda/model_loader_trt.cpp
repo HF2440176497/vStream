@@ -436,7 +436,7 @@ bool ModelLoaderTrt::ParseBindings() {
   }  // end of input_names_
 
   if (shape_mode_ == ShapeMode::DYNAMIC && !has_dynamic_input) {
-    LOGE(MODEL) << "DYNAMIC but the engine has no dynamic input dims; "
+    LOGW(MODEL) << "DYNAMIC but the engine has no dynamic input dims; "
                    "back to static";
     shape_mode_ = ShapeMode::STATIC;
   }

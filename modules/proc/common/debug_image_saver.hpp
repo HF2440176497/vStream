@@ -23,12 +23,19 @@
 
 #include <chrono>
 #include <functional>
+#include <map>
 #include <mutex>
 #include <string>
 
+#include <glog/logging.h>
 #include <opencv2/opencv.hpp>
 
 namespace cnstream {
+
+// 调试落盘开关在 custom_preproc_params / custom_postproc_params 中的键名约定。
+// 职责划分：调试开关属于 pipeline 级配置
+inline constexpr const char* kDebugParamEnableSave = "enable_save";
+inline constexpr const char* kDebugParamSaveIntervalMs = "save_interval_ms";
 
 class DebugImageSaver {
  public:
@@ -46,6 +53,34 @@ class DebugImageSaver {
     save_dir_ = std::move(save_dir);
     NormalizeSaveDir();
     has_saved_ = false;
+  }
+
+  // 解析调试落盘开关
+  //   enable_save: "true"/"1" 开，"false"/"0" 关；未配置时保持当前配置（默认关闭）。
+  //   save_interval_ms: 节流间隔，缺省用 default_interval_ms。
+  // 非法值视为保持关闭并告警
+  void ConfigureFromParams(const std::map<std::string, std::string>& params,
+                           int default_interval_ms = 500) {
+    auto it = params.find(kDebugParamEnableSave);
+    if (it == params.end()) return;
+    bool enable = (it->second == "true" || it->second == "True" || it->second == "1");
+    bool disable = (it->second == "false" || it->second == "False" || it->second == "0");
+    if (!enable && !disable) {
+      LOGW(SAVE) << "invalid enable_save value: "
+                   << it->second << ", keep disabled";
+      return;
+    }
+    int interval_ms = default_interval_ms;
+    auto it_interval = params.find(kDebugParamSaveIntervalMs);
+    if (it_interval != params.end()) {
+      try {
+        interval_ms = std::stoi(it_interval->second);
+      } catch (const std::exception&) {
+        LOGW(SAVE) << "invalid save_interval_ms value: "
+                     << it_interval->second << ", using default " << default_interval_ms;
+      }
+    }
+    Configure(enable, interval_ms);
   }
 
   // 尝试保存图像到 <save_dir>/<prefix>_<timestamp_ms>[_<suffix>].jpg

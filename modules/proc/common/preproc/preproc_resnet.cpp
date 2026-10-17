@@ -14,34 +14,7 @@ class Pre_Resnet : public Preproc {
  public:
   bool Init(const std::map<std::string, std::string> &params) override {
     params_ = params;
-    if (params_.find(key_config_file) != params_.end()) {
-      config_file_ = params_[key_config_file];
-    } else {
-      LOGE(PREPROC) << "Init config_file must be in custom_preproc_params.";
-      return false;
-    }
-    std::string dir_path;
-    if (params_.find(CNS_JSON_DIR_PARAM_NAME) != params_.end()) {
-      dir_path = params_[CNS_JSON_DIR_PARAM_NAME];
-    }
-    config_file_ = GetPathRelativeToTheJSONFile(config_file_, dir_path);
-    if (config_file_.empty()) {
-      LOGW(PREPROC) << "Init config_file is empty.";
-      return true;
-    }
-    std::ifstream file(config_file_);
-    if (!file.is_open()) {
-      LOGE(PREPROC) << "Init Could not open file " << config_file_;
-      return false;
-    }
-    nlohmann::ordered_json data = nlohmann::ordered_json::parse(file);
-    if (!data.is_object()) {
-      LOGE(PREPROC) << "Init config file must be object type.";
-      return false;
-    }
-    if (data.find(key_enable_save) != data.end()) {
-      debug_saver_.Configure(data[key_enable_save].get<bool>(), 1000);
-    }
+    debug_saver_.ConfigureFromParams(params, 1000);
     return true;
   }
 

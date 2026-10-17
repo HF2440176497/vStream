@@ -51,6 +51,7 @@ class Pre_PPOCRv6_rec_Obj : public ObjPreproc {
         LOGW(PREPROC) << "Invalid crop_padding value: " << it->second << ", using default 0";
       }
     }
+    debug_saver_.ConfigureFromParams(params, 500);
     return true;
   }
   /**

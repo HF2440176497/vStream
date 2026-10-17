@@ -23,8 +23,6 @@ namespace {
 
 inline constexpr const char* key_config_file = "config_file";
 inline constexpr const char* key_label_path = "label_path";
-inline constexpr const char* key_enable_save = "enable_save";
-inline constexpr const char* key_save_interval_ms = "save_interval_ms";
 
 }  // namespace
 
@@ -66,13 +64,7 @@ class Post_PPOCRv6_rec_Obj : public ObjPostproc {
     label_path_ = data[key_label_path].get<std::string>();
     LOGI(POSTPROC) << "PPOCRv6 label_path: " << label_path_;
 
-    if (data.find(key_enable_save) != data.end()) {
-      int interval_ms = 500;
-      if (data.find(key_save_interval_ms) != data.end()) {
-        interval_ms = data[key_save_interval_ms].get<int>();
-      }
-      debug_saver_.Configure(data[key_enable_save].get<bool>(), interval_ms);
-    }
+    debug_saver_.ConfigureFromParams(params, 500);
 
     if (!label_path_.empty()) {
         label_list_ = PaddlePaddle::ReadDict(label_path_);

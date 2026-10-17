@@ -1,7 +1,6 @@
 #ifndef MODULES_PROC_COMMON_PREPROC_PREPROC_RESNET_HPP_
 #define MODULES_PROC_COMMON_PREPROC_PREPROC_RESNET_HPP_
 
-#include <fstream>
 #include <map>
 #include <string>
 #include <vector>
@@ -17,17 +16,9 @@
 
 #include "affine_trans.hpp"
 
-#include <nlohmann/json.hpp>
 #include <opencv2/opencv.hpp>
 
 namespace cnstream {
-
-namespace {
-
-inline constexpr const char* key_config_file = "config_file";
-inline constexpr const char* key_enable_save = "enable_save";
-
-}  // namespace
 
 /**
  * @brief ResNet CPU 前处理
@@ -36,34 +27,8 @@ class Pre_Resnet_Obj : public ObjPreproc {
  public:
   bool Init(const std::map<std::string, std::string> &params) override {
     params_ = params;
-    if (params_.find(key_config_file) != params_.end()) {
-      config_file_ = params_[key_config_file];
-    } else {
-      LOGE(PREPROC) << "Init config_file must be in custom_preproc_params.";
-      return false;
-    }
-    std::string dir_path;
-    if (params_.find(CNS_JSON_DIR_PARAM_NAME) != params_.end()) {
-      dir_path = params_[CNS_JSON_DIR_PARAM_NAME];
-    }
-    config_file_ = GetPathRelativeToTheJSONFile(config_file_, dir_path);
-    if (config_file_.empty()) {
-      LOGW(PREPROC) << "Init config_file is empty.";
-      return true;
-    }
-    std::ifstream file(config_file_);
-    if (!file.is_open()) {
-      LOGE(PREPROC) << "Init Could not open file " << config_file_;
-      return false;
-    }
-    nlohmann::ordered_json data = nlohmann::ordered_json::parse(file);
-    if (!data.is_object()) {
-      LOGE(PREPROC) << "Init config file must be object type.";
-      return false;
-    }
-    if (data.find(key_enable_save) != data.end()) {
-      debug_saver_.Configure(data[key_enable_save].get<bool>(), 1000);
-    }
+    // 调试落盘开关：从 custom_preproc_params 读取
+    debug_saver_.ConfigureFromParams(params, 1000);
     return true;
   }
 

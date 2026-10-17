@@ -34,7 +34,6 @@ inline constexpr const char* key_merge_interval = "merge_interval";
 inline constexpr const char* key_merge_cross_interval = "merge_cross_interval";
 inline constexpr const char* key_max_boxes_num = "max_boxes_num";
 inline constexpr const char* key_nms_iou_threshold = "nms_iou_threshold";
-inline constexpr const char* key_enable_save = "enable_save";
 inline constexpr const char* key_merge_direction = "merge_direction";
 inline constexpr const char* key_enable_secondary_merge = "enable_secondary_merge";
 
@@ -203,11 +202,9 @@ class Post_YOLOv5_CPU_OCR: public Postproc {
     if (enable_secondary_merge_) {
       LOGD(POSTPROC) << "YOLOv5_CPU_OCR enable secondary merge";
     }
+    
+    debug_saver_.ConfigureFromParams(params, 500);
 
-    if (data.find(key_enable_save) != data.end()) {
-      debug_saver_.Configure(
-          data[key_enable_save].get<bool>(), 500);
-    }
     if (data.find(key_merge_direction) != data.end()) {
       std::string dir_str = data[key_merge_direction].get<std::string>();
       // 大小写不敏感比较

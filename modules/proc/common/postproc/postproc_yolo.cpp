@@ -31,7 +31,6 @@ inline constexpr const char* key_threshold = "threshold";
 
 inline constexpr const char* key_max_boxes_num = "max_boxes_num";
 inline constexpr const char* key_nms_iou_threshold = "nms_iou_threshold";
-inline constexpr const char* key_enable_save = "enable_save";
 
 }  // namespace
 
@@ -607,10 +606,8 @@ class Post_YOLOv5_CPU: public Postproc {
       nms_iou_threshold_ = data[key_nms_iou_threshold].get<float>();
     }
 
-    if (data.find(key_enable_save) != data.end()) {
-      debug_saver_.Configure(
-          data[key_enable_save].get<bool>(), 1000);
-    }
+    debug_saver_.ConfigureFromParams(params, 1000);
+
     LOGI(POSTPROC) << "item_infos_ size = " << item_infos_.size();
     for (const auto& kv : item_infos_) {
       LOGI(POSTPROC) << "  class " << kv.first
