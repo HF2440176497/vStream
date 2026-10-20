@@ -124,6 +124,9 @@ target_link_libraries(vstream_python
   ${VSTREAM_PYTHON_3RDPARTY_LIBS}
 )
 
+vstream_platform_apply(vstream_python)
+vstream_platform_link(vstream_python)
+
 set_target_properties(vstream_python PROPERTIES
   OUTPUT_NAME "vstream"
   LIBRARY_OUTPUT_DIRECTORY ${VSTREAM_ROOT_PATH}/lib

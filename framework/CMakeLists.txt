@@ -84,6 +84,9 @@ target_link_libraries(vstream_core
   Backward::Backward  # include 目录、BACKWARD_HAS_* 宏定义及 libdw 等依赖库
 )
 
+# 平台编译宏（VSTREAM_USE_CUDA / VSTREAM_PLATFORM_* 等）
+vstream_platform_apply(vstream_core)
+
 # unitest
 if(VSTREAM_BUILD_TESTS)
   add_subdirectory(unittest)

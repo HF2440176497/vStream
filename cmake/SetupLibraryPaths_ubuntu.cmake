@@ -1,37 +1,39 @@
+# =============================================================================
+# cmake/SetupLibraryPaths_ubuntu.cmake
+# 第三方库路径默认值
+#
+# 平台默认值由 cmake/platforms/<id>.cmake 提供（VSTREAM_PLATFORM_FFMPEG_ROOT /
+# VSTREAM_PLATFORM_OPENCV_ROOT），本文件只负责：
+#   1. 用户显式 -D 优先
+#   2. 未指定时用平台默认值
+#   3. 平台无默认值时用通用兜底值
+# =============================================================================
 
-# 用于设置第三方库的路径
-# 使用方法：在顶层 CMakeLists.txt 中 include 此文件
-# 或者通过命令行参数：-DCMAKE_TOOLCHAIN_FILE=cmake/SetupLibraryPaths.cmake
+if(NOT UNIX)
+  message(STATUS "SetupLibraryPaths: not on Linux, skipping automatic path setup")
+  return()
+endif()
 
-if(UNIX)
-    message(STATUS "=== Setting up library paths for Ubuntu ===")
-
-    # FFmpeg：
-    #   - RK 交叉编译默认指向 ffmpeg-rockchip 安装树（由 toolchain 文件的 RK_FFMPEG_ROOT 提供）
-    #   - 其余平台维持 /usr/local/ffmpeg
-    if(NOT DEFINED FFMPEG_ROOT_DIR)
-        if(VSTREAM_USE_ROCKCHIP AND RK_FFMPEG_ROOT)
-            set(FFMPEG_ROOT_DIR "${RK_FFMPEG_ROOT}" CACHE PATH "Folder contains FFmpeg (ffmpeg-rockchip)")
-            message(STATUS "FFMPEG_ROOT_DIR (rockchip): ${FFMPEG_ROOT_DIR}")
-        else()
-            set(FFMPEG_ROOT_DIR "/usr/local/ffmpeg" CACHE PATH "Folder contains FFmpeg")
-            message(STATUS "FFMPEG_ROOT_DIR: ${FFMPEG_ROOT_DIR}")
-        endif()
-    else()
-        message(STATUS "FFMPEG_ROOT_DIR (user defined): ${FFMPEG_ROOT_DIR}")
-    endif()
-
-    # OpenCV（CONFIG 模式查找，供 FindOpenCV.cmake 使用）：
-    if(NOT DEFINED OPENCV_ROOT_DIR)
-        if(VSTREAM_USE_ROCKCHIP AND RK_OPENCV_ROOT)
-            set(OPENCV_ROOT_DIR "${RK_OPENCV_ROOT}" CACHE PATH "Folder contains OpenCV (SDK prebuilt)")
-            message(STATUS "OPENCV_ROOT_DIR (rockchip): ${OPENCV_ROOT_DIR}")
-        endif()
-    else()
-        message(STATUS "OPENCV_ROOT_DIR (user defined): ${OPENCV_ROOT_DIR}")
-    endif()
-
-    message(STATUS "=== Library paths setup complete ===")
+# ---- FFmpeg ----
+if(NOT DEFINED FFMPEG_ROOT_DIR)
+  if(VSTREAM_PLATFORM_FFMPEG_ROOT)
+    set(FFMPEG_ROOT_DIR "${VSTREAM_PLATFORM_FFMPEG_ROOT}" CACHE PATH "Folder contains FFmpeg")
+    message(STATUS "FFMPEG_ROOT_DIR (${VSTREAM_PLATFORM_ID}): ${FFMPEG_ROOT_DIR}")
+  else()
+    set(FFMPEG_ROOT_DIR "/usr/local/ffmpeg" CACHE PATH "Folder contains FFmpeg")
+    message(STATUS "FFMPEG_ROOT_DIR: ${FFMPEG_ROOT_DIR}")
+  endif()
 else()
-    message(STATUS "SetupLibraryPaths.cmake: Not on Linux, skipping automatic path setup")
+  message(STATUS "FFMPEG_ROOT_DIR (user defined): ${FFMPEG_ROOT_DIR}")
+endif()
+
+# ---- OpenCV ----
+# 平台提供预编译树（如 SDK sysroot）时才设置；否则留给 FindOpenCV 走系统默认搜索
+if(NOT DEFINED OPENCV_ROOT_DIR)
+  if(VSTREAM_PLATFORM_OPENCV_ROOT)
+    set(OPENCV_ROOT_DIR "${VSTREAM_PLATFORM_OPENCV_ROOT}" CACHE PATH "Folder contains OpenCV")
+    message(STATUS "OPENCV_ROOT_DIR (${VSTREAM_PLATFORM_ID}): ${OPENCV_ROOT_DIR}")
+  endif()
+else()
+  message(STATUS "OPENCV_ROOT_DIR (user defined): ${OPENCV_ROOT_DIR}")
 endif()

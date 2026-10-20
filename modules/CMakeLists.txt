@@ -62,17 +62,9 @@ else()
   message(FATAL_ERROR "OpenCV not found. Please ensure OpenCV is installed")
 endif()
 
-# ---[ RKNN runtime
-if(VSTREAM_USE_ROCKCHIP)
-  include(${VSTREAM_ROOT_PATH}/cmake/FindRKNN.cmake)
-  if(RKNN_FOUND)
-    list(APPEND VSTREAM_MODULES_3RDPARTY_INCLUDE ${RKNN_INCLUDE_DIRS})
-    list(APPEND VSTREAM_MODULES_3RDPARTY_LIBS ${RKNN_LIBRARIES})
-  else()
-    message(FATAL_ERROR "RKNN runtime not found! Expected 3rdparty/rknpu2 "
-      "(include/rknn_api.h + lib/librknnrt.so), or set RKNN_ROOT_DIR")
-  endif()
-endif()
+# ---[ 平台专属依赖（RKNN / TensorRT / CUDA NPP 等）
+# 由 cmake/platforms/<id>.cmake 声明，经 vstream_platform_configure() 查找，
+# 通过 vstream_platform INTERFACE 目标传播到本目录的 target。
 
 # ---[ nlohmann/json
 list(APPEND VSTREAM_MODULES_3RDPARTY_INCLUDE ${VSTREAM_ROOT_PATH}/3rdparty/nlohmann-json/include)
@@ -115,61 +107,15 @@ if(VSTREAM_MODULES_BUILD_OSD)
 endif()
 
 file(GLOB srcs ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)
-file(GLOB util_src ${CMAKE_CURRENT_SOURCE_DIR}/util/src/*.cpp)
 
-if(VSTREAM_USE_CUDA)
-  enable_language(CUDA)
-  set(CMAKE_CUDA_ARCHITECTURES "86;89;120")
-  find_package(CUDAToolkit REQUIRED)
-  file(GLOB util_cuda_src ${CMAKE_CURRENT_SOURCE_DIR}/util/src/cuda/*.cpp 
-        ${CMAKE_CURRENT_SOURCE_DIR}/util/src/cuda/*.cu)
-  list(APPEND util_src ${util_cuda_src})
-  
-  list(APPEND VSTREAM_MODULES_3RDPARTY_LIBS 
-    CUDA::cudart
-    CUDA::nvml
-  )
-  list(APPEND VSTREAM_MODULES_3RDPARTY_LIBS         
-    CUDA::npps
-    CUDA::nppc
-    CUDA::nppial
-    CUDA::nppicc
-    CUDA::nppidei
-    CUDA::nppif
-    CUDA::nppig
-    CUDA::nppim
-    CUDA::nppist
-    CUDA::nppisu
-    CUDA::nppitc
-  )
-    
-  message(STATUS "VSTREAM_USE_CUDA enabled - adding CUDA sources")
-endif()
-
+vstream_platform_sources(util_src ${CMAKE_CURRENT_SOURCE_DIR}/util)
 list(APPEND srcs ${util_src})
 
-if(VSTREAM_USE_CUDA)
-  include(${VSTREAM_ROOT_PATH}/cmake/FindTensorRT.cmake)
-  if(TENSORRT_FOUND)
-    list(APPEND VSTREAM_MODULES_3RDPARTY_INCLUDE ${TENSORRT_INCLUDE_DIR})
-    list(APPEND VSTREAM_MODULES_3RDPARTY_LIBS ${TENSORRT_LIBRARIES})
-  endif()
-endif()
+# 平台依赖（CUDA NPP / TensorRT / RKNN）由 vstream_platform 目标统一提供
 
 # 递归添加模块的源文件: 要求每个 module 目录都是 include src 目录结构
 foreach(module ${module_list})
-  file(GLOB ${module}_srcs ${CMAKE_CURRENT_SOURCE_DIR}/${module}/src/*.cpp)
-
-  if (VSTREAM_USE_CUDA)
-    file(GLOB ${module}_cuda_srcs ${CMAKE_CURRENT_SOURCE_DIR}/${module}/src/cuda/*.cpp)
-    list(APPEND ${module}_srcs ${${module}_cuda_srcs})
-  endif()
-
-  if (VSTREAM_USE_ROCKCHIP)
-    file(GLOB ${module}_rockchip_srcs ${CMAKE_CURRENT_SOURCE_DIR}/${module}/src/rockchip/*.cpp)
-    list(APPEND ${module}_srcs ${${module}_rockchip_srcs})
-  endif()
-
+  vstream_platform_sources(${module}_srcs ${CMAKE_CURRENT_SOURCE_DIR}/${module})
   list(APPEND srcs ${${module}_srcs})
 endforeach()
 
@@ -194,17 +140,21 @@ if(VSTREAM_MODULES_BUILD_CONTRIB)
   list(APPEND srcs ${contrib_src})
 endif()
 
-if (VSTREAM_USE_CUDA)
-  set(proc_cuda_srcs "")
-  file(GLOB proc_cuda_pre_src ${CMAKE_CURRENT_SOURCE_DIR}/proc/cuda/preproc/*.cpp)
-  file(GLOB proc_cuda_post_src ${CMAKE_CURRENT_SOURCE_DIR}/proc/cuda/postproc/*.cpp)
-  list(APPEND proc_cuda_srcs ${proc_cuda_pre_src} ${proc_cuda_post_src})
-  list(APPEND srcs ${proc_cuda_srcs})
-endif()
+# 平台专属前后处理源码：proc/<sub>/{preproc,postproc}/*.cpp
+foreach(_sub ${VSTREAM_PLATFORM_SRC_SUBDIRS})
+  if(IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/proc/${_sub}")
+    file(GLOB _proc_sub_srcs
+      "${CMAKE_CURRENT_SOURCE_DIR}/proc/${_sub}/preproc/*.cpp"
+      "${CMAKE_CURRENT_SOURCE_DIR}/proc/${_sub}/postproc/*.cpp")
+    list(APPEND srcs ${_proc_sub_srcs})
+  endif()
+endforeach()
 
 
 if(VSTREAM_MODULES_BUILD_VA)
   add_library(vstream_va SHARED ${srcs})
+
+  # include 时不区分 platform sub, 因此源码需要包含 cuda/ 等子目录
   target_include_directories(vstream_va 
    PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
@@ -232,6 +182,11 @@ if(VSTREAM_MODULES_BUILD_VA)
     ${VSTREAM_MODULES_DEPENDENCIES} 
    PRIVATE
     ${VSTREAM_MODULES_3RDPARTY_LIBS})  # vstream_core
+
+  # 平台依赖（CUDA NPP / TensorRT / RKNN 等）与平台编译宏
+  vstream_platform_link(vstream_va)
+  vstream_platform_apply(vstream_va)
+
   message(STATUS "vstream_va enabled")
 endif()
 

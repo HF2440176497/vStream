@@ -11,11 +11,13 @@
 include(FindPackageHandleStandardArgs)
 
 if(NOT RKNN_ROOT_DIR)
-  if(DEFINED VSTREAM_ROOT_PATH)
-    set(RKNN_ROOT_DIR "${VSTREAM_ROOT_PATH}/3rdparty/rknpu2")
-  else()
-    set(RKNN_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/rknpu2")
+  # 只认 VSTREAM_ROOT_PATH（顶层已保证在 include 本文件前赋值），
+  # 不使用 CMAKE_CURRENT_SOURCE_DIR 回退 —— 避免平台文件在任意目录被 include 时
+  # 解析到错误路径（隐性顺序依赖）。
+  if(NOT DEFINED VSTREAM_ROOT_PATH)
+    message(FATAL_ERROR "FindRKNN: VSTREAM_ROOT_PATH 未定义，无法定位 3rdparty/rknpu2")
   endif()
+  set(RKNN_ROOT_DIR "${VSTREAM_ROOT_PATH}/3rdparty/rknpu2")
 endif()
 set(RKNN_ROOT_DIR "${RKNN_ROOT_DIR}" CACHE PATH "RKNPU2 runtime root (rknn_api.h + librknnrt.so)")
 

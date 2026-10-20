@@ -79,7 +79,11 @@ else ()
     # Set found flag and libraries
     if (TENSORRT_LIB_NVINFER AND TENSORRT_INCLUDE_DIR)
         set(TENSORRT_FOUND TRUE)
-        
+
+        # 统一输出约定：<PKG>_INCLUDE_DIRS / <PKG>_LIBRARIES
+        # （平台契约 cmake/PlatformBase.cmake 按此约定聚合依赖）
+        set(TENSORRT_INCLUDE_DIRS ${TENSORRT_INCLUDE_DIR})
+
         # Collect all found libraries
         set(TENSORRT_LIBRARIES ${TENSORRT_LIB_NVINFER})
         

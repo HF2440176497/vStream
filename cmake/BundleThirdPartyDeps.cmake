@@ -80,16 +80,11 @@ function(vstream_bundle_third_party_deps)
 
   # ---------- 3. 传递依赖解析 ----------
   # Python 与 TensorRT 在此阶段被 PRE_EXCLUDE_REGEXES 显式排除
-  # 注：install(SCRIPT) 在安装阶段执行，读不到 configure 期的普通变量，
-  # 故用 install(CODE) 把相关变量烘焙进脚本后再 include 执行
-  install(CODE "
-    set(VSTREAM_USE_ROCKCHIP \"${VSTREAM_USE_ROCKCHIP}\")
-    set(VSTREAM_INTREE_GFLAGS_GLOG \"${VSTREAM_INTREE_GFLAGS_GLOG}\")
-    set(RK_SYSROOT \"${RK_SYSROOT}\")
-    set(RK_FFMPEG_ROOT \"${RK_FFMPEG_ROOT}\")
-    set(RK_OPENCV_ROOT \"${RK_OPENCV_ROOT}\")
-    set(RKNN_LIB_DIR \"${CMAKE_SOURCE_DIR}/3rdparty/rknpu2/lib\")
-    include(\"${CMAKE_SOURCE_DIR}/cmake/GatherRuntimeDeps.cmake\")
-  ")
+  # 注：install(SCRIPT/CODE) 在安装阶段执行，读不到 configure 期的普通变量。
+  # 平台相关变量由 vstream_export_platform_vars() 统一落盘到
+  # ${CMAKE_BINARY_DIR}/platform-vars.cmake，这里只做一次路径烘焙。
+  # 新增平台时无需修改本文件。
+  install(CODE "include(\"${CMAKE_BINARY_DIR}/platform-vars.cmake\")")
+  install(CODE "include(\"${CMAKE_SOURCE_DIR}/cmake/GatherRuntimeDeps.cmake\")")
 
 endfunction()

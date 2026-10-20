@@ -58,6 +58,8 @@ if (HAVE_FRAMEWORK_TARGET)
     ${VSTREAM_FRAMEWORK_UNITTEST_3RDPARTY_LIBS}
   )
 
+  vstream_platform_apply(vstream_core_test)
+
   if(DEFINED VSTREAM_LIB_PATH)
     set_target_properties(vstream_core_test PROPERTIES
       BUILD_RPATH ${VSTREAM_LIB_PATH}

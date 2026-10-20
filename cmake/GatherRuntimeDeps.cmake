@@ -48,24 +48,16 @@ endif()
 # 导致 dep-manifest.txt 记录的不是编译期系统路径，postinst 自适应复用会失效。
 # 第三方依赖由系统默认搜索路径（ld.so.conf）解析，得到的才是编译期真实路径。
 #
-# RK 交叉编译：第三方依赖位于 sysroot / ffmpeg-rockchip / OpenCV  / 仓库内 rknpu2，
-# 不在构建机默认搜索路径中，必须显式补充解析目录（变量由 BundleThirdPartyDeps 的 install(CODE) 传入）。
+# 交叉编译：第三方依赖位于 sysroot / ffmpeg-rockchip / OpenCV / 仓库内 rknpu2，
+# 不在构建机默认搜索路径中，必须显式补充解析目录。
+# 目录清单来自平台契约（cmake/platforms/<id>.cmake 的 DEP_SEARCH_DIRS），
+# 由 BundleThirdPartyDeps 通过 build/platform-vars.cmake 传入。
 set(_dep_search_dirs "${_staging_lib}")
-if(VSTREAM_USE_ROCKCHIP)
-  foreach(_d
-      "${RK_FFMPEG_ROOT}/lib"
-      "${RK_FFMPEG_ROOT}/lib/aarch64-linux-gnu"
-      "${RK_OPENCV_ROOT}/lib"
-      "${RK_OPENCV_ROOT}/lib/aarch64-linux-gnu"
-      "${RK_SYSROOT}/lib/aarch64-linux-gnu"
-      "${RK_SYSROOT}/usr/lib"
-      "${RK_SYSROOT}/usr/lib/aarch64-linux-gnu"
-      "${RKNN_LIB_DIR}")
-    if(IS_DIRECTORY "${_d}")
-      list(APPEND _dep_search_dirs "${_d}")
-    endif()
-  endforeach()
-endif()
+foreach(_d ${VSTREAM_PLATFORM_DEP_SEARCH_DIRS})
+  if(IS_DIRECTORY "${_d}")
+    list(APPEND _dep_search_dirs "${_d}")
+  endif()
+endforeach()
 
 # PRE：按 NEEDED 名字过滤，命中即不解析路径（最早期排除）
 set(_pre_exclude
@@ -85,13 +77,9 @@ set(_pre_exclude
     "^libnvinfer.*\\.so"
     "^libnvonnxparser\\.so"
     "^libpython.*\\.so")
-if(NOT VSTREAM_USE_ROCKCHIP)
-  # 原生构建：Python 解释器库由运行环境基础镜像提供
-  list(APPEND _pre_exclude "^libpython.*\\.so")
-else()
-  # RK：librknnrt.so 已通过 BundleThirdPartyDeps 显式打包（known_libs），按名排除防重复
-  list(APPEND _pre_exclude "^librknnrt\\.so")
-endif()
+
+# 平台专属排除规则（如 RK 的 librknnrt.so 已由 BundleThirdPartyDeps 显式打包，按名排除防重复）
+list(APPEND _pre_exclude ${VSTREAM_PLATFORM_DEP_EXCLUDE_EXTRA})
 
 # gflags/glog：已由 install(TARGETS) 装到 lib/，
 # 排除防止依赖解析时从 staging lib/ 命中后重复拷进 dev/lib

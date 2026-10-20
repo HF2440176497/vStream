@@ -51,11 +51,13 @@ file(GLOB test_util_srcs ${CMAKE_CURRENT_SOURCE_DIR}/util/*.cpp)
 list(APPEND test_srcs ${test_util_srcs})
 
 # util 单元测试文件 [平台特定的单元测试文件]
-if(VSTREAM_USE_CUDA)
-  file(GLOB test_util_cuda_srcs ${CMAKE_CURRENT_SOURCE_DIR}/util/cuda/*.cpp)
-  list(APPEND test_srcs ${test_util_cuda_srcs})
-  message(STATUS "Unittest: VSTREAM_USE_CUDA platform test sources added")
-endif()
+foreach(_sub ${VSTREAM_PLATFORM_TEST_SUBDIRS})
+  if(IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/util/${_sub}")
+    file(GLOB _test_util_sub_srcs ${CMAKE_CURRENT_SOURCE_DIR}/util/${_sub}/*.cpp)
+    list(APPEND test_srcs ${_test_util_sub_srcs})
+    message(STATUS "Unittest: ${VSTREAM_PLATFORM_ID} platform test sources added (util/${_sub})")
+  endif()
+endforeach()
 
 include(${VSTREAM_ROOT_PATH}/cmake/HaveFrameworkTarget.cmake)
 have_framework_target(${VSTREAM_ROOT_PATH})
@@ -94,6 +96,9 @@ if(HAVE_FRAMEWORK_TARGET AND HAVE_MODULES_TARGET)
     ${VSTREAM_MODULES_3RDPARTY_LIBS}
     ${VSTREAM_MODULES_UNITTEST_3RDPARTY_LIBS}
   )
+
+  vstream_platform_link(vstream_modules_test)
+  vstream_platform_apply(vstream_modules_test)
 
   # 仅当打包且显式开启测试安装时装到 bin/
   if(VSTREAM_PACKAGE AND VSTREAM_PACKAGE_INCLUDE_TESTS)

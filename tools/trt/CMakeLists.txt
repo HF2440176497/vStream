@@ -7,7 +7,7 @@ if(NOT DEFINED VSTREAM_ROOT_PATH)
     CACHE INTERNAL "Top-level directory of this project")
 endif()
 
-set(CMAKE_CUDA_ARCHITECTURES "86;89;120")
+# CUDA 架构由平台契约（cmake/platforms/cuda.cmake）统一提供，此处不再硬编码
 project(tools_trt_demo LANGUAGES C CXX CUDA)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -54,6 +54,9 @@ foreach(demo_source ${VSTREAM_TOOLS_DEMO_TRT_SOURCES})
     ${VSTREAM_TOOLS_3RDPARTY_LIBS}
     ${VSTREAM_TOOLS_TRT_3RDPARTY_LIBS}
   )
+
+  vstream_platform_link(${demo_name})
+  vstream_platform_apply(${demo_name})
 
   # install: 可执行文件装到 bin/，RPATH=$ORIGIN/../lib 找 vstream 库
   # 第三方依赖由 ld.so.conf.d 自适应解析

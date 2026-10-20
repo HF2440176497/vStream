@@ -1,57 +1,55 @@
 
+cmake_minimum_required(VERSION 3.16)
+
 if(" ${CMAKE_SOURCE_DIR}" STREQUAL " ${CMAKE_BINARY_DIR}")
   message(FATAL_ERROR "Please create a separate directory for build files.")
 endif()
 
-cmake_minimum_required(VERSION 3.16)
-
-if(UNIX)
-  include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/SetupLibraryPaths_ubuntu.cmake)
-else()
+if(NOT UNIX)
   message(FATAL_ERROR "only support UNIX platform")
 endif()
 
+set(VSTREAM_ROOT_PATH "${CMAKE_CURRENT_SOURCE_DIR}"
+    CACHE INTERNAL "Top-level directory of this project")
+
+# ============================================================
+# 平台选择：唯一入口，须在 project() 之前
+#   - 解析平台 ID（-DVSTREAM_PLATFORM / 旧参数 / host 默认）
+#   - 加载 cmake/platforms/<id>.cmake
+# ============================================================
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/ResolvePlatform.cmake)
+
 project(vStream LANGUAGES C CXX)
+
+# 组件开关
+option(VSTREAM_BUILD_MODULES "build modules" ON)
+option(VSTREAM_BUILD_TOOLS "build tools" ON)
+
+# ============================================================
+# 平台配置：唯一执行副作用的地方，须在 project() 之后
+#   - enable_language / find_package / 编译标准 / vstream_platform 目标
+# ============================================================
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/PlatformBase.cmake)
+vstream_platform_validate()
+vstream_platform_configure()
+
+# 第三方库路径默认值（FFMPEG_ROOT_DIR / OPENCV_ROOT_DIR）
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/SetupLibraryPaths_ubuntu.cmake)
 
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type: Debug or Release" FORCE)
 endif()
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# CMAKE_CXX_STANDARD / CMAKE_CUDA_STANDARD / CUDA 架构由平台契约提供
+# vstream_platform_configure() 设置
 
-# Platform options
-option(VSTREAM_USE_CUDA "Enable NVIDIA CUDA platform support" ON)
-option(VSTREAM_USE_ROCKCHIP "Enable Rockchip RKMPP platform support" OFF)
-
-if (VSTREAM_USE_CUDA)
-  add_definitions(-DVSTREAM_USE_CUDA)
-  set(CMAKE_CUDA_STANDARD 17)
-endif()
-
-if (VSTREAM_USE_ROCKCHIP)
-  add_definitions(-DVSTREAM_USE_ROCKCHIP)
-  set(CMAKE_CUDA_STANDARD 17)
-endif()
-
-# CUDA 与 Rockchip 互斥：同一构建只允许一种硬件平台后端
-if(VSTREAM_USE_ROCKCHIP AND VSTREAM_USE_CUDA)
-  message(FATAL_ERROR "VSTREAM_USE_ROCKCHIP and VSTREAM_USE_CUDA are mutually exclusive. "
-    "Use: -DVSTREAM_USE_ROCKCHIP=ON -DVSTREAM_USE_CUDA=OFF")
-endif()
-
-
-set(VSTREAM_ROOT_PATH "${CMAKE_CURRENT_SOURCE_DIR}"
-    CACHE INTERNAL "Top-level directory of this project")
 
 # 单元测试
 option(VSTREAM_BUILD_TESTS "build unit tests" ON)
 
-# 模块
-option(VSTREAM_BUILD_MODULES "build modules" ON)
+# Python 绑定
 option(VSTREAM_BUILD_PYTHON_API "build python api" ON)
-option(VSTREAM_BUILD_TOOLS "build tools" ON)
 
 # 默认都为 ON
 option(VSTREAM_BUILD_LIBYUV "build libyuv" ON)
@@ -85,7 +83,7 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release")
     set(CMAKE_CXX_FLAGS_RELEASE "${VSTREAM_RELEASE_FLAGS}" CACHE STRING "C++ flags for Release" FORCE)
     set(CMAKE_C_FLAGS_RELEASE "${VSTREAM_RELEASE_FLAGS}" CACHE STRING "C flags for Release" FORCE)
   endif()
-  if(VSTREAM_USE_CUDA AND CMAKE_CUDA_COMPILER_ID MATCHES "NVIDIA")
+  if(VSTREAM_PLATFORM_HAS_CUDA AND CMAKE_CUDA_COMPILER_ID MATCHES "NVIDIA")
     set(CMAKE_CUDA_FLAGS_RELEASE "${VSTREAM_RELEASE_FLAGS}" CACHE STRING "CUDA flags for Release" FORCE)
   endif()
 endif()
@@ -185,6 +183,12 @@ endif()
 if(VSTREAM_BUILD_TOOLS)
   add_subdirectory(tools)
 endif()
+
+# ============================================================
+# 导出平台变量：供 install(CODE) 阶段的脚本（打包依赖收集）读取
+# 必须在所有可能修改 VSTREAM_PLATFORM_* 的步骤之后
+# ============================================================
+vstream_export_platform_vars()
 
 # ============================================================
 # 打包相关：RPATH 与 CPack

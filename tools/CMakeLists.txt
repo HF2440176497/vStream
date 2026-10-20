@@ -84,7 +84,10 @@ if(HAVE_FRAMEWORK_TARGET AND HAVE_MODULES_TARGET)
   list(APPEND VSTREAM_TOOLS_DEPENDENCIES vstream_core vstream_va)
 endif()
 
-if(VSTREAM_USE_CUDA)
-  add_subdirectory(trt)
-endif()
+# 平台专属工具子目录（如 trt）；由契约 TOOL_SUBDIRS 驱动
+foreach(_sub ${VSTREAM_PLATFORM_TOOL_SUBDIRS})
+  if(IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/${_sub}")
+    add_subdirectory(${_sub})
+  endif()
+endforeach()
 

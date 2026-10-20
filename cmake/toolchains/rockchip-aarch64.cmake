@@ -3,11 +3,16 @@
 # 瑞芯微 RK3576 (aarch64) 交叉编译工具链文件
 #
 # 用法（推荐）:
-#   ./build.sh --rockchip
+#   ./build.sh --platform rockchip     # 自动选用本工具链
 # 或手动:
 #   cmake -B build-rk \
 #     -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/rockchip-aarch64.cmake \
-#     -DVSTREAM_USE_ROCKCHIP=ON -DVSTREAM_USE_CUDA=OFF ..
+#     -DVSTREAM_PLATFORM=rockchip ..
+#
+# 职责边界：本文件只负责"能不能编译"（编译器 / sysroot / find_root / pkg-config）。
+# 平台语义（依赖、编译宏、源码子目录、打包目录）全部在 cmake/platforms/<id>.cmake，
+# 由 cmake/ResolvePlatform.cmake 加载。请勿在本文件内 find_package / add_definitions —— 
+# toolchain 会被每次 try_compile 子构建重复执行，副作用顺序不可控。
 #
 # 路径优先级: -D 传入 > 环境变量 > 默认值
 #   RK_SYSROOT      RK SDK rootfs sysroot
