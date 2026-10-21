@@ -203,7 +203,7 @@ class Post_YOLOv5_CPU_OCR: public Postproc {
       LOGD(POSTPROC) << "YOLOv5_CPU_OCR enable secondary merge";
     }
     
-    debug_saver_.ConfigureFromParams(params, 500);
+    debug_saver_.ConfigureFromParams(params);
 
     if (data.find(key_merge_direction) != data.end()) {
       std::string dir_str = data[key_merge_direction].get<std::string>();
@@ -441,7 +441,6 @@ class Post_YOLOv5_CPU_OCR: public Postproc {
       }
     }
 
-#ifdef VSTREAM_UNIT_TEST
     if (debug_saver_.enable()) {
       cv::Mat img = frame->GetImage().clone();
       debug_saver_.MaybeSave("post_yolo_ocr", img, "",
@@ -460,7 +459,6 @@ class Post_YOLOv5_CPU_OCR: public Postproc {
             }
           });
     }
-#endif
 
     return 0;
   }

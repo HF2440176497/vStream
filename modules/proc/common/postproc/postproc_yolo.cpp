@@ -508,7 +508,6 @@ class Post_YOLOv8_CPU_v2: public Postproc {
     }
     LOGU(POSTPROC) << "After NMS, size: " << local_objs.size();
 
-#ifdef VSTREAM_UNIT_TEST
     if (debug_saver_.enable()) {
       cv::Mat img = frame->GetImage().clone();
       debug_saver_.MaybeSave("post_yolo", img, "",
@@ -519,7 +518,6 @@ class Post_YOLOv8_CPU_v2: public Postproc {
             }
           });
     }
-#endif
 
     return 0;
   }
@@ -606,7 +604,7 @@ class Post_YOLOv5_CPU: public Postproc {
       nms_iou_threshold_ = data[key_nms_iou_threshold].get<float>();
     }
 
-    debug_saver_.ConfigureFromParams(params, 1000);
+    debug_saver_.ConfigureFromParams(params);
 
     LOGI(POSTPROC) << "item_infos_ size = " << item_infos_.size();
     for (const auto& kv : item_infos_) {
@@ -726,7 +724,6 @@ class Post_YOLOv5_CPU: public Postproc {
     }
     LOGU(POSTPROC) << "After NMS, size: " << local_objs.size();
 
-#ifdef VSTREAM_UNIT_TEST
     if (debug_saver_.enable()) {
       cv::Mat img = frame->GetImage().clone();
       debug_saver_.MaybeSave("post_yolo", img, "",
@@ -737,7 +734,6 @@ class Post_YOLOv5_CPU: public Postproc {
             }
           });
     }
-#endif
 
     return 0;
   }

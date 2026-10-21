@@ -28,7 +28,7 @@ class Pre_Resnet_Obj : public ObjPreproc {
   bool Init(const std::map<std::string, std::string> &params) override {
     params_ = params;
     // 调试落盘开关：从 custom_preproc_params 读取
-    debug_saver_.ConfigureFromParams(params, 1000);
+    debug_saver_.ConfigureFromParams(params);
     return true;
   }
 
@@ -75,11 +75,9 @@ class Pre_Resnet_Obj : public ObjPreproc {
     // 业务定制点：bbox 裁剪后、Resize 前的部署侧变换（默认无操作）
     OnCropped(img);
 
-#ifdef VSTREAM_UNIT_TEST
     if (debug_saver_.enable()) {
       debug_saver_.MaybeSave("pre_resnet", img);
     }
-#endif
 
     int img_w = img.cols;
     int img_h = img.rows;

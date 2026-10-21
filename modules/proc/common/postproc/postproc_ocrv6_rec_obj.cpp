@@ -64,7 +64,7 @@ class Post_PPOCRv6_rec_Obj : public ObjPostproc {
     label_path_ = data[key_label_path].get<std::string>();
     LOGI(POSTPROC) << "PPOCRv6 label_path: " << label_path_;
 
-    debug_saver_.ConfigureFromParams(params, 500);
+    debug_saver_.ConfigureFromParams(params);
 
     if (!label_path_.empty()) {
         label_list_ = PaddlePaddle::ReadDict(label_path_);
@@ -164,14 +164,13 @@ class Post_PPOCRv6_rec_Obj : public ObjPostproc {
     data_cl.name = str_res;
     pobj->AddAttribute(attribute_keys::key_content, data_cl);
 
-#ifdef VSTREAM_UNIT_TEST
-    DataFramePtr frame = finfo->collection.Get<DataFramePtr>(kDataFrameTag);
-    if (!frame) {
+    if (debug_saver_.enable())  {
+      DataFramePtr frame = finfo->collection.Get<DataFramePtr>(kDataFrameTag);
+      if (!frame) {
         LOGE(POSTPROC) << "PPOCRv6: DataFrame is null";
         return -1;
-    }
+      }
 
-    if (debug_saver_.enable())  {
       cv::Mat img = frame->GetImage().clone();
       cv::Rect bbox_roi(pobj->bbox.x, pobj->bbox.y, pobj->bbox.w, pobj->bbox.h);
       cv::Rect safe_roi = bbox_roi & cv::Rect(0, 0, img.cols, img.rows);
@@ -182,7 +181,6 @@ class Post_PPOCRv6_rec_Obj : public ObjPostproc {
             });
       }
     }
-#endif
 
     double dr_ms = std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - start_time).count();

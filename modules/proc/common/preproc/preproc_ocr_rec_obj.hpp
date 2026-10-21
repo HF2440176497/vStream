@@ -46,6 +46,7 @@ class Pre_PPOCRv3_rec_Obj : public ObjPreproc {
         LOGW(PREPROC) << "Invalid crop_padding value: " << it->second << ", using default 0";
       }
     }
+    debug_saver_.ConfigureFromParams(params);
     return true;
   }
   /**
@@ -109,11 +110,9 @@ class Pre_PPOCRv3_rec_Obj : public ObjPreproc {
     cv::Mat resize_img;
     cv::resize(crop_img, resize_img, cv::Size(resize_w, input_h), 0, 0, cv::INTER_LINEAR);
 
-#ifdef VSTREAM_UNIT_TEST
     if (debug_saver_.enable()) {
       debug_saver_.MaybeSave("pre_ocr_rec", resize_img);
     }
-#endif
 
     resize_img.convertTo(resize_img, CV_32FC3, 1.0/255.0);
 
