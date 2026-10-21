@@ -1,5 +1,6 @@
 
-cmake_minimum_required(VERSION 3.16)
+
+cmake_minimum_required(VERSION 3.22)
 
 if(" ${CMAKE_SOURCE_DIR}" STREQUAL " ${CMAKE_BINARY_DIR}")
   message(FATAL_ERROR "Please create a separate directory for build files.")
@@ -14,8 +15,8 @@ set(VSTREAM_ROOT_PATH "${CMAKE_CURRENT_SOURCE_DIR}"
 
 # ============================================================
 # 平台选择：唯一入口，须在 project() 之前
-#   - 解析平台 ID（-DVSTREAM_PLATFORM / 旧参数 / host 默认）
-#   - 加载 cmake/platforms/<id>.cmake
+#   - 只解析平台 ID（-DVSTREAM_PLATFORM / host 默认）并做白名单校验
+#   - 不加载平台文件：加载动作见 vstream_platform_load()
 # ============================================================
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/ResolvePlatform.cmake)
 
@@ -27,9 +28,11 @@ option(VSTREAM_BUILD_TOOLS "build tools" ON)
 
 # ============================================================
 # 平台配置：唯一执行副作用的地方，须在 project() 之后
+#   - 加载 cmake/platforms/<id>.cmake（此时工具链的 RK_* 已可用）
 #   - enable_language / find_package / 编译标准 / vstream_platform 目标
 # ============================================================
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/PlatformBase.cmake)
+vstream_platform_load()
 vstream_platform_validate()
 vstream_platform_configure()
 
@@ -83,7 +86,7 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release")
     set(CMAKE_CXX_FLAGS_RELEASE "${VSTREAM_RELEASE_FLAGS}" CACHE STRING "C++ flags for Release" FORCE)
     set(CMAKE_C_FLAGS_RELEASE "${VSTREAM_RELEASE_FLAGS}" CACHE STRING "C flags for Release" FORCE)
   endif()
-  if(VSTREAM_PLATFORM_HAS_CUDA AND CMAKE_CUDA_COMPILER_ID MATCHES "NVIDIA")
+  if(VSTREAM_HAS_CUDA AND CMAKE_CUDA_COMPILER_ID MATCHES "NVIDIA")
     set(CMAKE_CUDA_FLAGS_RELEASE "${VSTREAM_RELEASE_FLAGS}" CACHE STRING "CUDA flags for Release" FORCE)
   endif()
 endif()
@@ -93,6 +96,32 @@ set(VSTREAM_PYTHON_ROOT_DIR "/usr/local/python3.13"
     CACHE PATH "Custom Python root directory (e.g. /usr/local/python3.13). If not set, use system default.")
 set(VSTREAM_PYTHON_EXECUTABLE "/usr/local/bin/python3.13"
     CACHE FILEPATH "Custom Python executable (e.g. /usr/local/python3.13/bin/python3.13). If not set, use system default.")
+
+# ============================================================
+# 打包相关：安装前缀与 RPATH
+# 必须在任何 target 创建之前设置 —— 
+# CMAKE_INSTALL_RPATH 只在 target 创建时 用于初始化该 target 的 INSTALL_RPATH 属性
+# ============================================================
+if(VSTREAM_PACKAGE)
+  # 默认安装前缀（可被 -DCMAKE_INSTALL_PREFIX=... 覆盖）
+  if(NOT CMAKE_INSTALL_PREFIX OR CMAKE_INSTALL_PREFIX STREQUAL "/usr/local")
+    set(CMAKE_INSTALL_PREFIX "/usr/local/vstream" CACHE PATH "vStream install prefix" FORCE)
+  endif()
+
+  # RPATH 只覆盖 vstream 自身库（同级 lib/ 目录），第三方依赖交给 ld.so.conf.d 自适应排序
+  set(CMAKE_SKIP_BUILD_RPATH OFF)
+  # 交叉编译（rockchip）时： toolchain 里的 CMAKE_BUILD_WITH_INSTALL_RPATH 设置 TRUE
+  # 使构建目录产物可直接上板运行；原生构建则用 build RPATH
+  if(NOT CMAKE_CROSSCOMPILING)
+    set(CMAKE_BUILD_WITH_INSTALL_RPATH OFF)
+  endif()
+  # $ORIGIN           → 覆盖装在 lib/ 的库（找同目录的兄弟库）
+  # $ORIGIN/../lib    → 覆盖装在 bin/ 的可执行文件（库在上一级 lib/）
+  # 两者同时给出：找不到就跳过，对 lib/ 下的库无副作用。
+  # 注意：CMAKE_INSTALL_RPATH 是分号列表，CMake 写进 ELF 时会转成 ':' 分隔。
+  set(CMAKE_INSTALL_RPATH "$ORIGIN;$ORIGIN/../lib")
+  set(CMAKE_INSTALL_RPATH_USE_LINK_PATH OFF)
+endif()
 
 # 静态库 and 动态库输出目录
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${VSTREAM_ROOT_PATH}/lib)
@@ -191,21 +220,8 @@ endif()
 vstream_export_platform_vars()
 
 # ============================================================
-# 打包相关：RPATH 与 CPack
+# 打包相关：CPack（RPATH 与安装前缀已在 target 创建之前设置）
 # ============================================================
-# RPATH 只覆盖 vstream 自身库（同级 lib/ 目录），第三方依赖交给 ld.so.conf.d 自适应排序
-
 if(VSTREAM_PACKAGE)
-  set(CMAKE_SKIP_BUILD_RPATH OFF)
-  set(CMAKE_BUILD_WITH_INSTALL_RPATH OFF)
-
-  set(CMAKE_INSTALL_RPATH "$ORIGIN")
-  set(CMAKE_INSTALL_RPATH_USE_LINK_PATH OFF)
-
-  # 默认安装前缀（可被 -DCMAKE_INSTALL_PREFIX=... 覆盖）
-  if(NOT CMAKE_INSTALL_PREFIX OR CMAKE_INSTALL_PREFIX STREQUAL "/usr/local")
-    set(CMAKE_INSTALL_PREFIX "/usr/local/vstream" CACHE PATH "vStream install prefix" FORCE)
-  endif()
-
   include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Packaging.cmake)
 endif()

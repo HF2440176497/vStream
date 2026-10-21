@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.22)
 
 if(NOT DEFINED VSTREAM_ROOT_PATH)
   set(VSTREAM_ROOT_PATH ${CMAKE_CURRENT_SOURCE_DIR}/..

@@ -15,6 +15,7 @@ ENABLE_TOOLS="ON"
 JOBS=$(nproc 2>/dev/null || echo 4)
 CLEAN_BUILD="OFF"
 RELEASE_DEBUG_INFO="OFF"
+CUDA_ARCH=""             # 空 = 使用 cmake/platforms/cuda.cmake 的默认架构
 
 # 打包相关默认值
 ENABLE_PACKAGE="OFF"
@@ -47,6 +48,9 @@ usage() {
                                      默认按平台取: cuda -> build/，rockchip -> build-rk/，cpu -> build-cpu/
   -j, --jobs N                      并行编译任务数 (默认: \$(nproc))
   --clean                           构建前先清理构建目录
+
+  --cuda-arch ARCH                  CUDA 架构列表，形如 87 或 "86;89"（仅 cuda 平台）
+                                     默认取 cmake/platforms/cuda.cmake 内的值；
 
   --release-debug / --no-release-debug
                                     Release 构建是否保留调试符号(-g) (默认: --no-release-debug)
@@ -148,6 +152,11 @@ while [[ $# -gt 0 ]]; do
         --clean)
             CLEAN_BUILD="ON"
             shift
+            ;;
+        --cuda-arch)
+            require_arg "$@"
+            CUDA_ARCH="$2"
+            shift 2
             ;;
         --release-debug)
             RELEASE_DEBUG_INFO="ON"
@@ -254,6 +263,7 @@ printf "  %-14s: %s\n" "Build Type    " "${BUILD_TYPE}"
 printf "  %-14s: %s\n" "Release Debug " "${RELEASE_DEBUG_INFO}"
 printf "  %-14s: %s\n" "Parallel Jobs " "${JOBS}"
 printf "  %-14s: %s\n" "Clean Build   " "${CLEAN_BUILD}"
+printf "  %-14s: %s\n" "CUDA Arch     " "${CUDA_ARCH:-<platform default>}"
 printf "  %-14s: %s\n" "Unit Tests    " "${ENABLE_TESTS}"
 printf "  %-14s: %s\n" "Python API    " "${ENABLE_PYTHON_API}"
 printf "  %-14s: %s\n" "Build Tools   " "${ENABLE_TOOLS}"
@@ -287,6 +297,9 @@ CMAKE_OPTIONS=(
     -DVSTREAM_PACKAGE_INCLUDE_TOOLS="${ENABLE_TOOLS}"
     -DVSTREAM_PACKAGE_INCLUDE_TESTS="${ENABLE_TESTS}"
 )
+
+# CUDA 架构透传：仅 cuda 平台生效，覆盖 cmake/platforms/cuda.cmake 的默认值
+[[ -n "${CUDA_ARCH:-}" ]] && CMAKE_OPTIONS+=(-DVSTREAM_CUDA_ARCHITECTURES="${CUDA_ARCH}")
 
 # Python 路径透传：
 # - 未设置时使用 CMakeLists.txt 中的默认值（默认指向 /usr/local/python3.13）

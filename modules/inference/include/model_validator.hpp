@@ -11,6 +11,7 @@
 
 #include "model_loader.hpp"
 #include "infer_params.hpp"
+#include "run_shape.hpp"
 #include "preproc.hpp"
 #include "postproc.hpp"
 #include "cnstream_frame.hpp"
@@ -112,8 +113,29 @@ class ModelValidator {
   /// @param inputs One flat float vector per input tensor. Each vector's size
   ///               must equal InputShape(i).DataCount().
   /// @return One flat float vector per output tensor.
+  /// @note 该重载按定形形状（OPT）校验与运行
+  ///       动态形状模型请用 Infer(inputs, in_shapes)。
   std::vector<std::vector<float>> Infer(
       const std::vector<std::vector<float>>& inputs);
+
+  /// @brief Raw tensor inference with explicit input shapes (运行期动态形状入口)。
+  /// @param inputs    One flat float vector per input tensor.
+  /// @param in_shapes 每个输入本次实际使用的形状，
+  // 必须落在后端给出的 [min, max] 区间内
+  /// @return *本次实际输出返回
+  /// @note 调用后可用 GetLastOutputShapes() 取本次输出的真实形状。
+  std::vector<std::vector<float>> Infer(
+      const std::vector<std::vector<float>>& inputs,
+      const std::vector<TensorShape>& in_shapes);
+
+  /// @brief 上次推理的实际输出形状（动态模式下随输入变化）。
+  std::vector<TensorShape> GetLastOutputShapes() const { return last_output_shapes_; }
+
+  /// @brief 该模型是否启用了运行期动态形状
+  bool IsDynamicShape() const { return dynamic_; }
+
+  /// @brief 形状能力的上下限（min/max），调用方可据此选择合法的输入宽度。
+  const RunShapes& GetRunShapeCaps() const { return run_shapes_; }
 
   /// @brief End-to-end: image -> preproc -> infer -> postproc -> detections.
   /// @param image BGR image (CV_8UC3)
@@ -161,6 +183,13 @@ class ModelValidator {
   // Device-side buffers (passed to RunSync)
   std::vector<std::shared_ptr<void>> dev_input_bufs_;
   std::vector<std::shared_ptr<void>> dev_output_bufs_;
+
+  /// @brief 形状契约（取自后端缓存），
+  ///        输入侧由调用方/前处理填 actual，输出侧由后端回填。
+  RunShapes run_shapes_;
+  bool dynamic_ = false;
+  /// @brief 上一次推理的实际输出形状
+  std::vector<TensorShape> last_output_shapes_;
 
   void AllocateBuffers();
 

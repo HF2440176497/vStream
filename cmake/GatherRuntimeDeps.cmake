@@ -136,7 +136,7 @@ foreach(_dep ${_resolved})
 
   # 解析软链接到真实文件，再回推基名，glob 整条 SONAME 链
   # 例: libopencv_core.so -> libopencv_core.so.412 -> libopencv_core.so.4.12.0
-  file(REAL_PATH "${_dep}" _real EXPAND_TILDE)
+  file(REAL_PATH "${_dep}" _real)
   get_filename_component(_dir "${_real}" DIRECTORY)
   get_filename_component(_base "${_real}" NAME_WE)  # libopencv_core
 

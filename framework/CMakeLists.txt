@@ -1,5 +1,5 @@
 
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.22)
 
 if(NOT DEFINED VSTREAM_ROOT_PATH)
     set(VSTREAM_ROOT_PATH ${CMAKE_CURRENT_SOURCE_DIR}/..
@@ -84,7 +84,7 @@ target_link_libraries(vstream_core
   Backward::Backward  # include 目录、BACKWARD_HAS_* 宏定义及 libdw 等依赖库
 )
 
-# 平台编译宏（VSTREAM_USE_CUDA / VSTREAM_PLATFORM_* 等）
+# 平台编译宏
 vstream_platform_apply(vstream_core)
 
 # unitest
@@ -96,7 +96,6 @@ endif()
 include(GNUInstallDirs)
 
 install(TARGETS vstream_core
-  EXPORT vstreamTargets
   LIBRARY DESTINATION lib
   ARCHIVE DESTINATION lib
   RUNTIME DESTINATION bin

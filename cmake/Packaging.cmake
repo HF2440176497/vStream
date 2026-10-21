@@ -6,10 +6,16 @@ set(CPACK_PACKAGE_NAME "vstream")
 set(CPACK_PACKAGE_VERSION "1.0.0" CACHE STRING "vStream package version")
 set(CPACK_PACKAGE_RELEASE "1" CACHE STRING "vStream package release number")
 set(CPACK_PACKAGE_CONTACT "Sasha <vstream@example.com>")
-set(CPACK_PACKAGE_VENDOR "vStream Team")
+set(CPACK_PACKAGE_VENDOR "vStream")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "vStream - video structured analysis framework")
-set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_SOURCE_DIR}/README.md")
-set(CPACK_RESOURCE_FILE_README  "${CMAKE_SOURCE_DIR}/README.md")
+# README.md 可选：缺失时回退到单行描述，否则 cpack 会因打不开文件而失败
+if(EXISTS "${CMAKE_SOURCE_DIR}/README.md")
+  set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_SOURCE_DIR}/README.md")
+  set(CPACK_RESOURCE_FILE_README  "${CMAKE_SOURCE_DIR}/README.md")
+else()
+  message(STATUS "README.md not found, using summary as DEB long description")
+  set(CPACK_DEBIAN_PACKAGE_DESCRIPTION "${CPACK_PACKAGE_DESCRIPTION_SUMMARY}")
+endif()
 
 # 自动检测架构
 # 交叉编译时 dpkg --print-architecture 取到的是构建机架构（amd64），必须按目标平台显式指定

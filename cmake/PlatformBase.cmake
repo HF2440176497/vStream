@@ -4,6 +4,7 @@
 # 本文件负责把变量变成 find_package / enable_language / target_* 等动作。
 #
 # 提供：
+#   vstream_platform_load()          加载 cmake/platforms/<id>.cmake（project() 之后）
 #   vstream_platform_validate()      契约完整性校验
 #   vstream_platform_configure()     语言 / 依赖 / vstream_platform 目标（project() 之后）
 #   vstream_platform_apply(<tgt>)    编译定义 + include
@@ -22,6 +23,24 @@ set(VSTREAM_CONTRACT_KEYS
   FFMPEG_ROOT OPENCV_ROOT
   DEFAULT_ENCODER DEFAULT_DECODER
   DEP_SEARCH_DIRS DEP_EXCLUDE_EXTRA EXTRA_BUNDLE_DIRS)
+
+# -----------------------------------------------------------------------------
+# 加载平台文件（纯数据：只 set 变量，无任何副作用）
+# 必须在 project() 之后调用：工具链文件在 project() 时被读取，
+# 平台文件依赖 RK_SYSROOT / RK_FFMPEG_ROOT / RK_OPENCV_ROOT 等工具链变量。
+# 用 macro —— 平台文件里的 set() 需要落在调用者的目录作用域。
+# -----------------------------------------------------------------------------
+macro(vstream_platform_load)
+  if(NOT VSTREAM_PLATFORM_FILE)
+    message(FATAL_ERROR
+      "VSTREAM_PLATFORM_FILE 未解析。请确认 cmake/ResolvePlatform.cmake 已在 project() 之前 include")
+  endif()
+  if(NOT EXISTS "${VSTREAM_PLATFORM_FILE}")
+    message(FATAL_ERROR "平台文件不存在：${VSTREAM_PLATFORM_FILE}")
+  endif()
+  include("${VSTREAM_PLATFORM_FILE}")
+  message(STATUS "Platform: ${VSTREAM_PLATFORM_ID} (${VSTREAM_PLATFORM_DESC})")
+endmacro()
 
 # -----------------------------------------------------------------------------
 # 契约校验
@@ -66,13 +85,8 @@ macro(vstream_platform_configure)
     set(_vp_need_backend TRUE)
   endif()
 
-  if(_vp_need_backend)
-    foreach(_vp_lang ${VSTREAM_PLATFORM_LANGUAGES})
-      enable_language(${_vp_lang})
-    endforeach()
-  endif()
-
-  # ---- 编译标准 ----
+  # ---- 编译标准 / CUDA 架构 ----
+  # 必须在 enable_language(CUDA) 之前设置，否则会先按默认架构做一次冗余探测
   if(VSTREAM_PLATFORM_CXX_STANDARD)
     set(CMAKE_CXX_STANDARD ${VSTREAM_PLATFORM_CXX_STANDARD})
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -83,6 +97,12 @@ macro(vstream_platform_configure)
   endif()
   if(VSTREAM_PLATFORM_CUDA_ARCHITECTURES)
     set(CMAKE_CUDA_ARCHITECTURES ${VSTREAM_PLATFORM_CUDA_ARCHITECTURES})
+  endif()
+
+  if(_vp_need_backend)
+    foreach(_vp_lang ${VSTREAM_PLATFORM_LANGUAGES})
+      enable_language(${_vp_lang})
+    endforeach()
   endif()
 
   if(_vp_need_backend)
@@ -129,10 +149,12 @@ macro(vstream_platform_configure)
   endif()
 
   # ---- 供 Release 编译选项等处使用的派生标志 ----
+  # 注意：这是派生标志而非平台数据，不带 VSTREAM_PLATFORM_ 前缀，
+  # 避免被 vstream_export_platform_vars() 写进 platform-vars.cmake
   if("CUDA" IN_LIST VSTREAM_PLATFORM_LANGUAGES)
-    set(VSTREAM_PLATFORM_HAS_CUDA TRUE)
+    set(VSTREAM_HAS_CUDA TRUE)
   else()
-    set(VSTREAM_PLATFORM_HAS_CUDA FALSE)
+    set(VSTREAM_HAS_CUDA FALSE)
   endif()
 endmacro()
 

@@ -1,5 +1,6 @@
 
 #include "model_validator.hpp"
+#include "infer_resource.hpp"  // ResetRunShapesActual
 #include "memop_factory.hpp"
 
 #include <algorithm>
@@ -80,6 +81,10 @@ bool ModelValidator::Load() {
     return false;
   }
 
+  // 形状契约：拷贝后端在加载期缓存的能力（min/max/dynamic），并兑现 actual == max
+  run_shapes_ = model_loader_->GetRunShapeCaps();
+  dynamic_ = run_shapes_.dynamic;
+
   AllocateBuffers();
 
   LOGI(VALIDATE) << "Model loaded: " << model_path_
@@ -89,7 +94,16 @@ bool ModelValidator::Load() {
                         << "x" << model_loader_->get_height()
                         << "x" << model_loader_->get_channel()
                         << " | inputs: " << model_loader_->InputNum()
-                        << " | outputs: " << model_loader_->OutputNum();
+                        << " | outputs: " << model_loader_->OutputNum()
+                        << " | dynamic_shape: " << (dynamic_ ? "yes" : "no");
+  if (dynamic_) {
+    for (uint32_t i = 0; i < model_loader_->InputNum(); ++i) {
+      if (i < run_shapes_.inputs.size()) {
+        LOGI(VALIDATE) << "  input[" << i << "] min: " << run_shapes_.inputs[i].min.ToString()
+                              << " max: " << run_shapes_.inputs[i].max.ToString();
+      }
+    }
+  }
   return true;
 }
 
@@ -148,20 +162,23 @@ void ModelValidator::AllocateBuffers() {
   dev_output_bufs_.assign(out_num, {});
 
   for (uint32_t i = 0; i < in_num; ++i) {
-    auto shape = model_loader_->InputShape(i);
+    // 按 MAX 分配：动态模式下实际形状可能大于定形形状（OPT），否则缓冲不够
+    auto shape = model_loader_->InputShapeMax(i);
     auto data_type = model_loader_->InputDataType(i);
     size_t elem_count = static_cast<size_t>(shape.DataCount());
     size_t dsize = static_cast<size_t>(data_type_size(data_type));
-    size_t batch_size = elem_count / shape.N();
     size_t byte_size = elem_count * dsize;
 
-    if (batch_size != 1) {
-      LOGE(VALIDATE) << "Batch size must be 1 for image validation";
+    // batch 维度必须是 1。注意：elem_count / N() 是「每样本元素数」而不是 batch，
+    // 用它做判据会导致任何 NCHW 模型都被判失败（既有缺陷，已修正）
+    if (shape.N() != 1) {
+      LOGE(VALIDATE) << "Batch size must be 1 for image validation, input[" << i
+                     << "] N=" << shape.N();
       return;
     }
-    
-    LOGE(VALIDATE) << "Allocate input[" << i << "] shape=" << shape
-                          << ", dtype=" << DataTypeToString(data_type);
+
+    LOGI(VALIDATE) << "Allocate input[" << i << "] shape=" << shape
+                          << " (max), dtype=" << DataTypeToString(data_type);
     cpu_input_bufs_[i].assign(elem_count, 0.0f);  // 分配缓冲区
     dev_input_bufs_[i] = memop_->Allocate(byte_size);
     if (!dev_input_bufs_[i]) {
@@ -170,21 +187,21 @@ void ModelValidator::AllocateBuffers() {
   }
 
   for (uint32_t i = 0; i < out_num; ++i) {
-
-    auto shape = model_loader_->OutputShape(i);
+    // 同输入侧：按 MAX 分配（输出尺寸随输入变化时，MAX 才是上界）
+    auto shape = model_loader_->OutputShapeMax(i);
     auto data_type = model_loader_->OutputDataType(i);
     size_t elem_count = static_cast<size_t>(shape.DataCount());
     size_t dsize = static_cast<size_t>(data_type_size(data_type));
-    size_t batch_size = elem_count / shape.N();
     size_t byte_size = elem_count * dsize;
 
-    if (batch_size != 1) {
-      LOGE(VALIDATE) << "Batch size must be 1 for image validation";
+    if (shape.N() != 1) {
+      LOGE(VALIDATE) << "Batch size must be 1 for image validation, output[" << i
+                     << "] N=" << shape.N();
       return;
     }
 
-    LOGE(VALIDATE) << "Allocate output[" << i << "] shape=" << shape
-                          << ", dtype=" << DataTypeToString(data_type);
+    LOGI(VALIDATE) << "Allocate output[" << i << "] shape=" << shape
+                          << " (max), dtype=" << DataTypeToString(data_type);
     cpu_output_bufs_[i].assign(elem_count, 0.0f);
     dev_output_bufs_[i] = memop_->Allocate(byte_size);
     if (!dev_output_bufs_[i]) {
@@ -239,6 +256,116 @@ ModelValidator::Infer(const std::vector<std::vector<float>>& inputs) {
     size_t byte_size = elem_count * dsize;
     results[i].resize(elem_count);
     memop_->CopyToHost(results[i].data(), dev_output_bufs_[i].get(), byte_size);
+  }
+
+  last_output_shapes_.clear();
+  for (uint32_t i = 0; i < model_loader_->OutputNum(); ++i) {
+    last_output_shapes_.push_back(model_loader_->OutputShape(i));
+  }
+
+  return results;
+}
+
+/**
+ * @brief 带输入形状的裸推理（运行期动态形状入口）
+ *
+ * 与 Infer(inputs) 的区别：
+ *   - 按调用方给出的 in_shapes 设定本次输入形状（而非定形形状 OPT）
+ *   - 输出按**本次实际尺寸**返回，长度可能随输入变化
+ *
+ * 非动态模型（dynamic_ == false）也可以调用，此时 in_shapes 必须与定形形状一致，
+ * 行为与 Infer(inputs) 等价。
+ */
+std::vector<std::vector<float>>
+ModelValidator::Infer(const std::vector<std::vector<float>>& inputs,
+                      const std::vector<TensorShape>& in_shapes) {
+  std::vector<std::vector<float>> results;
+
+  if (!IsLoaded()) {
+    LOGE(VALIDATE) << "Model not loaded, call Load() first";
+    return results;
+  }
+
+  uint32_t in_num = model_loader_->InputNum();
+  if (inputs.size() != in_num) {
+    LOGE(VALIDATE) << "Input count mismatch: got " << inputs.size()
+                          << ", expected " << in_num;
+    return results;
+  }
+  if (in_shapes.size() != in_num) {
+    LOGE(VALIDATE) << "Input shape count mismatch: got " << in_shapes.size()
+                          << ", expected " << in_num;
+    return results;
+  }
+
+  // actual 复位为 max，避免上一次调用的残留影响本次
+  ResetRunShapesActual(&run_shapes_);
+
+  for (uint32_t i = 0; i < in_num; ++i) {
+    if (i >= run_shapes_.inputs.size()) {
+      LOGE(VALIDATE) << "RunShapes has no entry for input[" << i << "]";
+      return results;
+    }
+    RunShape& slot = run_shapes_.inputs[i];
+    const TensorShape& want = in_shapes[i];
+
+    // 越界收敛到 [min, max]（后端还会再兜一次，这里提前给出可读告警）
+    if (slot.min.ndims() == want.ndims() && slot.max.ndims() == want.ndims()) {
+      for (int d = 0; d < want.ndims(); ++d) {
+        if (want.shape(d) < slot.min.shape(d) || want.shape(d) > slot.max.shape(d)) {
+          LOGW(VALIDATE) << "input[" << i << "] dim " << d << " = " << want.shape(d)
+                                << " out of [" << slot.min.shape(d) << ", "
+                                << slot.max.shape(d) << "], will be clamped by backend";
+        }
+      }
+    }
+    slot.actual = want;
+
+    size_t expected = static_cast<size_t>(want.DataCount());
+    if (inputs[i].size() != expected) {
+      LOGE(VALIDATE) << "Input[" << i << "] size mismatch: got " << inputs[i].size()
+                            << ", expected " << expected << " for shape " << want.ToString();
+      return results;
+    }
+    if (expected > cpu_input_bufs_[i].size()) {
+      LOGE(VALIDATE) << "Input[" << i << "] exceeds allocated buffer: " << expected
+                            << " > " << cpu_input_bufs_[i].size();
+      return results;
+    }
+  }
+
+  // H2D：只拷本次实际大小
+  for (uint32_t i = 0; i < in_num; ++i) {
+    size_t dsize = static_cast<size_t>(data_type_size(model_loader_->InputDataType(i)));
+    size_t byte_size = inputs[i].size() * dsize;
+    memop_->CopyFromHost(dev_input_bufs_[i].get(), inputs[i].data(), byte_size);
+  }
+
+  // RunSync：同一份契约同时承担输入侧与输出侧（本验证器两侧共用一个对象）
+  if (!model_loader_->RunSync(exec_ctx_, dev_input_bufs_, dev_output_bufs_,
+                              &run_shapes_, &run_shapes_)) {
+    LOGE(VALIDATE) << "RunSync failed";
+    return results;
+  }
+
+  // D2H：按本次实际输出尺寸回拷
+  uint32_t out_num = model_loader_->OutputNum();
+  results.resize(out_num);
+  last_output_shapes_.clear();
+  for (uint32_t i = 0; i < out_num; ++i) {
+    TensorShape out_shape = (i < run_shapes_.outputs.size())
+                            ? run_shapes_.outputs[i].actual
+                            : model_loader_->OutputShape(i);
+    if (out_shape.DataCount() <= 0) {
+      // 后端未回填（非动态路径）时回落到定形形状
+      out_shape = model_loader_->OutputShape(i);
+    }
+    size_t elem_count = static_cast<size_t>(out_shape.DataCount());
+    size_t dsize = static_cast<size_t>(data_type_size(model_loader_->OutputDataType(i)));
+    size_t byte_size = elem_count * dsize;
+    results[i].resize(elem_count);
+    memop_->CopyToHost(results[i].data(), dev_output_bufs_[i].get(), byte_size);
+    last_output_shapes_.push_back(out_shape);
   }
 
   return results;
@@ -439,7 +566,9 @@ bool ModelValidator::RunPreproc(Preproc* preproc, const FrameInfoPtr& frame_info
     input_ptrs.push_back(buf.data());
   }
 
-  int ret = preproc->Execute(input_ptrs, model_loader_.get(), frame_info);
+  // 形状契约传入：动态模式下由前处理回填 inputs[].actual
+  ResetRunShapesActual(&run_shapes_);
+  int ret = preproc->Execute(input_ptrs, model_loader_.get(), frame_info, &run_shapes_);
   if (ret != 0) {
     LOGE(VALIDATE) << "Preproc::Execute returned " << ret;
     return false;
@@ -448,24 +577,40 @@ bool ModelValidator::RunPreproc(Preproc* preproc, const FrameInfoPtr& frame_info
 }
 
 bool ModelValidator::RunInference() {
-  // H2D: copy cpu_input_bufs_ -> dev_input_bufs_
+  // H2D: 动态模式只拷本次实际大小；actual 未回填时等于 max（等价于历史行为）
   for (size_t i = 0; i < cpu_input_bufs_.size(); ++i) {
     size_t dsize = static_cast<size_t>(data_type_size(model_loader_->InputDataType(i)));
-    size_t byte_size = cpu_input_bufs_[i].size() * dsize;
+    size_t elem = (i < run_shapes_.inputs.size() && run_shapes_.inputs[i].actual.DataCount() > 0)
+                  ? static_cast<size_t>(run_shapes_.inputs[i].actual.DataCount())
+                  : cpu_input_bufs_[i].size();
+    if (elem > cpu_input_bufs_[i].size()) elem = cpu_input_bufs_[i].size();
+    size_t byte_size = elem * dsize;
     memop_->CopyFromHost(dev_input_bufs_[i].get(), cpu_input_bufs_[i].data(), byte_size);
   }
 
-  // RunSync
-  if (!model_loader_->RunSync(exec_ctx_, dev_input_bufs_, dev_output_bufs_)) {
+  // RunSync：同一份契约同时承担输入侧与输出侧
+  if (!model_loader_->RunSync(exec_ctx_, dev_input_bufs_, dev_output_bufs_,
+                              &run_shapes_, &run_shapes_)) {
     LOGE(VALIDATE) << "RunSync failed";
     return false;
   }
 
-  // D2H: copy dev_output_bufs_ -> cpu_output_bufs_
+  // D2H: 按本次实际输出尺寸回拷
   for (size_t i = 0; i < cpu_output_bufs_.size(); ++i) {
     size_t dsize = static_cast<size_t>(data_type_size(model_loader_->OutputDataType(i)));
-    size_t byte_size = cpu_output_bufs_[i].size() * dsize;
+    size_t elem = (i < run_shapes_.outputs.size() && run_shapes_.outputs[i].actual.DataCount() > 0)
+                  ? static_cast<size_t>(run_shapes_.outputs[i].actual.DataCount())
+                  : cpu_output_bufs_[i].size();
+    if (elem > cpu_output_bufs_[i].size()) elem = cpu_output_bufs_[i].size();
+    size_t byte_size = elem * dsize;
     memop_->CopyToHost(cpu_output_bufs_[i].data(), dev_output_bufs_[i].get(), byte_size);
+  }
+
+  last_output_shapes_.clear();
+  for (size_t i = 0; i < cpu_output_bufs_.size(); ++i) {
+    last_output_shapes_.push_back(
+        (i < run_shapes_.outputs.size() && run_shapes_.outputs[i].actual.DataCount() > 0)
+        ? run_shapes_.outputs[i].actual : model_loader_->OutputShape(i));
   }
 
   return true;
@@ -483,7 +628,9 @@ bool ModelValidator::RunPostproc(Postproc* postproc, const FrameInfoPtr& frame_i
     output_ptrs.push_back(buf.data());
   }
 
-  int ret = postproc->Execute(output_ptrs, model_loader_.get(), frame_info);
+  // 形状契约传入：动态模式下后处理必须用本次实际输出尺寸，
+  // 不能用 model->OutputShape()（那是缓冲区上限）
+  int ret = postproc->Execute(output_ptrs, model_loader_.get(), frame_info, &run_shapes_);
   if (ret != 0) {
     LOGE(VALIDATE) << "Postproc::Execute returned " << ret;
     return false;

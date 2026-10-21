@@ -31,7 +31,8 @@ if [ -f "${MANIFEST}" ]; then
   done < "${MANIFEST}"
 else
   echo "Note: dep-manifest.txt not found at ${MANIFEST}"
-  echo "      Skipping adaptive reuse — all deps resolved via vstream/lib and dev/lib."
+  echo "      (精简打包模式 --no-bundle-deps：无 dev/lib，第三方依赖由运行环境镜像提供)"
+  echo "      Skipping adaptive reuse — third-party deps must already be in ld.so cache."
 fi
 
 # 去重复用目录
@@ -45,7 +46,12 @@ reuse_dirs=$(printf "%b" "${reuse_dirs}" | sort -u | grep -v '^$' || true)
   echo "# (2) vStream own libraries"
   echo "${PREFIX}/lib"
   echo "# (3) Bundled third-party fallback (used only if not found in (1))"
-  echo "${PREFIX}/dev/lib"
+  # 精简模式（--no-bundle-deps）下没有 dev/lib。若把不存在的目录写进 conf，
+  # 本脚本开头的 `set -e` 可能让 dpkg 停在 half-configured 状态。
+  # 因此只在目录确实存在时才写入。
+  if [ -d "${PREFIX}/dev/lib" ]; then
+    echo "${PREFIX}/dev/lib"
+  fi
 } > "${CONF}"
 
 ldconfig

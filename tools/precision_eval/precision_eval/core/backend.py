@@ -114,18 +114,63 @@ class TrtBackend(Backend):
         self._out_shape = list(info.outputs[0].shape)
         self._input_index = input_index
 
+        # 是否走动态形状路径：引擎启用 dynamic 且绑定提供了 infer_with_shapes
+        self._dynamic_capable = False
+        try:
+            self._dynamic_capable = bool(self._v.is_dynamic_shape()) and \
+                hasattr(self._v, "infer_with_shapes")
+        except Exception:
+            self._dynamic_capable = False
+
     def input_shape(self):
         return self._in_shape
 
     def output_shape(self):
+        # 注意：动态模型下这是「定形形状」(OPT)，只应作兜底；
+        # 每次推理的真实输出形状请用 get_last_output_shapes()。
         return self._out_shape
 
     def run(self, array_nd):
         arr = np.ascontiguousarray(array_nd, dtype=np.float32)
+        in_shape = list(arr.shape)
+
+        # 动态形状：按本 case 的实际输入形状推理，输出长度随之变化，
+        # 因此不能用 __init__ 里缓存的静态形状去 reshape。
+        if self._dynamic_capable:
+            try:
+                outs = self._v.infer_with_shapes([arr.ravel()], [in_shape])
+            except Exception as e:
+                raise RuntimeError("infer_with_shapes 失败: %s" % e)
+            if not outs:
+                raise RuntimeError("ModelValidator.infer_with_shapes 返回空结果")
+            return self._reshape_dynamic(np.asarray(outs[0], dtype=np.float32))
+
         outs = self._v.infer([arr.ravel()])
         if not outs:
             raise RuntimeError("ModelValidator.infer 返回空结果")
-        return np.asarray(outs[0], dtype=np.float32).reshape(self._out_shape)
+        out = np.asarray(outs[0], dtype=np.float32)
+        if int(np.prod(self._out_shape)) != out.size:
+            # 静态形状对不上（例如引擎实际是动态的而绑定较旧），交给动态分支兜底
+            return self._reshape_dynamic(out)
+        return out.reshape(self._out_shape)
+
+    def _reshape_dynamic(self, out):
+        """
+        按「上一次推理的实际输出形状」reshape；拿不到或长度不符时抛错，
+        避免静默按错误形状解释数据。
+        """
+        try:
+            shapes = self._v.get_last_output_shapes() or []
+        except Exception:
+            shapes = []
+        for s in shapes:
+            if s and int(np.prod(s)) == out.size:
+                return out.reshape(tuple(s))
+        if int(np.prod(self._out_shape)) == out.size:
+            return out.reshape(self._out_shape)
+        raise RuntimeError(
+            "无法解释输出：长度 %d 与实际形状 %r、静态形状 %r 均不匹配"
+            % (out.size, shapes, self._out_shape))
 
     def describe(self):
         info = self._info

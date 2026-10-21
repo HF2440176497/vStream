@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.22)
 
 if(NOT DEFINED VSTREAM_ROOT_PATH)
     set(VSTREAM_ROOT_PATH ${CMAKE_CURRENT_SOURCE_DIR}/..
@@ -106,6 +106,18 @@ if(VSTREAM_MODULES_BUILD_OSD)
   list(APPEND module_list osd)
 endif()
 
+# 只保留真实存在的模块目录：否则 target_include_directories /
+# install(DIRECTORY) 会指向不存在的路径，安装阶段报 "file INSTALL cannot find"
+set(_existing_module_list "")
+foreach(module ${module_list})
+  if(IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/${module}")
+    list(APPEND _existing_module_list ${module})
+  else()
+    message(STATUS "modules: skip '${module}' (directory not found)")
+  endif()
+endforeach()
+set(module_list ${_existing_module_list})
+
 file(GLOB srcs ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)
 
 vstream_platform_sources(util_src ${CMAKE_CURRENT_SOURCE_DIR}/util)
@@ -136,7 +148,8 @@ list(APPEND srcs ${proc_common_srcs})
 
 # 业务相关性较强的扩展模块（默认编译，可通过 VSTREAM_MODULES_BUILD_CONTRIB=OFF 关闭）
 if(VSTREAM_MODULES_BUILD_CONTRIB)
-  file(GLOB contrib_src ${CMAKE_CURRENT_SOURCE_DIR}/module_contrib/src/*.cpp)
+  # 与其它模块保持一致，走平台化收集（module_contrib/src/<platform>/ 也能被收进来）
+  vstream_platform_sources(contrib_src ${CMAKE_CURRENT_SOURCE_DIR}/module_contrib)
   list(APPEND srcs ${contrib_src})
 endif()
 
@@ -196,8 +209,9 @@ endif()
 
 
 if(VSTREAM_MODULES_BUILD_VA)
+  # 不声明 EXPORT：工程内没有配对的 install(EXPORT)，且 vstream_va 的
+  # PUBLIC include 目录是源码树绝对路径，install(EXPORT) 会直接报错。
   install(TARGETS vstream_va
-    EXPORT vstreamTargets
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib
   )

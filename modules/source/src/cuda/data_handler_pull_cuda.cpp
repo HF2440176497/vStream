@@ -154,7 +154,7 @@ bool PullHandlerImCUDA::SupportHWDevice() {
 
 void PullHandlerImCUDA::ConfigureOutputType() {
   if (output_type_ == OutputType::OUTPUT_CPU) {
-    LOGW(SOURCE) << "VSTREAM_USE_CUDA ON: force output type to CUDA";
+    LOGW(SOURCE) << "PullHandlerImCUDA: force output type to CUDA";
   }
   output_type_ = OutputType::OUTPUT_CUDA;
 }

@@ -1,17 +1,14 @@
 
 
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.22)
 
 if(NOT DEFINED VSTREAM_ROOT_PATH)
   set(VSTREAM_ROOT_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../../..
     CACHE INTERNAL "Top-level directory of this project")
 endif()
 
-# CUDA 架构由平台契约（cmake/platforms/cuda.cmake）统一提供，此处不再硬编码
-project(tools_trt_demo LANGUAGES C CXX CUDA)
-
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CUDA_STANDARD 17)
+# 语言（CUDA）、编译标准、CUDA 架构均由平台契约（cmake/platforms/cuda.cmake）
+# 在根作用域统一提供，此处不再重复 project() / 硬编码
 
 set(VSTREAM_TOOLS_TRT_3RDPARTY_INCLUDE "")
 set(VSTREAM_TOOLS_TRT_3RDPARTY_LIBS "")

@@ -1,11 +1,16 @@
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.22)
 
 if(NOT DEFINED VSTREAM_ROOT_PATH)
     set(VSTREAM_ROOT_PATH ${CMAKE_CURRENT_SOURCE_DIR}/..
         CACHE INTERNAL "Top-level directory of this project")
 endif()
 
-set(CMAKE_CXX_STANDARD 17)
+# 编译标准由平台契约提供，此处不再硬编码（仅作兜底）
+if(VSTREAM_PLATFORM_CXX_STANDARD)
+  set(CMAKE_CXX_STANDARD ${VSTREAM_PLATFORM_CXX_STANDARD})
+else()
+  set(CMAKE_CXX_STANDARD 17)
+endif()
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(VSTREAM_PYTHON_3RDPARTY_INCLUDE "")
@@ -130,12 +135,6 @@ vstream_platform_link(vstream_python)
 set_target_properties(vstream_python PROPERTIES
   OUTPUT_NAME "vstream"
   LIBRARY_OUTPUT_DIRECTORY ${VSTREAM_ROOT_PATH}/lib
-)
-
-# RPATH=$ORIGIN 让 vstream_python 找到同级的 libvstream_core.so / libvstream_va.so
-set_target_properties(vstream_python PROPERTIES
-  INSTALL_RPATH "$ORIGIN"
-  INSTALL_RPATH_USE_LINK_PATH OFF
 )
 
 # only install the library, not include py scripts

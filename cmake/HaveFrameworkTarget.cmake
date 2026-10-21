@@ -1,3 +1,6 @@
+# 注意：这些是 macro（不产生新作用域），所以下面一律用普通 set()。
+# 若写成 set(... PARENT_SCOPE)，值会落到“上一层目录作用域”，
+# 导致当前目录里的 if(DEFINED VSTREAM_LIB_PATH) 恒为假。
 macro(have_framework_target project_root_path)
   if(TARGET vstream_core)
     set(HAVE_FRAMEWORK_TARGET TRUE)
@@ -9,7 +12,7 @@ macro(have_framework_target project_root_path)
   endif()
   include_directories(${project_root_path}/framework/core/include)
   if (NOT DEFINED VSTREAM_LIB_PATH)
-    set(VSTREAM_LIB_PATH ${project_root_path}/lib PARENT_SCOPE)
+    set(VSTREAM_LIB_PATH ${project_root_path}/lib)
   endif()
 endmacro()
 
@@ -24,7 +27,7 @@ macro(have_modules_target project_root_path)
     link_directories(${project_root_path}/lib)
   endif()
   if (NOT DEFINED VSTREAM_LIB_PATH)
-    set(VSTREAM_LIB_PATH ${project_root_path}/lib PARENT_SCOPE)
+    set(VSTREAM_LIB_PATH ${project_root_path}/lib)
   endif()
 endmacro()
 
@@ -39,6 +42,6 @@ macro(have_modules_contrib_target project_root_path)
     endif()
   endif()
   if (NOT DEFINED VSTREAM_LIB_PATH)
-    set(VSTREAM_LIB_PATH ${project_root_path}/lib PARENT_SCOPE)
+    set(VSTREAM_LIB_PATH ${project_root_path}/lib)
   endif()
 endmacro()

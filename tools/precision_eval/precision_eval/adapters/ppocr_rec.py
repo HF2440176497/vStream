@@ -5,7 +5,26 @@
   charset_path     字符表文件路径（部署包 postproc 配置里的 label_path）。决策层必需。
   input_shape      模型输入形状，默认 "1,3,48,320"。预处理用其 H/W。
   fragile_margin   判定"决策边界脆弱"的 margin 阈值，默认 1.0。
+  width_mode       画布宽度策略，默认 "static"，见下方说明。
+  min_width        width_mode=dynamic 时的画布下界，默认取 input_shape 的 W。
+  max_width        width_mode=dynamic 时的画布上界，默认取 input_shape 的 W。
+  width_align      width_mode=dynamic 时画布宽度的对齐倍数，默认 8。
 
+画布宽度策略（对应部署侧 Pre_PPOCRv6_rec_Obj）：
+  记 R = ceil(48 * ratio)，即保持原比例所需的宽度。
+
+  static （默认）
+      画布恒为 input_shape 的 W；resize_w = min(R, W)，右侧补零 W - resize_w。
+      对应部署侧「定形宽度」的行为（min=opt=max）。
+
+  dynamic
+      画布 = align_up(clamp(R, min_width, max_width), width_align)
+      resize_w = min(R, 画布)，故宽行补零仅来自对齐（默认 ≤ 7 px）。
+      对应部署侧 shape_mode=dynamic 的行为，需与 engine 的 profile
+      min/max 取值保持一致，否则语料与生产输入不一致。
+
+  注意：dynamic 模式下每张图的画布宽度可能不同，产出的 corpus 逐 case shape
+  也不同。ref（onnxruntime）与 engine（TrtBackend）均支持逐 case 不同宽度。
 
 索引约定（两处一致）：
   0        blank 占位
@@ -43,6 +62,22 @@ class PPOCRRecAdapter(ModelAdapter):
             raise ValueError("input_shape 需为 4 维或 3 维，如 1,3,48,320，收到 %r" % shape)
 
         self.fragile_margin = float(self.params.get("fragile_margin", 1.0))
+
+        # 画布宽度策略：与部署侧 Pre_PPOCRv6_rec_Obj / shape_mode 对齐
+        self.width_mode = str(self.params.get("width_mode", "static")).strip().lower()
+        if self.width_mode not in ("static", "dynamic"):
+            raise ValueError("width_mode 只能是 static 或 dynamic，收到 %r" % self.width_mode)
+        self.min_width = int(self.params.get("min_width", self.input_width))
+        self.max_width = int(self.params.get("max_width", self.input_width))
+        self.width_align = int(self.params.get("width_align", 8))
+        if self.min_width <= 0 or self.max_width <= 0:
+            raise ValueError("min_width / max_width 必须为正数，收到 %d / %d"
+                             % (self.min_width, self.max_width))
+        if self.max_width < self.min_width:
+            raise ValueError("max_width(%d) 不能小于 min_width(%d)"
+                             % (self.max_width, self.min_width))
+        if self.width_align <= 0:
+            raise ValueError("width_align 必须为正数，收到 %d" % self.width_align)
 
         self.chars = None
         # 字符表构造方式因模型而异：PP-OCRv6 需补一个空格位（18708+1+1=18710）
@@ -127,10 +162,40 @@ class PPOCRRecAdapter(ModelAdapter):
     # ------------------------------------------------------------------
     # 预处理
     # ------------------------------------------------------------------
+    def canvas_width(self, image_bgr):
+        """
+        计算该行图应使用的画布宽度
+
+        static ：恒为 input_shape 的 W
+        dynamic：align_up(clamp(R, min_width, max_width), width_align)
+        其中 R = ceil(48 * ratio)，对齐是为了让 T = W/8 为整数，
+        同时减少引擎见到的不同形状数量。
+        """
+        img_h = self.input_height
+        h, w = image_bgr.shape[:2]
+        ratio = w / float(h)
+        need_w = int(math.ceil(img_h * ratio))
+
+        if self.width_mode != "dynamic":
+            return self.input_width, need_w
+
+        canvas_w = min(max(need_w, self.min_width), self.max_width)
+        align = self.width_align
+        if align > 1 and canvas_w % align != 0:
+            canvas_w = ((canvas_w + align - 1) // align) * align
+        # 对齐后不得越出上界（越界时回退到不超过 max_width 的最后一个对齐值）
+        if canvas_w > self.max_width:
+            canvas_w = max(self.min_width, (self.max_width // align) * align)
+        if canvas_w <= 0:
+            canvas_w = align if align > 0 else 1
+        return int(canvas_w), need_w
+
     def preprocess(self, image_bgr, meta_in=None):
         """
         输入：已裁剪的文字行图（BGR，uint8）
         输出：[1, 3, H, W] float32，保持 BGR 通道序
+
+        注意：width_mode=dynamic 时 W 逐图不同，与部署侧动态形状一致。
         """
         import cv2
 
@@ -139,17 +204,17 @@ class PPOCRRecAdapter(ModelAdapter):
         if image_bgr.ndim != 3 or image_bgr.shape[2] != 3:
             raise ValueError("期望 BGR 三通道图，收到 shape=%r" % (image_bgr.shape,))
 
-        img_h, img_w = self.input_height, self.input_width
+        img_h = self.input_height
         h, w = image_bgr.shape[:2]
         if h <= 0 or w <= 0:
             raise ValueError("输入图尺寸非法: %dx%d" % (w, h))
 
-        ratio = w / float(h)
-        resize_w = int(math.ceil(img_h * ratio))
-        if resize_w > img_w:
-            resize_w = img_w
+        canvas_w, need_w = self.canvas_width(image_bgr)
+        resize_w = min(need_w, canvas_w)
         if resize_w <= 0:
             resize_w = 1
+        if resize_w > canvas_w:
+            resize_w = canvas_w
 
         resized = cv2.resize(image_bgr, (resize_w, img_h), interpolation=cv2.INTER_LINEAR)
         resized = resized.astype(np.float32)
@@ -157,7 +222,7 @@ class PPOCRRecAdapter(ModelAdapter):
         resized = resized - 0.5
         resized = resized / 0.5
 
-        padded = np.zeros((img_h, img_w, 3), dtype=np.float32)
+        padded = np.zeros((img_h, canvas_w, 3), dtype=np.float32)
         padded[:, 0:resize_w, :] = resized
 
         chw = padded.transpose(2, 0, 1)          # HWC -> CHW，保持 BGR
@@ -341,6 +406,10 @@ class PPOCRRecAdapter(ModelAdapter):
             warns.append("未提供 charset_path，决策层将不可用（只做数值对比）")
 
         # 时间步维度动态（宽度动态导出的识别模型常见）时运行时才有值，跳过静态检查
+        # width_mode=dynamic 时 T 逐 case 不同，与单一的 input_width 比较必然误报，跳过
+        if self.width_mode == "dynamic":
+            return warns
+
         time_steps = self._static_dim(last[1])
         if time_steps is not None and self.input_width and time_steps != self.input_width // 8:
             warns.append(

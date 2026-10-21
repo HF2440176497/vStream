@@ -20,6 +20,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "common_wrapper.hpp"
@@ -200,14 +201,104 @@ Usage:
       }, py::arg("inputs"),
          R"doc(Raw tensor inference — no preproc/postproc.
 
-Args:
-    inputs: List of numpy float32 arrays, one per input tensor.
-            Each array's size must match InputShape(i).DataCount().
+      Args:
+        inputs: List of numpy float32 arrays, one per input tensor.
+                Each array's size must match InputShape(i).DataCount().
 
-Returns:
-    List of numpy float32 arrays, one per output tensor.
-    Empty list if model not loaded or inference failed.
-)doc")
+      Returns:
+        List of numpy float32 arrays, one per output tensor.
+        Empty list if model not loaded or inference failed.
+      )doc")
+
+          .def("is_dynamic_shape", &ModelValidator::IsDynamicShape,
+               "Whether this model runs with runtime dynamic input shapes.")
+
+          .def("get_input_caps",
+               [](ModelValidator& self)
+                   -> std::vector<std::pair<std::vector<int>, std::vector<int>>> {
+                 const RunShapes& caps = self.GetRunShapeCaps();
+                 std::vector<std::pair<std::vector<int>, std::vector<int>>> out;
+                 out.reserve(caps.inputs.size());
+                 for (const auto& s : caps.inputs) {
+                   std::vector<int> mn, mx;
+                   for (int i = 0; i < s.min.ndims(); ++i) mn.push_back(s.min.shape(i));
+                   for (int i = 0; i < s.max.ndims(); ++i) mx.push_back(s.max.shape(i));
+                   out.emplace_back(std::move(mn), std::move(mx));
+                 }
+                 return out;
+               },
+               R"doc(Input shape capability: [(min, max), ...] per input tensor.
+
+      Returns:
+        List of (min_list, max_list) tuples. An actual input shape must stay
+        within the corresponding [min, max] interval.
+      )doc")
+
+          .def("get_last_output_shapes",
+               [](ModelValidator& self) -> std::vector<std::vector<int>> {
+                 auto shapes = self.GetLastOutputShapes();
+                 std::vector<std::vector<int>> out;
+                 out.reserve(shapes.size());
+                 for (const auto& s : shapes) {
+                   std::vector<int> dims;
+                   for (int i = 0; i < s.ndims(); ++i) dims.push_back(s.shape(i));
+                   out.push_back(std::move(dims));
+                 }
+                 return out;
+               },
+               R"doc(Actual output shapes of the last inference.
+
+      Dynamic models may produce a different output size per input, so callers
+      should use this (or the returned array length) instead of the static
+      shape from get_model_info().
+      )doc")
+
+          .def("infer_with_shapes",
+               [](ModelValidator& self,
+                  std::vector<py::array_t<float, py::array::c_style>> inputs,
+                  const std::vector<std::vector<int>>& shapes)
+                     -> std::vector<py::array_t<float>> {
+                 if (shapes.size() != inputs.size()) {
+                   throw std::invalid_argument(
+                       "infer_with_shapes: shapes size (" + std::to_string(shapes.size()) +
+                       ") != inputs size (" + std::to_string(inputs.size()) + ")");
+                 }
+                 std::vector<std::vector<float>> cpp_inputs;
+                 cpp_inputs.reserve(inputs.size());
+                 for (auto& arr : inputs) {
+                   py::buffer_info buf = arr.request();
+                   float* ptr = static_cast<float*>(buf.ptr);
+                   cpp_inputs.emplace_back(ptr, ptr + buf.size);
+                 }
+                 std::vector<TensorShape> in_shapes;
+                 in_shapes.reserve(shapes.size());
+                 for (const auto& dims : shapes) {
+                   in_shapes.emplace_back(dims);
+                 }
+
+                 py::gil_scoped_release release;
+                 auto outputs = self.Infer(cpp_inputs, in_shapes);
+                 py::gil_scoped_acquire acquire;
+
+                 std::vector<py::array_t<float>> result;
+                 result.reserve(outputs.size());
+                 for (auto& out : outputs) {
+                   result.push_back(py::array_t<float>(out.size(), out.data()));
+                 }
+                 return result;
+               },
+               py::arg("inputs"), py::arg("shapes"),
+               R"doc(Raw tensor inference with explicit input shapes.
+
+      Args:
+        inputs: List of numpy float32 arrays, one per input tensor.
+        shapes: List of shape lists, e.g. [[1, 3, 48, 512]]. Each shape must
+                stay within the [min, max] interval from get_input_caps().
+
+      Returns:
+        List of numpy float32 arrays sized by the **actual** output shape,
+        which may vary per call. Use get_last_output_shapes() to get it.
+      )doc")
 
       .def("run_e2e", [](ModelValidator& self,
                          py::array_t<uint8_t> image,
