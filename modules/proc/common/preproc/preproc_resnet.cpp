@@ -14,7 +14,7 @@ class Pre_Resnet : public Preproc {
  public:
   bool Init(const std::map<std::string, std::string> &params) override {
     params_ = params;
-    debug_saver_.ConfigureFromParams(params, 1000);
+    debug_saver_.ConfigureFromParams(params);
     return true;
   }
 
