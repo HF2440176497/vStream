@@ -62,6 +62,16 @@ function(vstream_platform_validate)
     message(FATAL_ERROR
       "平台文件 ID (${VSTREAM_PLATFORM_ID}) 与文件名 (${VSTREAM_PLATFORM}) 不一致")
   endif()
+
+  # ---- FIND_MODULES 必须能对应到 cmake/Find<X>.cmake ----
+  foreach(_mod ${VSTREAM_PLATFORM_FIND_MODULES})
+    if(NOT EXISTS "${VSTREAM_ROOT_PATH}/cmake/Find${_mod}.cmake")
+      message(FATAL_ERROR
+        "平台 ${VSTREAM_PLATFORM} 声明了 FIND_MODULES '${_mod}'，"
+        "但文件不存在：${VSTREAM_ROOT_PATH}/cmake/Find${_mod}.cmake。\n"
+        "名字必须与 Find 文件名（Find 后面的部分）完全一致，包括大小写。")
+    endif()
+  endforeach()
 endfunction()
 
 # -----------------------------------------------------------------------------
@@ -115,6 +125,25 @@ macro(vstream_platform_configure)
     foreach(_vp_mod ${VSTREAM_PLATFORM_FIND_MODULES})
       include(${VSTREAM_ROOT_PATH}/cmake/Find${_vp_mod}.cmake)
       if(NOT ${_vp_mod}_FOUND)
+        # CMake 变量大小写敏感。若 FIND_MODULES 写的名字与 Find 模块实际输出的
+        # 变量前缀大小写不一致，这里会静默取空值
+        # 下面把工程里所有"忽略大小写后同名"的 <X>_FOUND 找出来，直接给出正确拼写。
+        get_cmake_property(_vp_all_vars VARIABLES)
+        string(TOLOWER "${_vp_mod}_FOUND" _vp_want_lower)
+        set(_vp_hint "")
+        foreach(_vp_v ${_vp_all_vars})
+          string(TOLOWER "${_vp_v}" _vp_v_lower)
+          if(_vp_v_lower STREQUAL _vp_want_lower)
+            list(APPEND _vp_hint "${_vp_v}")
+          endif()
+        endforeach()
+        if(_vp_hint)
+          message(FATAL_ERROR
+            "FIND_MODULES 写的 '${_vp_mod}' 与 cmake/Find${_vp_mod}.cmake 实际输出的变量前缀大小写不一致。\n"
+            "实际存在的是：${_vp_hint}\n"
+            "请把 cmake/platforms/${VSTREAM_PLATFORM}.cmake 里的 FIND_MODULES "
+            "改成与 Find 文件输出前缀完全一致的写法。")
+        endif()
         message(FATAL_ERROR
           "平台 ${VSTREAM_PLATFORM_ID} 依赖的 ${_vp_mod} 未找到。\n"
           "请检查安装或通过 CMAKE_PREFIX_PATH / ${_vp_mod}_ROOT_DIR 指定路径")

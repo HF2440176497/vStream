@@ -31,6 +31,9 @@ set(VSTREAM_PLATFORM_TEST_SUBDIRS "cuda")
 
 # ---- 依赖 ----
 set(VSTREAM_PLATFORM_PACKAGES     "CUDAToolkit")
+# 命名约定：FIND_MODULES 里填的名字 X 必须同时满足两点（CMake 变量大小写敏感）
+#   1. 存在 cmake/Find<X>.cmake
+#   2. 该文件输出的变量前缀正好是 <X>_FOUND / <X>_INCLUDE_DIRS / <X>_LIBRARIES
 set(VSTREAM_PLATFORM_FIND_MODULES "TensorRT")
 set(VSTREAM_PLATFORM_LIBS
   CUDA::cudart
