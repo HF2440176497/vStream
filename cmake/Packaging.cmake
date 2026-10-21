@@ -2,9 +2,14 @@
 # 由根 CMakeLists.txt 在 VSTREAM_PACKAGE=ON 时 include
 # 负责 CPack DEB 配置、维护脚本注册、第三方依赖收集（自包含模式）
 
-set(CPACK_PACKAGE_NAME "vstream")
-set(CPACK_PACKAGE_VERSION "1.0.0" CACHE STRING "vStream package version")
+set(CPACK_PACKAGE_NAME "vstream" CACHE STRING "Debian package name")
+# 版本来自根目录 VERSION 文件（VSTREAM_VERSION，见顶层 CMakeLists.txt）
+set(CPACK_PACKAGE_VERSION "${VSTREAM_VERSION}")
 set(CPACK_PACKAGE_RELEASE "1" CACHE STRING "vStream package release number")
+
+# CPackDeb 只认 CPACK_DEBIAN_PACKAGE_RELEASE：
+# 不设置时 deb 的 Version 字段会丢掉 -1 后缀（与文件名不一致）
+set(CPACK_DEBIAN_PACKAGE_RELEASE "${CPACK_PACKAGE_RELEASE}")
 set(CPACK_PACKAGE_CONTACT "Sasha <vstream@example.com>")
 set(CPACK_PACKAGE_VENDOR "vStream")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "vStream - video structured analysis framework")
@@ -42,9 +47,15 @@ set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://example.com/vstream")
 set(CPACK_DEBIAN_PACKAGE_SECTION "video")
 set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
 
-# deb 文件名：vstream_1.0.0-1_amd64.deb
-set(CPACK_PACKAGE_FILE_NAME
-    "${CPACK_PACKAGE_NAME}_${CPACK_PACKAGE_VERSION}-${CPACK_PACKAGE_RELEASE}_${CPACK_DEBIAN_PACKAGE_ARCHITECTURE}")
+# deb 文件名：默认 vstream_<VERSION>-<RELEASE>_<ARCH>.deb
+# 如需完全自定义（例如追加日期、平台后缀），配置时传:
+#   -DVSTREAM_PACKAGE_FILE_NAME=vstream_1.0.0-1_amd64_cuda
+if(VSTREAM_PACKAGE_FILE_NAME)
+  set(CPACK_PACKAGE_FILE_NAME "${VSTREAM_PACKAGE_FILE_NAME}")
+else()
+  set(CPACK_PACKAGE_FILE_NAME
+      "${CPACK_PACKAGE_NAME}_${CPACK_PACKAGE_VERSION}-${CPACK_PACKAGE_RELEASE}_${CPACK_DEBIAN_PACKAGE_ARCHITECTURE}")
+endif()
 
 # 依赖：仅声明系统级依赖，自定义编译的依赖已随包
 set(CPACK_DEBIAN_PACKAGE_DEPENDS
@@ -90,7 +101,7 @@ install(FILES ${CMAKE_SOURCE_DIR}/cmake/vstream.sh
 install(CODE "
   set(_dest_root \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}\")
   file(MAKE_DIRECTORY \"\${_dest_root}/share/vstream\")
-  file(WRITE \"\${_dest_root}/share/vstream/VERSION\" \"${CPACK_PACKAGE_VERSION}\")
+  file(WRITE \"\${_dest_root}/share/vstream/VERSION\" \"${CPACK_PACKAGE_VERSION}-${CPACK_PACKAGE_RELEASE}\n\")
 ")
 
 # ============================================================

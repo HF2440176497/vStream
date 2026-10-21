@@ -14,6 +14,22 @@ set(VSTREAM_ROOT_PATH "${CMAKE_CURRENT_SOURCE_DIR}"
     CACHE INTERNAL "Top-level directory of this project")
 
 # ============================================================
+# 版本唯一来源：仓库根目录 VERSION 文件（单行，如 1.0.0）
+# 发版时只改该文件，然后重新执行 cmake 配置即可
+# ============================================================
+set(VSTREAM_VERSION_FILE "${CMAKE_CURRENT_SOURCE_DIR}/VERSION")
+if(NOT EXISTS "${VSTREAM_VERSION_FILE}")
+  message(FATAL_ERROR "VERSION file not found: ${VSTREAM_VERSION_FILE}")
+endif()
+file(STRINGS "${VSTREAM_VERSION_FILE}" VSTREAM_VERSION LIMIT_COUNT 1)
+string(STRIP "${VSTREAM_VERSION}" VSTREAM_VERSION)
+if(NOT VSTREAM_VERSION MATCHES "^[0-9][A-Za-z0-9.+~-]*$")
+  message(FATAL_ERROR
+    "Invalid version '${VSTREAM_VERSION}' in ${VSTREAM_VERSION_FILE} (expected e.g. 1.0.0)")
+endif()
+message(STATUS "vStream version: ${VSTREAM_VERSION}")
+
+# ============================================================
 # 平台选择：唯一入口，须在 project() 之前
 #   - 只解析平台 ID（-DVSTREAM_PLATFORM / host 默认）并做白名单校验
 #   - 不加载平台文件：加载动作见 vstream_platform_load()
