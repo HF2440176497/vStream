@@ -10,6 +10,7 @@
 #include "memop_factory.hpp"
 
 #include "cuda/cuda_check.hpp"
+#include "cuda/cnstream_cuda_diagnostics.hpp"
 #include "cuda/cnstream_cuda_env.hpp"
 #include "cuda/transfmt_cuda.cuh"
 
@@ -50,6 +51,7 @@ bool PushHandlerImCUDA::InitDeviceCtx() {
   ret = av_hwframe_ctx_init(ctx_.hw_frames_ctx);
   if (ret < 0) {
     LOGE(SINK) << "[" << stream_id_ << "]: av_hwframe_ctx_init failed: " << ret;
+    DumpCudaFailureDiagnostics("sink_hwframe_ctx_init", "init", ret, 0);
     return false;
   }
 
@@ -60,6 +62,7 @@ bool PushHandlerImCUDA::InitDeviceCtx() {
   ret = av_hwframe_get_buffer(ctx_.hw_frames_ctx, ctx_.hw_frame, 0);
   if (ret < 0) {
     LOGE(SINK) << "[" << stream_id_ << "]: av_hwframe_get_buffer failed: " << ret;
+    DumpCudaFailureDiagnostics("sink_hwframe_get_buffer", "init", ret, 0);
     return false;
   }
 
@@ -70,6 +73,8 @@ bool PushHandlerImCUDA::InitDeviceCtx() {
     if (err != cudaSuccess) {
       LOGE(SINK) << "[" << stream_id_ << "]: cudaStreamCreate failed: " << err << " ("
                  << cudaGetErrorName(err) << ")";
+      DumpCudaFailureDiagnostics("sink_stream_create", "init",
+                                 static_cast<int>(err), 0);
       return false;
     }
   }

@@ -10,7 +10,12 @@ extern "C" {
 #include <cstdlib>
 #include <thread>
 
+#if defined(__linux__)
+#include <unistd.h>
+#endif
+
 #include "cnstream_logging.hpp"
+#include "cuda/cnstream_cuda_diagnostics.hpp"
 
 namespace cnstream {
 
@@ -88,6 +93,23 @@ std::string CudaInitErrorName(int code) {
   }
   const char* name = cudaGetErrorName(static_cast<cudaError_t>(code));
   return name != nullptr ? std::string(name) : ("code " + std::to_string(code));
+}
+
+void ClearStaleCudaError(const char* stage) {
+  cudaError_t stale = cudaGetLastError();
+  if (stale == cudaSuccess) {
+    return;
+  }
+  const char* name = stage != nullptr ? stage : "?";
+#if defined(__linux__)
+  LOGW(CUDA_ENV) << "[" << name << "] existed CUDA error before init: "
+                 << CudaInitErrorName(static_cast<int>(stale))
+                 << " (pid=" << getpid() << "); cleared";
+#else
+  LOGW(CUDA_ENV) << "[" << name << "] existed CUDA error before init: "
+                 << CudaInitErrorName(static_cast<int>(stale)) << "; cleared";
+#endif
+  DumpCudaFailureDiagnostics(name, "stale", static_cast<int>(stale), 0);
 }
 
 CudaInitGate& CudaInitGate::Instance() {
@@ -172,6 +194,8 @@ CudaInitResult RunCudaInit(const char* stage, const CudaInitCall& call,
       }
       return result;
     }
+
+    DumpCudaFailureDiagnostics(name, "init", code, attempt);
 
     // 无错误码可分类
     result.last_class = classify != nullptr ? classify(code) : CudaInitErrorClass::kTransient;

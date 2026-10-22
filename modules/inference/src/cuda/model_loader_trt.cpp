@@ -189,12 +189,13 @@ void ModelLoaderTrt::Logger::log(nvinfer1::ILogger::Severity severity, const cha
 
 ModelLoaderTrt::ModelLoaderTrt(int device_id) : ModelLoader(device_id) {
   device_type_ = DevType::CUDA;
+  ClearStaleCudaError("model_loader_init");
   CudaInitResult device_ret = RunCudaInit(
       "set_device",
       [this]() -> int { return static_cast<int>(cudaSetDevice(device_id_)); },
       ClassifyCudaRuntimeError);
   if (!device_ret.ok) {
-    LOGE(MODEL) << "cudaSetDevice failed on device " << device_id_ << "["
+    LOGE(MODEL) << "cudaSetDevice failed on device " << device_id_ << " ["
                 << device_ret.attempt << " attempt(s), " << device_ret.elapsed_ms
                 << " ms]: " << CudaInitErrorName(device_ret.last_error);
   }

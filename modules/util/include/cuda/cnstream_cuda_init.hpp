@@ -44,6 +44,14 @@ CudaInitErrorClass ClassifyFFmpegError(int averror);
 std::string CudaInitErrorName(int code);
 
 /**
+ * 读取并清除当前线程的 CUDA Runtime last error。
+ * 正常应返回 cudaSuccess；非 success 说明当前初始化之前，同线程已有未检查的
+ * CUDA 错误（可能是异步操作留下的 OOM）。清除后再执行初始化，可区分
+ * “陈旧错误”与“真实资源失败”。只作用于 Runtime API，不影响 driver API 的错误状态。
+ */
+void ClearStaleCudaError(const char* stage);
+
+/**
  * 进程级初始化闸门。可重入：同一线程内的嵌套创建（如 probe 内再取闸门）不会自锁。
  */
 class CudaInitGate {

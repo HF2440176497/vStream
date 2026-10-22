@@ -24,6 +24,7 @@ std::unordered_map<int, AVBufferRef*> g_hwdevice_cache;
 }  // namespace
 
 bool ProbeCudaDevice(int device_id) {
+  ClearStaleCudaError("probe");
   int device_count = 0;
   CudaInitResult ret = RunCudaInit("ProbeCudaDevice",
                                    [&device_count]() -> int {
