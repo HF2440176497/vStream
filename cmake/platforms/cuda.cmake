@@ -26,7 +26,7 @@ endif()
 
 # ---- 源码子目录（modules/<m>/src/<sub>、proc/<sub>/、unittest/<sub>/）----
 set(VSTREAM_PLATFORM_SRC_SUBDIRS  "cuda")
-set(VSTREAM_PLATFORM_TOOL_SUBDIRS "trt")
+set(VSTREAM_PLATFORM_TOOL_SUBDIRS "trt;cuda_init_repro")
 set(VSTREAM_PLATFORM_TEST_SUBDIRS "cuda")
 
 # ---- 依赖 ----
