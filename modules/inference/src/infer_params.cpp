@@ -219,6 +219,27 @@ void InferParamManager::RegisterAll(ParamRegister *pregister) {
   };
   ASSERT(RegisterParam(pregister, param));
 
+  param.name = "infer_context_pool_depth";
+  param.desc_str =
+      "Optional. Number of InferContext/InferEngine instances pre-created at startup. "
+      "Valid range: [1, UINT32_MAX]. Value `0` is invalid. Default is 1. "
+      "Set it to the max number of TaskLoop threads that can call Process, so that "
+      "all execution contexts and input/output buffers are created inside the startup lock.";
+  param.default_value = "1";
+  param.type = "uint32";
+  param.parser = [](const std::string &value, InferParams *param_set) -> bool {
+    if (!STR2U32(value, &param_set->infer_context_pool_depth)) {
+      return false;
+    }
+    if (param_set->infer_context_pool_depth <= 0) {
+      LOGE(INFER) << "Parse [infer_context_pool_depth] failed. value must be >= 1, but got ["
+                  << value << "].";
+      return false;
+    }
+    return true;
+  };
+  ASSERT(RegisterParam(pregister, param));
+
   param.name = "postproc_on_device";
   param.desc_str = "Optional. Whether to postprocess on device. Default is false.";
   param.default_value = "false";

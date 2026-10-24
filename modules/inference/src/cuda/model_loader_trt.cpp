@@ -561,7 +561,7 @@ bool ModelLoaderTrt::RunSync(void* exec_ctx,
                              RunShapes* out_shapes) {
   CudaDeviceGuard guard(device_id_);
   nvinfer1::IExecutionContext* context = static_cast<nvinfer1::IExecutionContext*>(exec_ctx);
-  if (context == nullptr) {
+  if (!context) {
     LOGE(MODEL) << "execution context is null, acquire it via AcquireExecutionContext() first";
     return false;
   }
@@ -694,6 +694,11 @@ void ModelLoaderTrt::ReleaseExecutionContext(void* exec_ctx) {
   TrtDeleter{}(static_cast<nvinfer1::IExecutionContext*>(exec_ctx));
 }
 
+/**
+ * @note: 两处调用：
+ * LoadEngine: 供 ParseBindings 解析使用，使用即释放
+ * AcquireInferContext 推理使用
+ */
 std::unique_ptr<nvinfer1::IExecutionContext, TrtDeleter> ModelLoaderTrt::CreateExecutionContext() {
   if (!engine_) return nullptr;
   nvinfer1::IExecutionContext* raw_ctx = nullptr;

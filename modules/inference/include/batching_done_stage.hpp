@@ -71,6 +71,7 @@ class BatchingDoneStage {
       : model_(model), batchsize_(batchsize), device_id_(device_id) {}
   virtual ~BatchingDoneStage() {}
   virtual std::vector<std::shared_ptr<InferTask>> BatchingDone(const BatchingDoneInput& finfos) = 0;
+  virtual bool IsReady() const { return true; }
 
   void SetDumpResizedImageDir(const std::string &dir) {
     dump_resized_image_dir_ = dir;
@@ -134,6 +135,15 @@ class InferBatchingDoneStage : public BatchingDoneStage {
                          std::shared_ptr<IOResource> output_res);
   ~InferBatchingDoneStage();
   std::vector<std::shared_ptr<InferTask>> BatchingDone(const BatchingDoneInput& finfos) override;
+  bool IsReady() const override {
+    // 是否需要独占 execution context 由 ModelLoader 自描述
+    // 在构造后应当创建
+    if (model_ && model_->RequiresExecutionContext()) {
+      return exec_ctx_ != nullptr;
+    }
+    return true;
+  }
+
  private:
   std::shared_ptr<IOResource> input_res_;
   std::shared_ptr<IOResource> output_res_;

@@ -78,8 +78,14 @@ class InferencePrivate: public NonCopyable {
   std::string dump_resized_image_dir_ = "";
   std::string module_name_ = "";
 
-  std::map<std::thread::id, InferContextSptr> ctxs_ { };
-  std::mutex ctx_mtx_;
+  // 预创建池 + tid 绑定：
+  // - InitInferContextPool(depth) 先建 depth 个 ctx 放入 free_pool_
+  // - 每个 TaskLoop 线程首次 Process 时按 tid 绑定一个 ctx，之后复用
+  // - 预创建用尽后，为新 tid 按需补建；注意这会发生在启动锁之外，日志会告警
+  std::vector<InferContextSptr> free_pool_;
+  std::map<std::thread::id, InferContextSptr> tid_ctx_;
+  std::mutex pool_mtx_;
+  uint32_t precreated_depth_ = 0;
 
   void InferEngineErrorHandleFunc(const std::string& err_msg) {
     LOGE(INFER) << err_msg;
@@ -284,46 +290,93 @@ class InferencePrivate: public NonCopyable {
     return true;
   }
 
-  // Inference::Process 调用：当前线程获取或创建InferContext
-  InferContextSptr GetInferContext() {
-    std::thread::id tid = std::this_thread::get_id();
-    InferContextSptr ctx(nullptr);
-    std::lock_guard<std::mutex> lk(ctx_mtx_);
-    if (ctxs_.find(tid) != ctxs_.end()) {
-      ctx = ctxs_[tid];
-    } else {
-      ctx = std::make_shared<InferContext>();
-      std::stringstream ss;
-      ss << tid;
-      std::string thread_id_str = ss.str();
-      thread_id_str.erase(0, thread_id_str.length() - 9);
-      std::string tid_str = "th_" + thread_id_str;
+  // 创建一个 InferContext。InferEngine 的构造会：
+  // - 创建 TRT execution context（InferBatchingDoneStage 构造时 AcquireExecutionContext）
+  // - 分配 NetInput/NetOutput 设备缓冲（IOResource::Init -> Allocate）
+  // - 创建推理线程池
+  InferContextSptr CreateInferContext() {
+    auto ctx = std::make_shared<InferContext>();
 
-      InferOptions infer_options;
-      infer_options.SetDeviceId(params_.device_id)
-          .SetModel(model_loader_.get())
-          .SetPreprocessor(preproc_)
-          .SetPostprocessor(postproc_)
-          .SetBatchingTimeout(params_.batching_timeout)
-          .SetErrorHandler(std::bind(&InferencePrivate::InferEngineErrorHandleFunc, this, std::placeholders::_1))
-          .SetPostprocOnDevice(params_.postproc_on_device)
-          .SetBatchingByObj(params_.object_infer)
-          .SetObjPreprocessor(obj_preproc_)
-          .SetObjPostprocessor(obj_postproc_)
-          .SetObjFilter(obj_filter_)
-          .SetFrameFilter(frame_filter_)
-          .SetModuleBitMask(ModuleBitMask())
-          .SetInputDeriver(input_deriver_)
-          .SetDumpResizedImageDir(dump_resized_image_dir_)
-          .SetSavingInferInput(params_.saving_infer_input)
-          .SetModuleName(module_name_)
-          .SetProfiler(q_ptr_->GetProfiler());
+    InferOptions infer_options;
+    infer_options.SetDeviceId(params_.device_id)
+        .SetModel(model_loader_.get())
+        .SetPreprocessor(preproc_)
+        .SetPostprocessor(postproc_)
+        .SetBatchingTimeout(params_.batching_timeout)
+        .SetErrorHandler(std::bind(&InferencePrivate::InferEngineErrorHandleFunc, this, std::placeholders::_1))
+        .SetPostprocOnDevice(params_.postproc_on_device)
+        .SetBatchingByObj(params_.object_infer)
+        .SetObjPreprocessor(obj_preproc_)
+        .SetObjPostprocessor(obj_postproc_)
+        .SetObjFilter(obj_filter_)
+        .SetFrameFilter(frame_filter_)
+        .SetModuleBitMask(ModuleBitMask())
+        .SetInputDeriver(input_deriver_)
+        .SetDumpResizedImageDir(dump_resized_image_dir_)
+        .SetSavingInferInput(params_.saving_infer_input)
+        .SetModuleName(module_name_)
+        .SetProfiler(q_ptr_->GetProfiler());
 
-      ctx->engine = std::make_shared<InferEngine>(infer_options);
-      ctx->trans_data_helper = std::make_shared<InferTransDataHelper>(q_ptr_, params_.infer_interval * trans_data_size_);
-      ctxs_[tid] = ctx;
-    }
+    ctx->engine = std::make_shared<InferEngine>(infer_options);
+    ctx->trans_data_helper = std::make_shared<InferTransDataHelper>(
+        q_ptr_, params_.infer_interval * trans_data_size_);
     return ctx;
+  }
+
+  bool InitInferContextPool(uint32_t depth) {
+    std::lock_guard<std::mutex> lk(pool_mtx_);
+    free_pool_.clear();
+    tid_ctx_.clear();
+    precreated_depth_ = 0;
+    for (uint32_t i = 0; i < depth; ++i) {
+      auto ctx = CreateInferContext();
+      if (!ctx || !ctx->engine || !ctx->engine->IsReady()) {
+        LOGE(INFER) << "[" << module_name_ << "] pre-create InferContext[" << i
+                    << "] failed (engine not ready)";
+        free_pool_.clear();
+        return false;
+      }
+      free_pool_.push_back(ctx);
+    }
+    precreated_depth_ = depth;
+    LOGI(INFER) << "[" << module_name_ << "] pre-created " << free_pool_.size()
+                << " InferContext(s)";
+    return true;
+  }
+
+  // 按当前线程 tid 绑定 InferContext；预创建池用尽后按需补建。
+  InferContextSptr AcquireInferContext() {
+    const auto tid = std::this_thread::get_id();
+    std::lock_guard<std::mutex> lk(pool_mtx_);
+    auto it = tid_ctx_.find(tid);
+    if (it != tid_ctx_.end()) {
+      return it->second;
+    }
+
+    InferContextSptr ctx;
+    if (!free_pool_.empty()) {
+      ctx = free_pool_.back();
+      free_pool_.pop_back();
+    } else {
+      // 预创建 depth 已用尽：为新的 TaskLoop 线程补建
+      ctx = CreateInferContext();
+      if (!ctx || !ctx->engine || !ctx->engine->IsReady()) {
+        LOGE(INFER) << "[" << module_name_
+                    << "] Lazy-create InferContext failed for a new thread";
+        return nullptr;
+      }
+      LOGW(INFER) << "[" << module_name_
+                  << "] Lazy-created InferContext beyond pre-created depth: "
+                  << precreated_depth_;
+    }
+    tid_ctx_.emplace(tid, ctx);
+    return ctx;
+  }
+
+  void ClearInferContextPool() {
+    free_pool_.clear();
+    tid_ctx_.clear();
+    precreated_depth_ = 0;
   }
 
  private:
@@ -388,6 +441,11 @@ bool Inference::Open(ModuleParamSet raw_params) {
     }
   }
 
+  if (!d_ptr_->InitInferContextPool(params.infer_context_pool_depth)) {
+    LOGE(INFER) << "[" << GetName() << "] pre-create InferContext pool failed.";
+    return false;
+  }
+
   return true;
 }
 
@@ -398,9 +456,10 @@ void Inference::Close() {
   if (nullptr == d_ptr_) return;
 
   /*destroy infer contexts*/
-  d_ptr_->ctx_mtx_.lock();
-  d_ptr_->ctxs_.clear();  // std::map<std::thread::id, shared_ptr<InferContext>>
-  d_ptr_->ctx_mtx_.unlock();
+  {
+    std::lock_guard<std::mutex> lk(d_ptr_->pool_mtx_);
+    d_ptr_->ClearInferContextPool();
+  }
 
   delete d_ptr_;
   d_ptr_ = nullptr;
@@ -414,10 +473,18 @@ void Inference::Close() {
  * @return 0: success
  */
 int Inference::Process(std::shared_ptr<FrameInfo> data) {
+  if (d_ptr_ == nullptr) {
+    LOGE(INFER) << "Inference is not open";
+    return -1;
+  }
 
-  // 获取当前 thread 的 InferContext，也就是 Pipeline 启动的 TaskLoop 线程
-  // ModelLoader 仍然由 InferencePrivate 所有
-  std::shared_ptr<InferContext> pctx = d_ptr_->GetInferContext();
+  // 按 tid 绑定：同一 TaskLoop 线程复用同一个 InferContext；
+  // 预创建池用尽后，新线程会按需补建（日志会告警）。
+  std::shared_ptr<InferContext> pctx = d_ptr_->AcquireInferContext();
+  if (!pctx || !pctx->engine) {
+    LOGE(INFER) << "[" << d_ptr_->module_name_ << "] InferContext not ready";
+    return -1;
+  }
   bool eos = data->IsEos();
   bool drop_data = d_ptr_->params_.infer_interval > 0 && pctx->drop_count++ % d_ptr_->params_.infer_interval != 0;
 

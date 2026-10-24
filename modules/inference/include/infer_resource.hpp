@@ -42,6 +42,7 @@ class InferResource : public QueuingServer {
   virtual ~InferResource() {}
   virtual void Init() {}
   virtual void Destroy() {}
+  virtual bool IsReady() const { return true; }
   RetT WaitResourceByTicket(QueuingTicket* pticket) {
     WaitByTicket(pticket);
     return value_;
@@ -102,6 +103,17 @@ class IOResource : public InferResource<IOResValue> {
 
   void Init() override { value_ = Allocate(model_); }
   void Destroy() override { Deallocate(model_, value_); }
+  bool IsReady() const override {
+    if (value_.ptrs.empty() || value_.datas.empty()) {
+      return false;
+    }
+    for (const auto& ptr : value_.ptrs) {
+      if (!ptr) {
+        return false;
+      }
+    }
+    return true;
+  }
 
  protected:
   virtual IOResValue Allocate(ModelLoader* model) = 0;

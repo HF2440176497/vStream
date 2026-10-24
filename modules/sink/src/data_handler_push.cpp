@@ -69,6 +69,12 @@ bool PushHandlerIm::Open() {
     }
   }
 
+  // 把 CUDA context / NVENC / AVHWFramesContext / sink stream 的创建提前到 Open
+  if (!InitStream()) {
+    LOGE(SINK) << "[" << stream_id_ << "]: eager InitStream failed";
+    ClearStream();
+    return false;
+  }
   running_.store(true);
   encode_thread_ = std::thread(&PushHandlerIm::EncodeWorkerLoop, this);
   return true;
@@ -582,8 +588,8 @@ void PushHandlerIm::EncodeWorkerLoop() {
     std::lock_guard<std::recursive_mutex> lk(stream_mtx_);
     if (!stream_initialized_) {
       if (!InitStream()) {
-        LOGE(SINK) << "[" << stream_id_ << "]: InitStream failed in worker, "
-                   << "will retry after " << kReconnectIntervalMs << "ms backoff";
+        LOGE(SINK) << "[" << stream_id_ << "]: InitStream failed in loop, "
+                   << "will retry after " << kReconnectIntervalMs << "ms";
         // 退避等待，避免对推流服务器高频重连
         auto retry_deadline = std::chrono::steady_clock::now()
                             + std::chrono::milliseconds(kReconnectIntervalMs);
@@ -594,7 +600,7 @@ void PushHandlerIm::EncodeWorkerLoop() {
       }
     }
     if (!SendDataFrame(task.frame, task.src_fmt, task.pts)) {
-      LOGE(SINK) << "[" << stream_id_ << "]: SendDataFrame failed in worker";
+      LOGE(SINK) << "[" << stream_id_ << "]: SendDataFrame failed in loop";
       if (last_write_network_error_) {
         last_write_network_error_ = false;
         if (!TryReconnect()) {

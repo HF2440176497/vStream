@@ -67,6 +67,7 @@ class ModelLoaderTrt : public ModelLoader {
 
   void* AcquireExecutionContext() override;
   void ReleaseExecutionContext(void* exec_ctx) override;
+  bool RequiresExecutionContext() const override { return true; }
 
   void* GetStream() const override { return static_cast<void*>(stream_); }
 

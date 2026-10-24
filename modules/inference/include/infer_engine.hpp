@@ -79,6 +79,9 @@ class InferEngine {
 
   ResultWaitingCard FeedData(std::shared_ptr<FrameInfo> frame_info);
   void ForceBatchingDone();
+  // 预创建 InferContext 时用于判断引擎资源是否真的就绪：
+  // 重点检查 TRT execution context 与 NetInput/NetOutput 设备缓冲。
+  bool IsReady() const;
 
  private:
   void StageAssemble();

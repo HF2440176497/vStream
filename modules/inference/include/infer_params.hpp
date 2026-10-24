@@ -52,6 +52,9 @@ struct InferParams {
   uint32_t infer_interval = 1;
   uint32_t batching_timeout = 3000;  // ms
   uint32_t trans_data_size = 20;  // queue size
+  // 启动时预创建的 InferContext/InferEngine 数量（>=1）。
+  // 应设为实际可能并发调用 Process 的 TaskLoop 线程数，避免运行期在启动锁外补建。
+  uint32_t infer_context_pool_depth = 1;
   std::string model_name;
   std::string config_dir_path;
   std::string version;

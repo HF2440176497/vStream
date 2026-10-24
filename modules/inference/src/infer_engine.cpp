@@ -141,6 +141,32 @@ void InferEngine::StageAssemble() {
   }
 }
 
+bool InferEngine::IsReady() const {
+  if (!batching_stage_ && !obj_batching_stage_) {
+    return false;
+  }
+  for (const auto& stage : batching_done_stages_) {
+    if (stage && !stage->IsReady()) {
+      return false;
+    }
+  }
+  // NOTE: 在 Engine::init 中为 res 初始化资源
+  // res_ 来自 strategy build
+  if (!input_res_ || !input_res_->IsReady()) {
+    return false;
+  }
+  if (!output_res_ || !output_res_->IsReady()) {
+    return false;
+  }
+  if (net_input_res_ && !net_input_res_->IsReady()) {
+    return false;
+  }
+  if (net_output_res_ && !net_output_res_->IsReady()) {
+    return false;
+  }
+  return true;
+}
+
 /**
  * @note: timeout_helper_ 保护 FeedData 不会被中断
  */

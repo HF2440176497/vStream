@@ -3,6 +3,7 @@
 #include <cuda_runtime.h>
 
 extern "C" {
+#include <libavutil/dict.h>
 #include <libavutil/error.h>
 #include <libavutil/hwcontext.h>
 }
@@ -88,11 +89,19 @@ AVBufferRef* AcquireSharedCudaHwDeviceCtx(int device_id) {
   // 未命中缓存的创建放在锁外（带闸门 + 有界重试）：
   // 避免退避等待期间持有缓存锁，阻塞其它线程查缓存
   AVBufferRef* ref = nullptr;
+  // primary_ctx=1：复用进程内 CUDA Runtime/TensorRT 的 primary context，
+  // 不再由 FFmpeg 用 cuCtxCreate 新建独立 CUcontext
+  LOGI(CUDA_ENV) << "SharedCudaHwDeviceCtx: primary_ctx=1, device " << device_id;
   CudaInitResult ret = RunCudaInit("SharedCudaHwDeviceCtx",
                                    [&ref, device_id]() -> int {
+                                     AVDictionary* options = nullptr;
+                                     if (av_dict_set(&options, "primary_ctx", "1", 0) < 0) {
+                                       return AVERROR(ENOMEM);
+                                     }
                                      int err = av_hwdevice_ctx_create(
                                          &ref, AV_HWDEVICE_TYPE_CUDA,
-                                         std::to_string(device_id).c_str(), nullptr, 0);
+                                         std::to_string(device_id).c_str(), options, 0);
+                                     av_dict_free(&options);
                                      if (err < 0 || ref == nullptr) {
                                        // 失败路径若仍返回了部分初始化的引用，就地释放后再上报
                                        if (ref != nullptr) {

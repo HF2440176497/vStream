@@ -119,10 +119,13 @@ InferBatchingDoneStage::InferBatchingDoneStage(ModelLoader* model,
       input_res_(input_res),
       output_res_(output_res),
       exec_ctx_(model ? model->AcquireExecutionContext() : nullptr) {
-  // CUDA/TRT 后端必须拿到独占执行上下文，否则每次 RunSync 都会失败
-  // CPU/RKNN 后端不提供上下文，只在 CUDA 上告警一次。
-  if (model && exec_ctx_ == nullptr && model->GetDeviceType() == DevType::CUDA) {
-    LOGE(STAGE) << "AcquireExecutionContext failed: inference will always fail on this pipeline";
+  // 需要独占执行上下文的后端必须拿到，否则每次 RunSync 都会失败；
+  // CPU/RKNN 后端不要求，不告警。
+  // 唯一在此处（构造时）创建
+  if (model && model->RequiresExecutionContext()) {
+    if (!exec_ctx_) {
+      LOGE(STAGE) << "AcquireExecutionContext failed: inference will always fail on this pipeline";
+    }
   }
 }
 
