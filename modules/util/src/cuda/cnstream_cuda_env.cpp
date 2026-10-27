@@ -89,13 +89,13 @@ AVBufferRef* AcquireSharedCudaHwDeviceCtx(int device_id) {
   // 未命中缓存的创建放在锁外（带闸门 + 有界重试）：
   // 避免退避等待期间持有缓存锁，阻塞其它线程查缓存
   AVBufferRef* ref = nullptr;
-  // primary_ctx=1：复用进程内 CUDA Runtime/TensorRT 的 primary context，
-  // 不再由 FFmpeg 用 cuCtxCreate 新建独立 CUcontext
-  LOGI(CUDA_ENV) << "SharedCudaHwDeviceCtx: primary_ctx=1, device " << device_id;
+  // current_ctx=1：复用调用线程已有的 CUDA primary context（前面的
+  // cudaSetDevice/cudaMalloc 已建立），避免 primary_ctx 的 flags 兼容性检查。
+  LOGI(CUDA_ENV) << "SharedCudaHwDeviceCtx: current_ctx=1, device " << device_id;
   CudaInitResult ret = RunCudaInit("SharedCudaHwDeviceCtx",
                                    [&ref, device_id]() -> int {
                                      AVDictionary* options = nullptr;
-                                     if (av_dict_set(&options, "primary_ctx", "1", 0) < 0) {
+                                     if (av_dict_set(&options, "current_ctx", "1", 0) < 0) {
                                        return AVERROR(ENOMEM);
                                      }
                                      int err = av_hwdevice_ctx_create(
