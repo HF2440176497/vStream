@@ -16,7 +16,7 @@ namespace cnstream {
  *   VSTREAM_CUDA_DIAG_NORMAL=0   只关闭 normal 采集（默认开启）
  *   VSTREAM_CUDA_DIAG_DIR=dir    输出目录（默认 /tmp，需已存在）
  *
- * @param stage   阶段（probe / infer_pool / sink_stream / CUDA 初始化 stage）
+ * @param stage   阶段（load_begin / probe / infer_pool / sink_stream / CUDA 初始化 stage）
  * @param kind    init（初始化失败）/ stale（初始化前发现陈旧错误）/ normal
  * @param code    原始错误码（CUDA 正值或 AVERROR 负值）
  * @param attempt 第几次尝试（0 表示非重试路径）
@@ -27,7 +27,8 @@ void DumpCudaFailureDiagnostics(const char* stage, const char* kind, int code,
 /**
  * 采集一次正常路径快照（每个 stage 每进程只写一次）。
  * 用于和 failure 快照对比；包含 VmSize/VmData/smaps_rollup/overcommit/dev/shm/
- * 进程内 nvidia fd 持有者及父进程链（可用于发现旧进程/forkserver 父进程残留）。
+ * 进程内 nvidia fd 持有者及父进程链（可用于发现旧进程/forkserver 父进程残留）、
+ * 最大 VMA 列表（定位 VmSize 的固定 VA 预留来源）。
  */
 void DumpCudaNormalDiagnostics(const char* stage);
 

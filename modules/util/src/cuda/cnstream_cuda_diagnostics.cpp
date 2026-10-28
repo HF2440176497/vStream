@@ -46,6 +46,7 @@ struct Summary {
   std::string overcommit = "?";
   std::string smaps_anon_kb = "?";
   std::string private_dirty_kb = "?";
+  std::string largest_kb = "?";
   std::string nvidia_fds = "?";
   std::string maps_lines = "?";
   std::string max_map_count = "?";
@@ -326,6 +327,83 @@ void CollectMaps(std::ostream& os, Summary* summary) {
   summary->max_map_count = ReadFirstLine("/proc/sys/vm/max_map_count");
 }
 
+void CollectLargestMappings(std::ostream& os, Summary* summary) {
+  WriteSection(os, "largest mappings");
+  std::ifstream in("/proc/self/maps");
+  if (!in) {
+    os << "  /proc/self/maps <unreadable errno=" << errno << ">\n";
+    return;
+  }
+
+  struct Vma {
+    unsigned long long size_kb = 0;
+    std::string range;
+    std::string perms;
+    std::string path;
+  };
+  constexpr size_t kTopN = 15;
+  std::vector<Vma> top;
+  unsigned long long total_kb = 0;
+  unsigned long long nvidia_kb = 0;
+  unsigned long long anon_kb = 0;
+  std::string line;
+  while (std::getline(in, line)) {
+    std::istringstream fields(line);
+    std::string range;
+    std::string perms;
+    std::string offset;
+    std::string dev;
+    std::string inode;
+    std::string path;
+    fields >> range >> perms >> offset >> dev >> inode;
+    std::getline(fields, path);
+    path = Trim(path);
+
+    const size_t dash = range.find('-');
+    if (dash == std::string::npos) {
+      continue;
+    }
+    unsigned long long start = 0;
+    unsigned long long end = 0;
+    try {
+      start = std::stoull(range.substr(0, dash), nullptr, 16);
+      end = std::stoull(range.substr(dash + 1), nullptr, 16);
+    } catch (...) {
+      continue;
+    }
+    if (end <= start) {
+      continue;
+    }
+    const unsigned long long size_kb = (end - start) / 1024ULL;
+    total_kb += size_kb;
+    if (path.rfind("/dev/nvidia", 0) == 0) {
+      nvidia_kb += size_kb;
+    } else if (path.empty()) {
+      anon_kb += size_kb;
+    }
+
+    Vma vma;
+    vma.size_kb = size_kb;
+    vma.range = range;
+    vma.perms = perms;
+    vma.path = path;
+    top.push_back(vma);
+    std::sort(top.begin(), top.end(),
+              [](const Vma& a, const Vma& b) { return a.size_kb > b.size_kb; });
+    if (top.size() > kTopN) {
+      top.pop_back();
+    }
+  }
+
+  os << "  total_va_kb=" << total_kb << " nvidia_va_kb=" << nvidia_kb
+     << " anon_va_kb=" << anon_kb << "\n";
+  for (const auto& vma : top) {
+    os << "  " << std::setw(10) << vma.size_kb << " kB " << vma.range << " "
+       << vma.perms << " " << (vma.path.empty() ? "[anon]" : vma.path) << "\n";
+  }
+  summary->largest_kb = top.empty() ? "?" : std::to_string(top.front().size_kb);
+}
+
 void CollectFds(std::ostream& os, Summary* summary) {
   WriteSection(os, "nvidia device fds");
   DIR* dir = opendir("/proc/self/fd");
@@ -525,6 +603,7 @@ void CollectNvidiaHolders(std::ostream& os) {
        << " ppid=" << ReadPidStatusField(pid, "PPid:")
        << " state=" << ReadPidStatusField(pid, "State:")
        << " threads=" << ReadPidStatusField(pid, "Threads:")
+       << " vm_size=" << ReadPidStatusField(pid, "VmSize:")
        << " vm_data=" << ReadPidStatusField(pid, "VmData:")
        << " vm_pin=" << ReadPidStatusField(pid, "VmPin:")
        << " rss=" << ReadPidStatusField(pid, "VmRSS:")
@@ -781,6 +860,7 @@ void DumpImpl(const char* mode, const char* stage, const char* kind, int code,
     CollectCgroup(out);
     CollectShm(out, &summary);
     CollectMaps(out, &summary);
+    CollectLargestMappings(out, &summary);
     CollectFds(out, &summary);
     CollectNvidiaHolders(out);
     CollectThread(out);
@@ -828,6 +908,7 @@ void DumpImpl(const char* mode, const char* stage, const char* kind, int code,
                  << " attempt=" << attempt << " code=" << code
                  << " pid=" << getpid()
                  << " vm_data_kb=" << summary.vm_data_kb
+                 << " largest_vma_kb=" << summary.largest_kb
                  << " vm_pin_kb=" << summary.vm_pin_kb
                  << " smaps_anon_kb=" << summary.smaps_anon_kb
                  << " private_dirty_kb=" << summary.private_dirty_kb

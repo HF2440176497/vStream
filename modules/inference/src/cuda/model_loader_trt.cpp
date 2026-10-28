@@ -249,6 +249,9 @@ ModelLoaderTrt::~ModelLoaderTrt() {
 }
 
 bool ModelLoaderTrt::LoadEngine(const std::string& engine_path) {
+  // 上下文建立前的基线：与 probe 成功后的快照对比，判断 16GB 级 VA 预留
+  // 是在 CUDA 初始化之前就存在，还是 context 建立过程中产生的。
+  DumpCudaNormalDiagnostics("load_begin");
   CudaDeviceGuard guard(device_id_);
   if (!guard.ok()) {
     LOGE(MODEL) << "LoadEngine: cannot set CUDA device " << device_id_
