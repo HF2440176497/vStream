@@ -230,7 +230,10 @@ bool ModelLoaderTrt::Init(const std::string& engine_path, const InferParams& par
 
 ModelLoaderTrt::~ModelLoaderTrt() {
   CudaDeviceGuard guard(device_id_);
-  if (stream_) {
+  if (!guard.ok()) {
+    LOGE(MODEL) << "ModelLoaderTrt destructor: cannot set CUDA device " << device_id_
+                << ", skip cudaStreamDestroy";
+  } else if (stream_) {
     CHECK_CUDA_RUNTIME(cudaStreamDestroy(stream_));
     stream_ = nullptr;
   }
@@ -247,6 +250,11 @@ ModelLoaderTrt::~ModelLoaderTrt() {
 
 bool ModelLoaderTrt::LoadEngine(const std::string& engine_path) {
   CudaDeviceGuard guard(device_id_);
+  if (!guard.ok()) {
+    LOGE(MODEL) << "LoadEngine: cannot set CUDA device " << device_id_
+                << ", skip loading engine: " << engine_path;
+    return false;
+  }
   if (!ProbeCudaDevice(device_id_)) {
     LOGE(MODEL) << "CUDA environment probe failed on device " << device_id_
                 << ", abort loading TensorRT engine: " << engine_path;
@@ -527,6 +535,10 @@ bool ModelLoaderTrt::RunSync(void* exec_ctx,
                              std::vector<std::shared_ptr<void>> inputs,
                              std::vector<std::shared_ptr<void>> outputs) {
   CudaDeviceGuard guard(device_id_);
+  if (!guard.ok()) {
+    LOGE(MODEL) << "RunSync: cannot set CUDA device " << device_id_ << ", skip inference";
+    return false;
+  }
   nvinfer1::IExecutionContext* context = static_cast<nvinfer1::IExecutionContext*>(exec_ctx);
   if (context == nullptr) {
     LOGE(MODEL) << "execution context is null, acquire it via AcquireExecutionContext() first";
@@ -560,6 +572,10 @@ bool ModelLoaderTrt::RunSync(void* exec_ctx,
                              RunShapes* in_shapes,
                              RunShapes* out_shapes) {
   CudaDeviceGuard guard(device_id_);
+  if (!guard.ok()) {
+    LOGE(MODEL) << "RunSync: cannot set CUDA device " << device_id_ << ", skip inference";
+    return false;
+  }
   nvinfer1::IExecutionContext* context = static_cast<nvinfer1::IExecutionContext*>(exec_ctx);
   if (!context) {
     LOGE(MODEL) << "execution context is null, acquire it via AcquireExecutionContext() first";
@@ -682,6 +698,10 @@ TensorShape ModelLoaderTrt::OutputShapeMax(uint32_t index) const {
 void* ModelLoaderTrt::AcquireExecutionContext() {
   std::lock_guard<std::mutex> lock(exec_ctx_mtx_);
   CudaDeviceGuard guard(device_id_);
+  if (!guard.ok()) {
+    LOGE(MODEL) << "AcquireExecutionContext: cannot set CUDA device " << device_id_;
+    return nullptr;
+  }
   return CreateExecutionContext().release();
 }
 
@@ -691,6 +711,11 @@ void ModelLoaderTrt::ReleaseExecutionContext(void* exec_ctx) {
   }
   std::lock_guard<std::mutex> lock(exec_ctx_mtx_);
   CudaDeviceGuard guard(device_id_);
+  if (!guard.ok()) {
+    LOGE(MODEL) << "ReleaseExecutionContext: cannot set CUDA device " << device_id_
+                << ", skip destroy";
+    return;
+  }
   TrtDeleter{}(static_cast<nvinfer1::IExecutionContext*>(exec_ctx));
 }
 

@@ -1,5 +1,6 @@
 #include "data_handler_push.hpp"
 #include "cnstream_logging.hpp"
+#include "cuda/cnstream_cuda_diagnostics.hpp"
 #include "data_converter.hpp"
 
 #include <algorithm>
@@ -9,6 +10,7 @@
 namespace cnstream {
 
 bool PushHandlerIm::Open() {
+  closed_.store(false);
   LOGI(SINK) << "[" << stream_id_ << "]: PushHandlerIm Open";
 
   if (param_set_.find(key_output_url) == param_set_.end()) {
@@ -75,6 +77,7 @@ bool PushHandlerIm::Open() {
     ClearStream();
     return false;
   }
+  DumpCudaNormalDiagnostics("sink_stream");
   running_.store(true);
   encode_thread_ = std::thread(&PushHandlerIm::EncodeWorkerLoop, this);
   return true;
@@ -95,6 +98,10 @@ void PushHandlerIm::Stop() {
 }
 
 void PushHandlerIm::Close() {
+  if (closed_.exchange(true)) {
+    LOGD(SINK) << "[" << stream_id_ << "]: PushHandlerIm Close already done, skip";
+    return;
+  }
   LOGI(SINK) << "[" << stream_id_ << "]: PushHandlerIm Close";
   EncoderTask eos;
   eos.is_eos = true;

@@ -29,6 +29,7 @@
 #include <thread>
 #include <mutex>
 
+#include "cuda/cnstream_cuda_diagnostics.hpp"
 #include "model_loader.hpp"
 #include "infer_engine.hpp"
 #include "infer_trans_data_helper.hpp"
@@ -416,12 +417,14 @@ bool Inference::Open(ModuleParamSet raw_params) {
   // 调用 parser 将解析通过的参数赋值给 params
   if (!param_manager_->ParseBy(raw_params, &params)) {
     LOGE(INFER) << "[" << GetName() << "] parse parameters failed.";
+    Close();
     return false;
   }
 
   // 在 InferencePrivate 中初始化 engine
   if (!d_ptr_->InitByParams(params, raw_params)) {
     LOGE(INFER) << "[" << GetName() << "] init resources failed.";
+    Close();
     return false;
   }
 
@@ -443,8 +446,12 @@ bool Inference::Open(ModuleParamSet raw_params) {
 
   if (!d_ptr_->InitInferContextPool(params.infer_context_pool_depth)) {
     LOGE(INFER) << "[" << GetName() << "] pre-create InferContext pool failed.";
+    // Open 失败后 Pipeline::Start 不会对失败模块调用 Close，必须在此自清理，
+    // 否则 engine/exec ctx/线程池会残留到 pipeline 析构。
+    Close();
     return false;
   }
+  DumpCudaNormalDiagnostics("infer_pool");
 
   return true;
 }

@@ -30,28 +30,44 @@ class CudaDeviceGuard : private NonCopyable {
   explicit CudaDeviceGuard(int device_id): device_id_(device_id) {
     if (device_id < 0) {
       LOGW(CORE) << "CudaDeviceGuard: Invalid device ID " << device_id << ". Do nothing.";
-    } else {
-      cudaError_t err = cudaGetDevice(&prev_device_id_);
-      if (err != cudaSuccess) {
-        LOGE(CORE) << "CudaDeviceGuard: Failed to get current device: " << cudaGetErrorString(err);
-        prev_device_id_ = -1;
-      }
-      CHECK_CUDA_RUNTIME(cudaSetDevice(device_id_));
+      ok_ = true;  // 保持旧行为：无有效 CUDA 设备时不做任何 CUDA 操作
+      return;
+    }
+    cudaError_t err = cudaGetDevice(&prev_device_id_);
+    if (err != cudaSuccess) {
+      LOGE(CORE) << "CudaDeviceGuard: Failed to get current device: " << cudaGetErrorString(err);
+      prev_device_id_ = -1;
+    }
+    err = cudaSetDevice(device_id_);
+    ok_ = (err == cudaSuccess);
+    if (!ok_) {
+      LOGE(CORE) << "CudaDeviceGuard: cudaSetDevice(" << device_id_ << ") failed: "
+                 << cudaGetErrorName(err) << " (" << cudaGetErrorString(err)
+                 << "). Caller must skip CUDA work.";
     }
   }
+
+  // 调用方必须检查：false 表示当前线程没有切到目标设备，不能再执行
+  // cudaMalloc/cudaFree/cudaMemcpy 等操作，否则会在错误 context 上继续并污染清理路径。
+  bool ok() const { return ok_; }
   /*!
    * @brief Destructs an object.
    *
    * @return No return value.
    */
   ~CudaDeviceGuard() {
-    if (prev_device_id_ >= 0 && prev_device_id_ != device_id_) {
-      CHECK_CUDA_RUNTIME(cudaSetDevice(prev_device_id_));
+    if (ok_ && prev_device_id_ >= 0 && prev_device_id_ != device_id_) {
+      cudaError_t err = cudaSetDevice(prev_device_id_);
+      if (err != cudaSuccess) {
+        LOGE(CORE) << "CudaDeviceGuard: restore device " << prev_device_id_
+                   << " failed: " << cudaGetErrorName(err);
+      }
     }
   }
  private:
   int device_id_ = 0;
   int prev_device_id_ = -1;  // Store previous device ID for restoration
+  bool ok_ = false;
 };  // end CudaDeviceGuard
 
 
@@ -66,7 +82,11 @@ class CudaAllocator : public MemoryAllocator {
 
     std::lock_guard<std::mutex> lk(mutex_);
     CudaDeviceGuard guard(device_id_);
-    
+    if (!guard.ok()) {
+      LOGE(CORE) << "CudaAllocator: skip alloc, cannot set CUDA device " << device_id_;
+      return nullptr;
+    }
+
     void *cuda_ptr;
     cudaError_t err = cudaMalloc(&cuda_ptr, alloc_size);
     if (err != cudaSuccess) {
@@ -78,6 +98,10 @@ class CudaAllocator : public MemoryAllocator {
   void free(void *p) override {
     std::lock_guard<std::mutex> lk(mutex_);
     CudaDeviceGuard guard(device_id_);
+    if (!guard.ok()) {
+      LOGE(CORE) << "CudaAllocator: skip cudaFree, cannot set CUDA device " << device_id_;
+      return;
+    }
     CHECK_CUDA_RUNTIME(cudaFree(p));
   }
 };

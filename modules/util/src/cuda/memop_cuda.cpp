@@ -36,11 +36,19 @@ std::unique_ptr<CNSyncedMemory> CudaMemOp::CreateSyncedMemory(size_t size) {
 std::shared_ptr<void> CudaMemOp::Allocate(size_t bytes) {
   size_ = bytes;
   CudaDeviceGuard guard(device_id_);
+  if (!guard.ok()) {
+    LOGE(CORE) << "CudaMemOp::Allocate: skip, cannot set CUDA device " << device_id_;
+    return nullptr;
+  }
   return cnCudaMemAlloc(bytes, device_id_);
 }
 
 void CudaMemOp::Copy(void* dst, const void* src, size_t size) {
   CudaDeviceGuard guard(device_id_);
+  if (!guard.ok()) {
+    LOGE(CORE) << "CudaMemOp::Copy: skip, cannot set CUDA device " << device_id_;
+    return;
+  }
   CHECK_CUDA_RUNTIME(cudaMemcpy(dst, src, size, cudaMemcpyDeviceToDevice));
 }
 
@@ -49,6 +57,10 @@ void CudaMemOp::Copy(void* dst, const void* src, size_t size) {
  */
 void CudaMemOp::CopyFromHost(void* dst, const void* src, size_t size) {
   CudaDeviceGuard guard(device_id_);
+  if (!guard.ok()) {
+    LOGE(CORE) << "CudaMemOp::CopyFromHost: skip, cannot set CUDA device " << device_id_;
+    return;
+  }
   CHECK_CUDA_RUNTIME(cudaMemcpy(dst, src, size, cudaMemcpyHostToDevice));
 }
 
@@ -57,29 +69,50 @@ void CudaMemOp::CopyFromHost(void* dst, const void* src, size_t size) {
  */
 void CudaMemOp::CopyToHost(void* dst, const void* src, size_t size) {
   CudaDeviceGuard guard(device_id_);
+  if (!guard.ok()) {
+    LOGE(CORE) << "CudaMemOp::CopyToHost: skip, cannot set CUDA device " << device_id_;
+    return;
+  }
   CHECK_CUDA_RUNTIME(cudaMemcpy(dst, src, size, cudaMemcpyDeviceToHost));
 }
 
 void CudaMemOp::CopyFromHostAsync(void* dst, const void* src, size_t size, void* stream) {
   CudaDeviceGuard guard(device_id_);
+  if (!guard.ok()) {
+    LOGE(CORE) << "CudaMemOp::CopyFromHostAsync: skip, cannot set CUDA device " << device_id_;
+    return;
+  }
   auto cuda_stream = static_cast<cudaStream_t>(stream);
   CHECK_CUDA_RUNTIME(cudaMemcpyAsync(dst, src, size, cudaMemcpyHostToDevice, cuda_stream));
 }
 
 void CudaMemOp::CopyToHostAsync(void* dst, const void* src, size_t size, void* stream) {
   CudaDeviceGuard guard(device_id_);
+  if (!guard.ok()) {
+    LOGE(CORE) << "CudaMemOp::CopyToHostAsync: skip, cannot set CUDA device " << device_id_;
+    return;
+  }
   auto cuda_stream = static_cast<cudaStream_t>(stream);
   CHECK_CUDA_RUNTIME(cudaMemcpyAsync(dst, src, size, cudaMemcpyDeviceToHost, cuda_stream));
 }
 
 void CudaMemOp::SyncStream(void* stream) {
   if (stream) {
+    CudaDeviceGuard guard(device_id_);
+    if (!guard.ok()) {
+      LOGE(CORE) << "CudaMemOp::SyncStream: skip, cannot set CUDA device " << device_id_;
+      return;
+    }
     CHECK_CUDA_RUNTIME(cudaStreamSynchronize(static_cast<cudaStream_t>(stream)));
   }
 }
 
 void* CudaMemOp::CreateEvent() {
   CudaDeviceGuard guard(device_id_);
+  if (!guard.ok()) {
+    LOGE(CORE) << "CudaMemOp::CreateEvent: skip, cannot set CUDA device " << device_id_;
+    return nullptr;
+  }
   cudaEvent_t event = nullptr;
   if (!CHECK_CUDA_RUNTIME(cudaEventCreateWithFlags(&event, cudaEventDisableTiming))) {
     if (event) cudaEventDestroy(event);
@@ -91,18 +124,30 @@ void* CudaMemOp::CreateEvent() {
 bool CudaMemOp::RecordEvent(void* event, void* stream) {
   if (!event || !stream) return false;
   CudaDeviceGuard guard(device_id_);
+  if (!guard.ok()) {
+    LOGE(CORE) << "CudaMemOp::RecordEvent: skip, cannot set CUDA device " << device_id_;
+    return false;
+  }
   return CHECK_CUDA_RUNTIME(cudaEventRecord(static_cast<cudaEvent_t>(event), static_cast<cudaStream_t>(stream)));
 }
 
 bool CudaMemOp::WaitEvent(void* event) {
   if (!event) return false;
   CudaDeviceGuard guard(device_id_);
+  if (!guard.ok()) {
+    LOGE(CORE) << "CudaMemOp::WaitEvent: skip, cannot set CUDA device " << device_id_;
+    return false;
+  }
   return CHECK_CUDA_RUNTIME(cudaEventSynchronize(static_cast<cudaEvent_t>(event)));
 }
 
 void CudaMemOp::DestroyEvent(void* event) {
   if (!event) return;
   CudaDeviceGuard guard(device_id_);
+  if (!guard.ok()) {
+    LOGE(CORE) << "CudaMemOp::DestroyEvent: skip, cannot set CUDA device " << device_id_;
+    return;
+  }
   CHECK_CUDA_RUNTIME(cudaEventDestroy(static_cast<cudaEvent_t>(event)));
 }
 
@@ -116,6 +161,10 @@ int CudaMemOp::ConvertImageFormat(CNSyncedMemory* dst_mem, DataFormat dst_fmt,
                                   void* stream) {
   if (!dst_mem) return -1;
   CudaDeviceGuard guard(device_id_);
+  if (!guard.ok()) {
+    LOGE(CORE) << "CudaMemOp::ConvertImageFormat: skip, cannot set CUDA device " << device_id_;
+    return -1;
+  }
   auto cuda_stream = static_cast<cudaStream_t>(stream);
 
   void* dst = dst_mem->Allocate();

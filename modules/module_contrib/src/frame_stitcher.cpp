@@ -1,6 +1,10 @@
 
 #include "frame_stitcher.hpp"
 
+#include <algorithm>
+#include <cctype>
+#include <sstream>
+
 #include "cnstream_logging.hpp"
 
 namespace cnstream {
@@ -10,9 +14,51 @@ namespace {
 constexpr const char* kParamEnable = "enable";
 constexpr const char* kParamDirection = "direction";   // "horizontal" / "vertical"
 constexpr const char* kParamCropRatio = "crop_ratio";  // (0, 1)
+constexpr const char* kParamTargetModels = "target_models";  // 逗号分隔的模型名列表
 
 constexpr const char* kDirHorizontal = "horizontal";
 constexpr const char* kDirVertical = "vertical";
+
+std::string Trim(const std::string& s) {
+  size_t begin = 0;
+  size_t end = s.size();
+  while (begin < end && std::isspace(static_cast<unsigned char>(s[begin]))) ++begin;
+  while (end > begin && std::isspace(static_cast<unsigned char>(s[end - 1]))) --end;
+  return s.substr(begin, end - begin);
+}
+
+/**
+ * @brief 解析 target_models。
+ *
+ * 支持两种写法：
+ * - 逗号分隔字符串："model_a,model_b"
+ * - JSON 数组：["model_a","model_b"]（配置系统 ModuleConfig 会把数组 dump 成字符串）
+ *
+ * 空项会被忽略，重复项会被去重。
+ */
+std::vector<std::string> ParseTargetModels(const std::string& raw) {
+  std::string s = Trim(raw);
+  if (s.size() >= 2 && s.front() == '[' && s.back() == ']') {
+    s = s.substr(1, s.size() - 2);
+  }
+
+  std::vector<std::string> models;
+  std::stringstream ss(s);
+  std::string item;
+  while (std::getline(ss, item, ',')) {
+    item = Trim(item);
+    // JSON 数组元素可能带引号
+    if (item.size() >= 2 && (item.front() == '"' || item.front() == '\'') &&
+        item.back() == item.front()) {
+      item = Trim(item.substr(1, item.size() - 2));
+    }
+    if (item.empty()) continue;
+    if (std::find(models.begin(), models.end(), item) == models.end()) {
+      models.push_back(item);
+    }
+  }
+  return models;
+}
 
 }  // namespace
 
@@ -60,9 +106,25 @@ bool FrameStitcher::Open(ModuleParamSet param_set) {
       LOGE(STITCHER) << "invalid crop_ratio, fallback to " << crop_ratio_;
     }
   }
+  if (param_set.find(kParamTargetModels) != param_set.end()) {
+    target_models_ = ParseTargetModels(param_set.at(kParamTargetModels));
+  }
+  // 开启拼接时必须明确作用目标，否则拼出的图没有模型消费
+  if (enable_ && target_models_.empty()) {
+    LOGE(STITCHER) << "enable=true requires at least one target model in ["
+                   << kParamTargetModels << "]";
+    return false;
+  }
+
+  std::string targets;
+  for (const auto& model_name : target_models_) {
+    if (!targets.empty()) targets += ",";
+    targets += model_name;
+  }
   LOGI(STITCHER) << "Open: enable=" << (enable_ ? "true" : "false")
                  << ", direction=" << (direction_ == Direction::kVertical ? kDirVertical : kDirHorizontal)
-                 << ", crop_ratio=" << crop_ratio_;
+                 << ", crop_ratio=" << crop_ratio_
+                 << ", target_models=[" << targets << "]";
   return true;
 }
 
@@ -174,7 +236,15 @@ int FrameStitcher::Process(std::shared_ptr<FrameInfo> data) {
     derived->cur_scale_y = 1.0f;
   }
 
-  data->collection.AddIfNotExists(kModelInputImageTag, derived);
+  // 按 target_models 写入模块级派生图槽位；Set 覆盖已有值时给出告警
+  for (const auto& model_name : target_models_) {
+    const std::string tag = ModelInputImageTagForModel(model_name);
+    if (data->collection.HasValue(tag)) {
+      LOGW(STITCHER) << "overwrite existing module-level derived image, model=" << model_name
+                     << ", tag=" << tag << ", stream=" << stream_id;
+    }
+    data->collection.Set<ModelInputImagePtr>(tag, derived);
+  }
 
   {
     std::lock_guard<std::mutex> lk(cache_mtx_);

@@ -144,6 +144,9 @@ class PushHandlerIm {
   DataSink *module_ = nullptr;
   std::string stream_id_;
   std::atomic<bool> running_{false};
+  // Close 会被 SinkModule 移除、Python 包装析构和 PushHandlerIm 析构重复调用；
+  // 用一次性标志保证 encode_queue/FFmpeg/CUDA 资源只销毁一次。
+  std::atomic<bool> closed_{false};
   ModuleParamSet param_set_;
 
   std::string output_url_;

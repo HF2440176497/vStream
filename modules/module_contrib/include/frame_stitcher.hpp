@@ -5,13 +5,14 @@
 /**
  * @file frame_stitcher.hpp
  * @brief 帧拼接模块：缓存上一帧、裁剪后与当前帧拼接
- * 写入 FrameInfo::collection 的 kModelInputImageTag
+ * 将拼接图写入 target_models 中每个模型的模块级派生图 tag（ModelInputImageTagForModel）
  */
 
 #include <map>
 #include <memory>
 #include <mutex>
 #include <string>
+#include <vector>
 
 #include <opencv2/opencv.hpp>
 
@@ -37,6 +38,9 @@ class FrameStitcher : public Module, public ModuleCreator<FrameStitcher> {
   enum class Direction { kHorizontal = 0, kVertical = 1 };
   Direction direction_ = Direction::kHorizontal;
   float crop_ratio_ = 0.5f;  // 上一帧裁剪比例 (0, 1)，例如 0.5 表示取上一帧右半（水平）或下半（垂直）
+
+  // 拼接图的作用目标（模型名）。拼接图会写入这些模型的模块级派生图槽位。
+  std::vector<std::string> target_models_;
 
   std::mutex cache_mtx_;
   std::map<std::string, cv::Mat> frame_cache_;  // stream_id -> frame

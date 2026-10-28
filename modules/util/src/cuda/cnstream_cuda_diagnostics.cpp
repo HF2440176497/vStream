@@ -4,6 +4,7 @@
 
 #include <dirent.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <sys/syscall.h>
 #include <unistd.h>
 
@@ -34,9 +35,17 @@ constexpr size_t kMaxMapsLines = 200000;
 
 struct Summary {
   std::string vm_pin_kb = "?";
+  std::string vm_data_kb = "?";
   std::string threads = "?";
   std::string mem_available_kb = "?";
   std::string page_tables_kb = "?";
+  std::string commit_limit_kb = "?";
+  std::string committed_as_kb = "?";
+  std::string shmem_kb = "?";
+  std::string shm_used_kb = "?";
+  std::string overcommit = "?";
+  std::string smaps_anon_kb = "?";
+  std::string private_dirty_kb = "?";
   std::string nvidia_fds = "?";
   std::string maps_lines = "?";
   std::string max_map_count = "?";
@@ -143,8 +152,8 @@ void WriteFileSection(std::ostream& os, const char* title, const std::string& pa
   WriteIndented(os, content, max_lines);
 }
 
-void CollectHeader(std::ostream& os, const char* stage, const char* kind, int code,
-                   int attempt) {
+void CollectHeader(std::ostream& os, const char* mode, const char* stage,
+                   const char* kind, int code, int attempt) {
   std::time_t now = std::chrono::system_clock::to_time_t(
       std::chrono::system_clock::now());
   std::tm tm_now {};
@@ -154,12 +163,14 @@ void CollectHeader(std::ostream& os, const char* stage, const char* kind, int co
   char hostname[256] = {0};
   gethostname(hostname, sizeof(hostname) - 1);
 
-  os << "===== vStream CUDA failure snapshot =====\n";
+  os << "===== vStream CUDA " << (mode != nullptr ? mode : "?")
+     << " snapshot =====\n";
   os << "time=" << timestamp << "\n";
   os << "host=" << hostname << "\n";
   os << "pid=" << getpid() << " ppid=" << getppid()
      << " tid=" << static_cast<long>(syscall(SYS_gettid)) << "\n";
-  os << "stage=" << (stage != nullptr ? stage : "?")
+  os << "mode=" << (mode != nullptr ? mode : "?")
+     << " stage=" << (stage != nullptr ? stage : "?")
      << " kind=" << (kind != nullptr ? kind : "?")
      << " attempt=" << attempt << "\n";
   os << "code=" << code << " name=" << CudaInitErrorName(code) << "\n";
@@ -187,6 +198,7 @@ void CollectStatus(std::ostream& os, Summary* summary) {
                  "Cpus_allowed_list:", "Mems_allowed_list:",
                  "voluntary_ctxt_switches:", "nonvoluntary_ctxt_switches:"});
   summary->vm_pin_kb = FieldValue(content, "VmPin:");
+  summary->vm_data_kb = FieldValue(content, "VmData:");
   summary->threads = FieldValue(content, "Threads:");
 }
 
@@ -203,10 +215,14 @@ void CollectMeminfo(std::ostream& os, Summary* summary) {
   }
   WriteFiltered(os, content,
                 {"MemTotal:", "MemFree:", "MemAvailable:", "SwapTotal:", "SwapFree:",
-                 "CommitLimit:", "Committed_AS:", "PageTables:", "Slab:",
-                 "SUnreclaim:", "Mlocked:", "VmallocUsed:"});
+                 "CommitLimit:", "Committed_AS:", "Shmem:", "SReclaimable:",
+                 "SUnreclaim:", "KernelStack:", "PageTables:", "Slab:",
+                 "Mlocked:", "VmallocUsed:"});
   summary->mem_available_kb = FieldValue(content, "MemAvailable:");
   summary->page_tables_kb = FieldValue(content, "PageTables:");
+  summary->commit_limit_kb = FieldValue(content, "CommitLimit:");
+  summary->committed_as_kb = FieldValue(content, "Committed_AS:");
+  summary->shmem_kb = FieldValue(content, "Shmem:");
 }
 
 void CollectCgroup(std::ostream& os) {
@@ -350,6 +366,193 @@ void CollectFds(std::ostream& os, Summary* summary) {
     os << "  no /dev/nvidia* fd\n";
   }
   summary->nvidia_fds = std::to_string(nvidia_total);
+}
+
+void CollectSmapsRollup(std::ostream& os, Summary* summary) {
+  WriteSection(os, "smaps_rollup");
+  std::string content;
+  if (!ReadFile("/proc/self/smaps_rollup", kMaxSmallFile, &content)) {
+    os << "  /proc/self/smaps_rollup <unreadable errno=" << errno << ">\n";
+    return;
+  }
+  WriteFiltered(os, content,
+                {"Rss:", "Pss:", "Shared_Clean:", "Shared_Dirty:", "Private_Clean:",
+                 "Private_Dirty:", "Anonymous:", "KSM:", "LazyFree:",
+                 "AnonHugePages:", "ShmemPmdMapped:", "FilePmdMapped:",
+                 "Shared_Hugetlb:", "Private_Hugetlb:", "Swap:", "SwapPss:",
+                 "Locked:"});
+  summary->smaps_anon_kb = FieldValue(content, "Anonymous:");
+  summary->private_dirty_kb = FieldValue(content, "Private_Dirty:");
+}
+
+void CollectOvercommit(std::ostream& os, Summary* summary) {
+  WriteSection(os, "overcommit / vm limits");
+  const char* files[] = {
+      "/proc/sys/vm/overcommit_memory",
+      "/proc/sys/vm/overcommit_ratio",
+      "/proc/sys/vm/overcommit_kbytes",
+      "/proc/sys/vm/max_map_count",
+      "/proc/sys/kernel/pid_max",
+      "/proc/sys/fs/file-max",
+  };
+  for (const char* path : files) {
+    const std::string value = ReadFirstLine(path);
+    os << "  " << path << "=" << (value.empty() ? "?" : value) << "\n";
+  }
+  summary->overcommit = ReadFirstLine("/proc/sys/vm/overcommit_memory");
+}
+
+void CollectShm(std::ostream& os, Summary* summary) {
+  WriteSection(os, "/dev/shm");
+  struct statvfs vfs {};
+  if (statvfs("/dev/shm", &vfs) == 0) {
+    const unsigned long long unit = vfs.f_frsize != 0 ? vfs.f_frsize : 4096ULL;
+    const unsigned long long total_kb =
+        static_cast<unsigned long long>(vfs.f_blocks) * unit / 1024ULL;
+    const unsigned long long free_kb =
+        static_cast<unsigned long long>(vfs.f_bfree) * unit / 1024ULL;
+    const unsigned long long used_kb = total_kb >= free_kb ? total_kb - free_kb : 0ULL;
+    os << "  total_kb=" << total_kb << " used_kb=" << used_kb
+       << " free_kb=" << free_kb << "\n";
+    summary->shm_used_kb = std::to_string(used_kb);
+  } else {
+    os << "  statvfs(/dev/shm) failed errno=" << errno << "\n";
+  }
+
+  DIR* dir = opendir("/dev/shm");
+  if (dir == nullptr) {
+    os << "  /dev/shm <unreadable errno=" << errno << ">\n";
+    return;
+  }
+  int entries = 0;
+  int frame_entries = 0;
+  int shown = 0;
+  struct dirent* ent = nullptr;
+  while ((ent = readdir(dir)) != nullptr) {
+    if (ent->d_name[0] == '.') {
+      continue;
+    }
+    ++entries;
+    const std::string name(ent->d_name);
+    if (name.find("frame_shm") != std::string::npos ||
+        name.find("process_lock") != std::string::npos) {
+      ++frame_entries;
+    }
+    if (shown < 20) {
+      os << "  entry=" << name << "\n";
+      ++shown;
+    }
+  }
+  closedir(dir);
+  os << "  entries=" << entries << " frame_shm_or_lock_entries=" << frame_entries
+     << "\n";
+}
+
+int NvidiaFdCountForPid(int pid) {
+  const std::string dir_path = "/proc/" + std::to_string(pid) + "/fd";
+  DIR* dir = opendir(dir_path.c_str());
+  if (dir == nullptr) {
+    return -1;
+  }
+  int count = 0;
+  struct dirent* ent = nullptr;
+  while ((ent = readdir(dir)) != nullptr) {
+    if (ent->d_name[0] == '.') {
+      continue;
+    }
+    char target[4096] = {0};
+    const std::string link = dir_path + "/" + ent->d_name;
+    const ssize_t len = readlink(link.c_str(), target, sizeof(target) - 1);
+    if (len <= 0) {
+      continue;
+    }
+    target[len] = '\0';
+    if (std::string(target).find("/dev/nvidia") != std::string::npos) {
+      ++count;
+    }
+  }
+  closedir(dir);
+  return count;
+}
+
+std::string ReadPidStatusField(int pid, const char* key) {
+  std::string content;
+  const std::string path = "/proc/" + std::to_string(pid) + "/status";
+  if (!ReadFile(path, kMaxSmallFile, &content)) {
+    return "?";
+  }
+  const std::string value = FieldValue(content, key);
+  return value.empty() ? "?" : value;
+}
+
+std::string ReadPidCmdline(int pid) {
+  std::string cmdline;
+  const std::string path = "/proc/" + std::to_string(pid) + "/cmdline";
+  if (!ReadFile(path, 4096, &cmdline)) {
+    return "?";
+  }
+  std::replace(cmdline.begin(), cmdline.end(), '\0', ' ');
+  cmdline = Trim(cmdline);
+  if (cmdline.size() > 160) {
+    cmdline = cmdline.substr(0, 160) + "...";
+  }
+  return cmdline.empty() ? "?" : cmdline;
+}
+
+void CollectNvidiaHolders(std::ostream& os) {
+  WriteSection(os, "nvidia fd holders (PID namespace)");
+  DIR* proc = opendir("/proc");
+  if (proc == nullptr) {
+    os << "  /proc <unreadable errno=" << errno << ">\n";
+    return;
+  }
+  int holders = 0;
+  struct dirent* ent = nullptr;
+  while ((ent = readdir(proc)) != nullptr) {
+    if (ent->d_name[0] < '0' || ent->d_name[0] > '9') {
+      continue;
+    }
+    const int pid = std::atoi(ent->d_name);
+    if (pid <= 0) {
+      continue;
+    }
+    const int nvidia_fds = NvidiaFdCountForPid(pid);
+    if (nvidia_fds <= 0) {
+      continue;
+    }
+    ++holders;
+    os << "  pid=" << pid
+       << " ppid=" << ReadPidStatusField(pid, "PPid:")
+       << " state=" << ReadPidStatusField(pid, "State:")
+       << " threads=" << ReadPidStatusField(pid, "Threads:")
+       << " vm_data=" << ReadPidStatusField(pid, "VmData:")
+       << " vm_pin=" << ReadPidStatusField(pid, "VmPin:")
+       << " rss=" << ReadPidStatusField(pid, "VmRSS:")
+       << " nvidia_fds=" << nvidia_fds << "\n";
+    os << "    cmd=" << ReadPidCmdline(pid) << "\n";
+  }
+  closedir(proc);
+  os << "  holders=" << holders << "\n";
+
+  os << "  self parent chain:\n";
+  int pid = getpid();
+  for (int depth = 0; depth < 15 && pid > 0; ++depth) {
+    const std::string ppid_text = ReadPidStatusField(pid, "PPid:");
+    os << "    pid=" << pid
+       << " ppid=" << ppid_text
+       << " nvidia_fds=" << NvidiaFdCountForPid(pid)
+       << " cmd=" << ReadPidCmdline(pid) << "\n";
+    int ppid = 0;
+    try {
+      ppid = std::stoi(ppid_text);
+    } catch (...) {
+      break;
+    }
+    if (ppid <= 0 || ppid == pid) {
+      break;
+    }
+    pid = ppid;
+  }
 }
 
 void CollectThread(std::ostream& os) {
@@ -516,12 +719,22 @@ void CollectCudaToolkit(std::ostream& os) {
   os << "  cuda toolkit version <unreadable>\n";
 }
 
-void DumpImpl(const char* stage, const char* kind, int code, int attempt) {
-  static const bool enabled = []() {
+void DumpImpl(const char* mode, const char* stage, const char* kind, int code,
+              int attempt) {
+  static const bool enabled_all = []() {
     const char* value = std::getenv("VSTREAM_CUDA_DIAG");
     return !(value != nullptr && value[0] == '0' && value[1] == '\0');
   }();
-  if (!enabled) {
+  static const bool enabled_normal = []() {
+    const char* value = std::getenv("VSTREAM_CUDA_DIAG_NORMAL");
+    return !(value != nullptr && value[0] == '0' && value[1] == '\0');
+  }();
+  const std::string mode_str =
+      (mode != nullptr && mode[0] != '\0') ? mode : "failure";
+  if (!enabled_all) {
+    return;
+  }
+  if (mode_str == "normal" && !enabled_normal) {
     return;
   }
 
@@ -535,20 +748,22 @@ void DumpImpl(const char* stage, const char* kind, int code, int attempt) {
   }
 
   std::lock_guard<std::mutex> lock(g_diag_mutex);
-  const std::string key = std::string(kind != nullptr ? kind : "?") + ":" +
+  const std::string key = mode_str + ":" +
+                          std::string(kind != nullptr ? kind : "?") + ":" +
                           (stage != nullptr ? stage : "?");
   if (g_dumped.find(key) != g_dumped.end()) {
     return;
   }
 
-  std::string path =
-      dir + "/vstream_cuda_diag_" + std::to_string(getpid()) + ".log";
+  std::string path = dir + "/vstream_cuda_diag_" + mode_str + "_" +
+                     std::to_string(getpid()) + ".log";
   Summary summary;
   bool written = false;
   try {
     std::ofstream out(path, std::ios::out | std::ios::app);
     if (!out && dir != "/tmp") {
-      path = "/tmp/vstream_cuda_diag_" + std::to_string(getpid()) + ".log";
+      path = "/tmp/vstream_cuda_diag_" + mode_str + "_" +
+             std::to_string(getpid()) + ".log";
       out.open(path, std::ios::out | std::ios::app);
     }
     if (!out) {
@@ -557,13 +772,17 @@ void DumpImpl(const char* stage, const char* kind, int code, int attempt) {
       return;
     }
 
-    CollectHeader(out, stage, kind, code, attempt);
+    CollectHeader(out, mode_str.c_str(), stage, kind, code, attempt);
     CollectStatus(out, &summary);
     CollectLimits(out);
+    CollectSmapsRollup(out, &summary);
     CollectMeminfo(out, &summary);
+    CollectOvercommit(out, &summary);
     CollectCgroup(out);
+    CollectShm(out, &summary);
     CollectMaps(out, &summary);
     CollectFds(out, &summary);
+    CollectNvidiaHolders(out);
     CollectThread(out);
     CollectEnv(out);
     CollectGpuProc(out);
@@ -572,13 +791,19 @@ void DumpImpl(const char* stage, const char* kind, int code, int attempt) {
     CollectCudaToolkit(out);
 
     out << "\n--- notes ---\n"
+        << "  normal/failure snapshots are written to separate files;"
+        << " compare VmData/smaps_rollup/overcommit/dev_shm/nvidia holders.\n"
         << "  CUcontext/stream handles cannot be enumerated from userspace;"
         << " VmPin, nvidia fd count and maps size are proxies.\n"
         << "  GPU memory/process state is intentionally not queried in-process"
         << " (avoid blocking in a failed driver).\n"
         << "  Run on host: nvidia-smi;"
         << " nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv;"
-        << " dmesg -T | grep -iE 'nvrm|xid|gsp|nvidia'\n";
+        << " nvidia-smi -q -d MEMORY (BAR1);"
+        << " nvidia-smi -q -d ECC,ROW_REMAPPER,PAGE_RETIREMENT;"
+        << " dmesg -T | grep -iE 'nvrm|xid|gsp|nvidia|uvm'.\n"
+        << "  Residual/old GPU clients: ps -eo pid,ppid,etimes,rss,vsz,args;"
+        << " fuser -v /dev/nvidia*; check the forkserver parent chain above.\n";
     out << "===== end =====\n\n";
     out.flush();
     written = static_cast<bool>(out);
@@ -597,16 +822,25 @@ void DumpImpl(const char* stage, const char* kind, int code, int attempt) {
   }
 
   g_dumped.insert(key);
-  LOGW(CUDA_ENV) << "[CUDA_DIAG] stage=" << (stage != nullptr ? stage : "?")
+  LOGW(CUDA_ENV) << "[CUDA_DIAG] mode=" << mode_str
+                 << " stage=" << (stage != nullptr ? stage : "?")
                  << " kind=" << (kind != nullptr ? kind : "?")
                  << " attempt=" << attempt << " code=" << code
                  << " pid=" << getpid()
+                 << " vm_data_kb=" << summary.vm_data_kb
                  << " vm_pin_kb=" << summary.vm_pin_kb
+                 << " smaps_anon_kb=" << summary.smaps_anon_kb
+                 << " private_dirty_kb=" << summary.private_dirty_kb
                  << " threads=" << summary.threads
                  << " nvidia_fds=" << summary.nvidia_fds
                  << " maps_lines=" << summary.maps_lines << "/"
                  << summary.max_map_count
                  << " mem_available_kb=" << summary.mem_available_kb
+                 << " commit_limit_kb=" << summary.commit_limit_kb
+                 << " committed_as_kb=" << summary.committed_as_kb
+                 << " shmem_kb=" << summary.shmem_kb
+                 << " shm_used_kb=" << summary.shm_used_kb
+                 << " overcommit=" << summary.overcommit
                  << " page_tables_kb=" << summary.page_tables_kb
                  << " libcuda=" << (summary.libcuda.empty() ? "?" : summary.libcuda)
                  << " file=" << path;
@@ -616,7 +850,11 @@ void DumpImpl(const char* stage, const char* kind, int code, int attempt) {
 
 void DumpCudaFailureDiagnostics(const char* stage, const char* kind, int code,
                                 int attempt) {
-  DumpImpl(stage, kind, code, attempt);
+  DumpImpl("failure", stage, kind, code, attempt);
+}
+
+void DumpCudaNormalDiagnostics(const char* stage) {
+  DumpImpl("normal", stage, "normal", 0, 0);
 }
 
 }  // namespace cnstream
@@ -626,6 +864,8 @@ void DumpCudaFailureDiagnostics(const char* stage, const char* kind, int code,
 namespace cnstream {
 
 void DumpCudaFailureDiagnostics(const char*, const char*, int, int) {}
+
+void DumpCudaNormalDiagnostics(const char*) {}
 
 }  // namespace cnstream
 

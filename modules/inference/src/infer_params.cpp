@@ -231,7 +231,7 @@ void InferParamManager::RegisterAll(ParamRegister *pregister) {
     if (!STR2U32(value, &param_set->infer_context_pool_depth)) {
       return false;
     }
-    if (param_set->infer_context_pool_depth <= 0) {
+    if (param_set->infer_context_pool_depth == 0) {
       LOGE(INFER) << "Parse [infer_context_pool_depth] failed. value must be >= 1, but got ["
                   << value << "].";
       return false;

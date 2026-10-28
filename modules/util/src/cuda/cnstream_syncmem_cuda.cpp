@@ -31,7 +31,12 @@ CNSyncedMemoryCuda::~CNSyncedMemoryCuda() {
   if (cuda_ptr_ && own_dev_data_[DevType::CUDA]) {
     // Set device before freeing memory and restore previous device on scope exit
     CudaDeviceGuard guard(device_id_);
-    CHECK_CUDA_RUNTIME(cudaFree(cuda_ptr_));
+    if (!guard.ok()) {
+      LOGE(FRAME) << "CNSyncedMemoryCuda: skip cudaFree in destructor, cannot set device "
+                  << device_id_;
+    } else {
+      CHECK_CUDA_RUNTIME(cudaFree(cuda_ptr_));
+    }
   }
   cuda_ptr_ = nullptr;
   // cpu_ptr_ 交给 父类析构
@@ -48,6 +53,10 @@ void CNSyncedMemoryCuda::SetData(void* data) {
 void CNSyncedMemoryCuda::ToCpu() {
   if (0 == size_) return;
   CudaDeviceGuard guard(device_id_);
+  if (!guard.ok()) {
+    LOGE(FRAME) << "CNSyncedMemoryCuda::ToCpu: skip, cannot set CUDA device " << device_id_;
+    return;
+  }
   switch (head_) {
     case SyncedHead::UNINITIALIZED:
       if (cuda_ptr_ or cpu_ptr_) {
@@ -83,6 +92,10 @@ void CNSyncedMemoryCuda::ToCuda() {
   if (0 == size_) return;
   // Set device if specified and restore previous device on scope exit
   CudaDeviceGuard guard(device_id_);
+  if (!guard.ok()) {
+    LOGE(FRAME) << "CNSyncedMemoryCuda::ToCuda: skip, cannot set CUDA device " << device_id_;
+    return;
+  }
   switch (head_) {
     case SyncedHead::UNINITIALIZED:
       if (cuda_ptr_ or cpu_ptr_) {  // 不应该存在已分配的 CUDA 内存
@@ -127,7 +140,12 @@ void CNSyncedMemoryCuda::SetCudaData(void* data) {
       return;
     }
     CudaDeviceGuard guard(device_id_);
-    CHECK_CUDA_RUNTIME(cudaFree(cuda_ptr_));
+    if (!guard.ok()) {
+      LOGE(FRAME) << "CNSyncedMemoryCuda::SetCudaData: skip cudaFree, cannot set device "
+                  << device_id_;
+    } else {
+      CHECK_CUDA_RUNTIME(cudaFree(cuda_ptr_));
+    }
   }
   cuda_ptr_ = data;
   head_ = SyncedHead::HEAD_AT_CUDA;
