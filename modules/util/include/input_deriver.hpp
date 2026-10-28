@@ -24,12 +24,14 @@
  *
  *  InputDeriver 是"业务级模块输入定制"的可插拔组件（反射注册，同 Preproc/ObjFilter 模式）：
  *  - 推理前（前处理执行前）：
- *    从基准图派生模块专属输入图（如旋转），写入 FrameInfo collection 的模块级 kModelInputImageTag 模块级控制面
+ *    以"本模型当前可用输入图"为基准（业务预置模块级图 > 帧级派生图 > 原图）派生
+ *    模块专属输入图，写入 FrameInfo collection 的模块级 kModelInputImageTag 控制面；
  *    preproc 通过 GetModelInputImage(package, model_name) 无感知读取；
  *  - 推理后（后处理执行后）：把本模型产生的 obj 坐标从模块派生图坐标系
- *    还原到基准图坐标系，对下游模块透明。
+ *    还原到 Derive 的输入图坐标系，对下游模块透明。
  *
- *  NOTE：仅支持 object_infer=false 的帧级推理模块。
+ *  NOTE：仅支持 object_infer=false 的帧级推理模块；
+ *        对象级（object_infer=true）路径不注入 InputDeriver，也不参与输入派生。
  */
 
 #include <map>

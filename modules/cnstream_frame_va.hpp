@@ -487,7 +487,10 @@ inline constexpr char kCustomImagesTag[] = "CustomImages"; /*!< value type in Fr
 
 /**
  * @brief Collection tag for the derived "model input image".
- * 帧级派生图，各推理模块统一的 KEY，可以作用于所有下游推理模块
+ * 帧级派生图：作用于所有下游推理模块的兼容/全局广播控制面。
+ *
+ * @note 业务侧的模块输入定制应写模块级 tag（见 ModelInputImageTagForModel），
+ *       避免影响无关模型；帧级 tag 作为兼容回退。
  *
  * value type in FrameInfo::Collection : ModelInputImagePtr.
  */
@@ -497,10 +500,11 @@ inline constexpr char kModelInputImageTag[] = "ModelInputImage";
  * @brief 模块级派生图 tag
  *
  * 与帧级 kModelInputImageTag 构成两个控制面：
- * - 帧级：由上游业务模块（如 FrameStitcher）写入，作用于所有下游推理模块；
- * - 模块级：由本模块的 InputDeriver 写入，仅作用于该模型自己的推理
- *   因此模块级派生图在当前模块得到的信息需要还原到基准图
-
+ * - 模块级：由业务模块预置，或由本模块的 InputDeriver
+ *   在"当前可用输入图"基础上派生（按顺序叠加产生作用）；仅作用于该模型自己的推理。
+ *   派生图的坐标需由 InputDeriver::Restore 还原到其输入图空间。
+ * - 帧级：兼容/全局广播，作用于所有下游推理模块，仅保留为回退。
+ *
  * 解析优先级：模块级 > 帧级 > 原图（见 GetModelInputImage）
  */
 inline std::string ModelInputImageTagForModel(const std::string& model_name) {
@@ -512,8 +516,7 @@ inline std::string ModelInputImageTagForModel(const std::string& model_name) {
  * @struct ModelInputImage
  * @brief 派生出的模型输入图及其坐标还原元信息。
  *
- * 由业务侧处理模块构造并写入 kModelInputImageTag（帧级）
- * 或由 InputDeriver 写入模块级
+ * 由业务侧处理模块预置（推荐写模块级 tag）或由 InputDeriver 写入模块级
  */
 struct ModelInputImage {
   cv::Mat image;             ///< 派生图（BGR, CV_8UC3）
@@ -530,12 +533,19 @@ struct ModelInputImage {
 
   ///< 相对基准图（Derive 的输入图）顺时针旋转的角度，仅支持 0/90/180/270
   int rotation = 0;
+
+  ///< 是否已由 InputDeriver 派生。
+  ///< 业务模块预置的模块级图为 false；Deriver 完成派生后置 true，
+  ///< 用于避免同一帧重处理时二次派生（如重复旋转）。
+  bool derived = false;
 };
 
 using ModelInputImagePtr = std::shared_ptr<ModelInputImage>;
 
 
-// 或者帧级输入图，与所在推理模块无关
+/**
+ * @brief 帧级输入图解析（兼容/全局广播）：帧级派生图 > 原图。
+ */
 inline cv::Mat GetModelInputImage(const FrameInfoPtr& package) {
   if (package->collection.HasValue(kModelInputImageTag)) {
     auto derived = package->collection.Get<ModelInputImagePtr>(kModelInputImageTag);
@@ -549,6 +559,9 @@ inline cv::Mat GetModelInputImage(const FrameInfoPtr& package) {
 
 /**
  * @brief 带模块维度的输入图解析：模块级派生图 > 帧级派生图 > 原图。
+ *
+ * 模块级派生图可能由业务模块预置（如拼接图），
+ * 也可能由本模块的 InputDeriver 在此基础上派生（如旋转）；调用方无需区分。
  *
  * @param[in] package 帧信息。
  * @param[in] model_name 模型名（模块级控制面的维度）。
@@ -566,19 +579,18 @@ inline cv::Mat GetModelInputImage(const FrameInfoPtr& package, const std::string
 }
 
 /**
- * @brief 查询模块级派生图的尺寸（确定"实际输入图"基准）
+ * @brief 查询"实际输入图"的尺寸（必须与前处理读取的图一致）
  *
- * 仅当存在模块级派生图时返回 true 并填充 w/h；帧级派生图与原图不在此处理，以保持既有行为
+ * 解析优先级与 GetModelInputImage(package, model_name) 相同：
+ * 模块级派生图 > 帧级派生图 > 原图。
+ * 后处理应据此反算坐标，避免与前处理查找顺序不一致
  */
 inline bool GetModelInputImageSize(const FrameInfoPtr& package, const std::string& model_name,
                                    int* w, int* h) {
-  if (model_name.empty()) return false;
-  const std::string module_tag = ModelInputImageTagForModel(model_name);
-  if (!package->collection.HasValue(module_tag)) return false;
-  auto derived = package->collection.Get<ModelInputImagePtr>(module_tag);
-  if (!derived || derived->image.empty()) return false;
-  if (w) *w = derived->image.cols;
-  if (h) *h = derived->image.rows;
+  cv::Mat img = GetModelInputImage(package, model_name);
+  if (img.empty()) return false;
+  if (w) *w = img.cols;
+  if (h) *h = img.rows;
   return true;
 }
 

@@ -535,12 +535,25 @@ FrameInfoPtr ModelValidator::CreateFrameInfo(const cv::Mat& image,
   frame->SetImage(image);
   frame_info->collection.Add<DataFramePtr>(kDataFrameTag, frame);
 
-  // ModelInputImage — preproc reads image via GetModelInputImage()
+  // ModelInputImage — 帧级兼容槽位：preproc 通过 GetModelInputImage() 读取
   ModelInputImagePtr model_input = std::make_shared<ModelInputImage>();
   model_input->image = image.clone();
   model_input->cur_width = image.cols;
   model_input->cur_height = image.rows;
   frame_info->collection.Add<ModelInputImagePtr>(kModelInputImageTag, model_input);
+
+  // 模块级派生图槽位：验证 "模块级 > 帧级 > 原图" 解析链
+  if (model_loader_) {
+    const std::string model_name = model_loader_->get_name();
+    if (!model_name.empty()) {
+      ModelInputImagePtr module_input = std::make_shared<ModelInputImage>();
+      module_input->image = image;  // 与帧级同图，避免额外拷贝
+      module_input->cur_width = image.cols;
+      module_input->cur_height = image.rows;
+      frame_info->collection.Add<ModelInputImagePtr>(
+          ModelInputImageTagForModel(model_name), module_input);
+    }
+  }
 
   // InferObjs — postproc writes detection results here
   InferObjsPtr objs = std::make_shared<InferObjs>();

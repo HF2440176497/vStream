@@ -62,8 +62,10 @@ class Post_STDC_CPU: public Postproc {
     LOGD(POSTPROC) << "Execute for data: " << package->GetStreamId() << ", timestamp: " << package->GetTimestamp();
 
     DataFramePtr frame = package->collection.Get<DataFramePtr>(cnstream::kDataFrameTag);
-    const int img_w = frame->GetWidth();
-    const int img_h = frame->GetHeight();
+    // 实际送入前处理的图像尺寸：模块级派生图优先，否则为原图
+    int img_w = frame->GetWidth();
+    int img_h = frame->GetHeight();
+    GetModelInputImageSize(package, model->get_name(), &img_w, &img_h);
 
     int output_index = 0;
     const float* output = cpu_outputs[output_index];

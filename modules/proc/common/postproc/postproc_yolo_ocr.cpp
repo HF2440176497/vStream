@@ -244,8 +244,8 @@ class Post_YOLOv5_CPU_OCR: public Postproc {
     }
 
     DataFramePtr frame = package->collection.Get<DataFramePtr>(cnstream::kDataFrameTag);
-    // 实际送入前处理的图像尺寸：模块级派生图（如旋转图）优先，否则为原图。
-    // 此处后处理后得到的坐标都是相对于派生图的
+    // 实际送入前处理的图像尺寸：模块级派生图 > 帧级派生图 > 原图。
+    // 此处后处理后得到的坐标都是相对于该实际输入图的。
     int img_w = frame->GetWidth();
     int img_h = frame->GetHeight();
     GetModelInputImageSize(package, model->get_name(), &img_w, &img_h);

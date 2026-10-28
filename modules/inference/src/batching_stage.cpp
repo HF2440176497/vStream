@@ -79,8 +79,9 @@ void CpuPreprocessingBatchingStage::ProcessOneFrame(std::shared_ptr<FrameInfo> f
   for (auto it : value.datas) {
     cpu_outputs.push_back(reinterpret_cast<float*>(it.Offset(batch_idx)));
   }
-  // 输入派生（业务级模块输入定制）：在前处理执行前生成模块专属输入图，
-  // preproc 通过 GetModelInputImage(package, model_name) 读取
+  // 输入派生（业务级模块输入定制）：在前处理执行前生成模块专属输入图。
+  // 基准为"本模型当前可用输入图"（业务预置模块级图 > 帧级派生图 > 原图），
+  // preproc 通过 GetModelInputImage(package, model_name) 读取派生结果。
   if (input_deriver_) {
     input_deriver_->Derive(finfo, model_->get_name());
   }

@@ -59,8 +59,16 @@ class Rotate90InputDeriver: public InputDeriver {
   int Derive(const FrameInfoPtr& finfo, const std::string& model_name) override {
     if (!finfo || model_name.empty()) return -1;
 
-    // 基准图：帧级派生图（若存在）> 原图
-    cv::Mat base_img = GetModelInputImage(finfo);
+    const std::string module_tag = ModelInputImageTagForModel(model_name);
+    // 幂等：本模型槽位若已由 Deriver 派生过（例如同一帧重处理），直接复用，
+    // 避免在已派生的图上再次派生（如重复旋转）。
+    if (finfo->collection.HasValue(module_tag)) {
+      auto existing = finfo->collection.Get<ModelInputImagePtr>(module_tag);
+      if (existing && existing->derived) return 0;
+    }
+
+    // 基准图：本模型当前可用输入图（业务预置模块级图 > 帧级派生图 > 原图）
+    cv::Mat base_img = GetModelInputImage(finfo, model_name);
     if (base_img.empty()) {
       LOGE(DERIVE) << "Rotate90: base image is empty";
       return -1;
@@ -79,16 +87,20 @@ class Rotate90InputDeriver: public InputDeriver {
     meta->cur_scale_x = 1.0f;
     meta->cur_scale_y = 1.0f;
     meta->rotation = rotation_;
+    meta->derived = true;
 
     // 覆盖写：模块级 key 归本模块独占，重处理同一帧时刷新元数据
-    finfo->collection.Set<ModelInputImagePtr>(ModelInputImageTagForModel(model_name), meta);
+    finfo->collection.Set<ModelInputImagePtr>(module_tag, meta);
     return 0;
   }
 
   /***
-   * @brief 从模块派生图坐标逆变换回基准图坐标
+   * @brief 从模块派生图坐标逆变换回 Derive 的输入图坐标
    * @return 0 成功，-1 失败
    * 当不需要处理的时候，也是返回 0
+   *
+   * @note 终点是 Derive 的输入图（可能是业务模块预置的模块级图，如拼接图），
+   *       不一定是原图；是否继续回到原图由业务层决定。
    */
   int Restore(const FrameInfoPtr& finfo, const std::string& model_name) override {
     if (!finfo || model_name.empty()) return -1;
@@ -107,7 +119,7 @@ class Rotate90InputDeriver: public InputDeriver {
 
     LOGI(DERIVE) << "Restore for model:" << model_name
                   << ", derived size [" << derived_h << " " << derived_w << "]"
-                  << ", rotation: " << rotation_;
+                  << ", rotation: " << meta->rotation;
 
     std::lock_guard<std::mutex> lock(objs_holder->mutex_);
     ObjsVec& objs = objs_holder->objs_;
