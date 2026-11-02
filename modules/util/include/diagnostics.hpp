@@ -13,6 +13,7 @@ namespace cnstream {
  * env:
  *   VSTREAM_CUDA_DIAG=0          关闭全部采集
  *   VSTREAM_CUDA_DIAG_NORMAL=0   只关闭 normal 采集（默认开启）
+ *   VSTREAM_CUDA_DIAG_NVML=0     关闭设备侧采集（默认通过 dlopen 读 NVML）
  *   VSTREAM_CUDA_DIAG_DIR=dir    输出目录（默认 /tmp，需已存在）
  *
  * @param stage   阶段（load / probe / infer_pool / sink_stream / CUDA 初始化 stage）
@@ -27,7 +28,8 @@ void DumpDiagSnapshotOnError(const char* stage, const char* kind, int code,
  * 采集一次正常路径快照（每个 stage 每进程只写一次）。
  * 包含 VmSize/VmData/smaps_rollup/overcommit/dev/shm/
  * 进程内 nvidia fd 持有者及父进程链（可用于发现旧进程/forkserver 父进程残留）、
- * 最大 VMA 列表（定位 VmSize 的固定 VA 预留来源）。
+ * 最大 VMA 列表（定位 VmSize 的固定 VA 预留来源）、
+ * NVML 设备状态（显存/BAR1/compute 进程数）。
  */
 void DumpDiagSnapshotAtStage(const char* stage);
 

@@ -5,6 +5,7 @@
 #if defined(VSTREAM_USE_CUDA) && defined(__linux__)
 
 #include <dirent.h>
+#include <dlfcn.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
 #include <sys/syscall.h>
@@ -50,9 +51,17 @@ struct Summary {
   std::string private_dirty_kb = "?";
   std::string largest_kb = "?";
   std::string nvidia_fds = "?";
+  std::string nvidia_holders = "?";
   std::string maps_lines = "?";
   std::string max_map_count = "?";
   std::string libcuda;
+  // 设备侧（NVML，只读）。容器内 memory.* 是 GPU 全局值，和宿主机一致。
+  std::string gpu_total_mib = "?";
+  std::string gpu_used_mib = "?";
+  std::string gpu_free_mib = "?";
+  std::string bar1_used_mib = "?";
+  std::string gpu_clients = "?";
+  std::string gpu_clients_in_proc = "?";
 };
 
 std::mutex g_diag_mutex;
@@ -155,6 +164,50 @@ void WriteFileSection(std::ostream& os, const char* title, const std::string& pa
   WriteIndented(os, content, max_lines);
 }
 
+// 进程已运行秒数：启动/失败时刻的时间对齐用（与宿主采样按秒对照）。
+std::string SelfElapsedSeconds() {
+  std::string stat;
+  if (!ReadFile("/proc/self/stat", 4096, &stat)) {
+    return "?";
+  }
+  const size_t rparen = stat.rfind(')');
+  if (rparen == std::string::npos) {
+    return "?";
+  }
+  std::istringstream rest(stat.substr(rparen + 1));
+  std::string field;
+  if (!(rest >> field)) {  // state
+    return "?";
+  }
+  for (int f = 4; f <= 22; ++f) {  // 22 = starttime (clock ticks since boot)
+    if (!(rest >> field)) {
+      return "?";
+    }
+  }
+  unsigned long long start_ticks = 0;
+  try {
+    start_ticks = std::stoull(field);
+  } catch (...) {
+    return "?";
+  }
+  std::string uptime_text;
+  double uptime = 0.0;
+  if (!ReadFile("/proc/uptime", 256, &uptime_text)) {
+    return "?";
+  }
+  try {
+    uptime = std::stod(uptime_text);
+  } catch (...) {
+    return "?";
+  }
+  const long hz = sysconf(_SC_CLK_TCK);
+  if (hz <= 0) {
+    return "?";
+  }
+  const double elapsed = uptime - static_cast<double>(start_ticks) / hz;
+  return elapsed >= 0.0 ? std::to_string(static_cast<long long>(elapsed)) : "?";
+}
+
 void CollectHeader(std::ostream& os, const char* mode, const char* stage,
                    const char* kind, int code, int attempt) {
   std::time_t now = std::chrono::system_clock::to_time_t(
@@ -171,7 +224,8 @@ void CollectHeader(std::ostream& os, const char* mode, const char* stage,
   os << "time=" << timestamp << "\n";
   os << "host=" << hostname << "\n";
   os << "pid=" << getpid() << " ppid=" << getppid()
-     << " tid=" << static_cast<long>(syscall(SYS_gettid)) << "\n";
+     << " tid=" << static_cast<long>(syscall(SYS_gettid))
+     << " etimes_s=" << SelfElapsedSeconds() << "\n";
   os << "mode=" << (mode != nullptr ? mode : "?")
      << " stage=" << (stage != nullptr ? stage : "?")
      << " kind=" << (kind != nullptr ? kind : "?")
@@ -579,7 +633,7 @@ std::string ReadPidCmdline(int pid) {
   return cmdline.empty() ? "?" : cmdline;
 }
 
-void CollectNvidiaHolders(std::ostream& os) {
+void CollectNvidiaHolders(std::ostream& os, Summary* summary) {
   WriteSection(os, "nvidia fd holders (PID namespace)");
   DIR* proc = opendir("/proc");
   if (proc == nullptr) {
@@ -614,6 +668,7 @@ void CollectNvidiaHolders(std::ostream& os) {
   }
   closedir(proc);
   os << "  holders=" << holders << "\n";
+  summary->nvidia_holders = std::to_string(holders);
 
   os << "  self parent chain:\n";
   int pid = getpid();
@@ -651,10 +706,8 @@ void CollectThread(std::ostream& os) {
   if (ReadFile(base + "/wchan", 4096, &content)) {
     os << "  wchan=" << Trim(content) << "\n";
   }
-  if (ReadFile(base + "/stack", 8192, &content)) {
-    os << "  kernel_stack:\n";
-    WriteIndented(os, content, 20);
-  }
+  // 不采 /proc/<tid>/stack：多为读取路径自身（proc_pid_stack），且需 root，
+  // 对定位 context 创建失败无帮助，去掉 20 行噪声。
 }
 
 void CollectEnv(std::ostream& os) {
@@ -675,7 +728,13 @@ void CollectEnv(std::ostream& os) {
         (entry.find("CUDA_") == 0 || entry.find("NVIDIA_") == 0 ||
          entry.find("LD_") == 0 || entry.find("VSTREAM_") == 0 ||
          entry.find("MPS") != std::string::npos)) {
-      os << "  " << entry << "\n";
+      // NVIDIA_REQUIRE_CUDA 是镜像里几百个 brand/driver 组合的长串，
+      // 对定位无帮助，截断避免每个快照都占几 KB。
+      std::string shown = entry;
+      if (shown.find("NVIDIA_REQUIRE_CUDA=") == 0 && shown.size() > 160) {
+        shown = shown.substr(0, 160) + "...";
+      }
+      os << "  " << shown << "\n";
     }
     start = end + 1;
   }
@@ -800,6 +859,190 @@ void CollectCudaToolkit(std::ostream& os) {
   os << "  cuda toolkit version <unreadable>\n";
 }
 
+// ---------------------------------------------------------------------------
+// 设备侧只读采集（NVML）。用 dlopen 动态加载，避免给 util 增加链接依赖；
+// 只取 memory / BAR1 / compute 进程三项，都是轻量查询。
+// 注意：容器内 memory.* 是 GPU 全局值；compute 进程的 PID 可能是宿主 PID，
+// 因此只按"能否在 /proc 解析"标注，不做强弱判断。
+// 若担心驱动异常时 NVML 调用卡住，可设 VSTREAM_CUDA_DIAG_NVML=0 关闭。
+// ---------------------------------------------------------------------------
+using NvmlReturn = int;
+using NvmlDevice = void*;
+
+struct NvmlMemory {
+  unsigned long long total;
+  unsigned long long free;
+  unsigned long long used;
+};
+
+struct NvmlBar1Memory {
+  unsigned long long total;
+  unsigned long long free;
+  unsigned long long used;
+};
+
+struct NvmlProcessInfo {
+  unsigned int pid;
+  unsigned long long used_gpu_memory;
+};
+
+constexpr NvmlReturn kNvmlSuccess = 0;
+constexpr unsigned long long kNvmlValueNotAvailable = ~0ULL;
+
+struct NvmlApi {
+  void* handle = nullptr;
+  bool ready = false;
+  NvmlReturn (*init)() = nullptr;
+  NvmlReturn (*get_count)(unsigned int*) = nullptr;
+  NvmlReturn (*get_handle)(unsigned int, NvmlDevice*) = nullptr;
+  NvmlReturn (*get_name)(NvmlDevice, char*, unsigned int) = nullptr;
+  NvmlReturn (*get_memory)(NvmlDevice, NvmlMemory*) = nullptr;
+  NvmlReturn (*get_bar1)(NvmlDevice, NvmlBar1Memory*) = nullptr;
+  NvmlReturn (*get_procs)(NvmlDevice, unsigned int*, NvmlProcessInfo*) = nullptr;
+};
+
+NvmlApi& Nvml() {
+  static NvmlApi api = []() {
+    NvmlApi result;
+    const char* disable = std::getenv("VSTREAM_CUDA_DIAG_NVML");
+    if (disable != nullptr && disable[0] == '0' && disable[1] == '\0') {
+      return result;
+    }
+    result.handle = dlopen("libnvidia-ml.so.1", RTLD_NOW | RTLD_LOCAL);
+    if (result.handle == nullptr) {
+      return result;
+    }
+    auto sym = [&result](const char* name) {
+      return dlsym(result.handle, name);
+    };
+    result.init = reinterpret_cast<NvmlReturn (*)()>(
+        sym("nvmlInit_v2") != nullptr ? sym("nvmlInit_v2") : sym("nvmlInit"));
+    result.get_count = reinterpret_cast<NvmlReturn (*)(unsigned int*)>(
+        sym("nvmlDeviceGetCount_v2") != nullptr ? sym("nvmlDeviceGetCount_v2")
+                                                : sym("nvmlDeviceGetCount"));
+    result.get_handle = reinterpret_cast<NvmlReturn (*)(unsigned int, NvmlDevice*)>(
+        sym("nvmlDeviceGetHandleByIndex_v2") != nullptr
+            ? sym("nvmlDeviceGetHandleByIndex_v2")
+            : sym("nvmlDeviceGetHandleByIndex"));
+    result.get_name = reinterpret_cast<NvmlReturn (*)(NvmlDevice, char*, unsigned int)>(
+        sym("nvmlDeviceGetName"));
+    result.get_memory = reinterpret_cast<NvmlReturn (*)(NvmlDevice, NvmlMemory*)>(
+        sym("nvmlDeviceGetMemoryInfo"));
+    result.get_bar1 = reinterpret_cast<NvmlReturn (*)(NvmlDevice, NvmlBar1Memory*)>(
+        sym("nvmlDeviceGetBAR1MemoryInfo"));
+    // 只用 v1：结构体只有 {pid, usedGpuMemory}，ABI 最稳定。
+    result.get_procs = reinterpret_cast<NvmlReturn (*)(NvmlDevice, unsigned int*,
+                                                       NvmlProcessInfo*)>(
+        sym("nvmlDeviceGetComputeRunningProcesses"));
+    if (result.init == nullptr || result.get_count == nullptr ||
+        result.get_handle == nullptr || result.get_memory == nullptr) {
+      return result;
+    }
+    if (result.init() != kNvmlSuccess) {
+      return result;
+    }
+    result.ready = true;
+    return result;
+  }();
+  return api;
+}
+
+void CollectDeviceState(std::ostream& os, Summary* summary) {
+  WriteSection(os, "device state (nvml)");
+  NvmlApi& api = Nvml();
+  if (!api.ready) {
+    os << "  nvml unavailable (libnvidia-ml.so.1 load/init failed, "
+          "VSTREAM_CUDA_DIAG_NVML may be 0)\n";
+    return;
+  }
+
+  unsigned int count = 0;
+  if (api.get_count(&count) != kNvmlSuccess || count == 0) {
+    os << "  nvml get_device_count failed count=" << count << "\n";
+    return;
+  }
+  // 部署约定所有通道都在 device 0 上。
+  const unsigned int index = 0;
+  NvmlDevice device = nullptr;
+  if (api.get_handle(index, &device) != kNvmlSuccess || device == nullptr) {
+    os << "  nvml get_handle(" << index << ") failed\n";
+    return;
+  }
+
+  char name[96] = {0};
+  if (api.get_name != nullptr &&
+      api.get_name(device, name, sizeof(name) - 1) == kNvmlSuccess) {
+    os << "  name=" << name << "\n";
+  }
+
+  NvmlMemory memory {};
+  if (api.get_memory(device, &memory) == kNvmlSuccess) {
+    const unsigned long long mib = 1024ULL * 1024ULL;
+    os << "  memory_total_mib=" << memory.total / mib
+       << " used_mib=" << memory.used / mib
+       << " free_mib=" << memory.free / mib << "\n";
+    summary->gpu_total_mib = std::to_string(memory.total / mib);
+    summary->gpu_used_mib = std::to_string(memory.used / mib);
+    summary->gpu_free_mib = std::to_string(memory.free / mib);
+  } else {
+    os << "  nvml get_memory failed\n";
+  }
+
+  if (api.get_bar1 != nullptr) {
+    NvmlBar1Memory bar1 {};
+    if (api.get_bar1(device, &bar1) == kNvmlSuccess) {
+      const unsigned long long mib = 1024ULL * 1024ULL;
+      os << "  bar1_total_mib=" << bar1.total / mib
+         << " bar1_used_mib=" << bar1.used / mib
+         << " bar1_free_mib=" << bar1.free / mib << "\n";
+      summary->bar1_used_mib = std::to_string(bar1.used / mib);
+    } else {
+      os << "  nvml get_bar1 not supported/available\n";
+    }
+  }
+
+  if (api.get_procs == nullptr) {
+    return;
+  }
+  unsigned int proc_count = 0;
+  if (api.get_procs(device, &proc_count, nullptr) != kNvmlSuccess) {
+    os << "  nvml get_compute_processes(count) failed\n";
+    return;
+  }
+  os << "  compute_processes=" << proc_count << "\n";
+  summary->gpu_clients = std::to_string(proc_count);
+  if (proc_count == 0) {
+    summary->gpu_clients_in_proc = "0";
+    return;
+  }
+
+  std::vector<NvmlProcessInfo> infos(proc_count);
+  unsigned int filled = proc_count;
+  if (api.get_procs(device, &filled, infos.data()) != kNvmlSuccess) {
+    os << "  nvml get_compute_processes(list) failed\n";
+    return;
+  }
+  int in_proc = 0;
+  for (unsigned int i = 0; i < filled; ++i) {
+    const NvmlProcessInfo& info = infos[i];
+    const bool resolvable =
+        access(("/proc/" + std::to_string(info.pid)).c_str(), F_OK) == 0;
+    if (resolvable) {
+      ++in_proc;
+    }
+    os << "    pid=" << info.pid
+       << " used_mib=" << (info.used_gpu_memory == kNvmlValueNotAvailable
+                               ? 0ULL
+                               : info.used_gpu_memory / (1024ULL * 1024ULL))
+       << " in_my_pid_ns=" << (resolvable ? "yes" : "no");
+    if (resolvable) {
+      os << " cmd=" << ReadPidCmdline(static_cast<int>(info.pid));
+    }
+    os << "\n";
+  }
+  summary->gpu_clients_in_proc = std::to_string(in_proc);
+}
+
 void DumpImpl(const char* mode, const char* stage, const char* kind, int code,
               int attempt) {
   static const bool enabled_all = []() {
@@ -864,7 +1107,8 @@ void DumpImpl(const char* mode, const char* stage, const char* kind, int code,
     CollectMaps(out, &summary);
     CollectLargestMappings(out, &summary);
     CollectFds(out, &summary);
-    CollectNvidiaHolders(out);
+    CollectDeviceState(out, &summary);
+    CollectNvidiaHolders(out, &summary);
     CollectThread(out);
     CollectEnv(out);
     CollectGpuProc(out);
@@ -877,8 +1121,9 @@ void DumpImpl(const char* mode, const char* stage, const char* kind, int code,
         << " compare VmData/smaps_rollup/overcommit/dev_shm/nvidia holders.\n"
         << "  CUcontext/stream handles cannot be enumerated from userspace;"
         << " VmPin, nvidia fd count and maps size are proxies.\n"
-        << "  GPU memory/process state is intentionally not queried in-process"
-        << " (avoid blocking in a failed driver).\n"
+        << "  Device state comes from NVML (read-only, dlopen); memory.* is"
+        << " GPU-global, compute PIDs may belong to another PID namespace.\n"
+        << "  Disable with VSTREAM_CUDA_DIAG_NVML=0 if NVML blocks on a wedged driver.\n"
         << "  Run on host: nvidia-smi;"
         << " nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv;"
         << " nvidia-smi -q -d MEMORY (BAR1);"
@@ -916,6 +1161,12 @@ void DumpImpl(const char* mode, const char* stage, const char* kind, int code,
                  << " private_dirty_kb=" << summary.private_dirty_kb
                  << " threads=" << summary.threads
                  << " nvidia_fds=" << summary.nvidia_fds
+                 << " nvidia_holders=" << summary.nvidia_holders
+                 << " gpu_used_mib=" << summary.gpu_used_mib
+                 << " gpu_free_mib=" << summary.gpu_free_mib
+                 << " bar1_used_mib=" << summary.bar1_used_mib
+                 << " gpu_clients=" << summary.gpu_clients
+                 << " gpu_clients_in_pid_ns=" << summary.gpu_clients_in_proc
                  << " maps_lines=" << summary.maps_lines << "/"
                  << summary.max_map_count
                  << " mem_available_kb=" << summary.mem_available_kb
