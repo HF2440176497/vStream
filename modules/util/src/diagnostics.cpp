@@ -1,6 +1,8 @@
-#include "cuda/cnstream_cuda_diagnostics.hpp"
+#include "diagnostics.hpp"
 
-#if defined(__linux__)
+// 本文件位于公共 src/ 目录，所有平台都会编译，保证接口符号始终存在；
+// 平台相关的采集实现只在 CUDA 平台生效，其余平台退化为空操作。
+#if defined(VSTREAM_USE_CUDA) && defined(__linux__)
 
 #include <dirent.h>
 #include <sys/stat.h>
@@ -929,12 +931,12 @@ void DumpImpl(const char* mode, const char* stage, const char* kind, int code,
 
 }  // namespace
 
-void DumpCudaFailureDiagnostics(const char* stage, const char* kind, int code,
-                                int attempt) {
+void DumpDiagSnapshotOnError(const char* stage, const char* kind, int code,
+                             int attempt) {
   DumpImpl("failure", stage, kind, code, attempt);
 }
 
-void DumpCudaNormalDiagnostics(const char* stage) {
+void DumpDiagSnapshotAtStage(const char* stage) {
   DumpImpl("normal", stage, "normal", 0, 0);
 }
 
@@ -944,10 +946,10 @@ void DumpCudaNormalDiagnostics(const char* stage) {
 
 namespace cnstream {
 
-void DumpCudaFailureDiagnostics(const char*, const char*, int, int) {}
+void DumpDiagSnapshotOnError(const char*, const char*, int, int) {}
 
-void DumpCudaNormalDiagnostics(const char*) {}
+void DumpDiagSnapshotAtStage(const char*) {}
 
 }  // namespace cnstream
 
-#endif  // defined(__linux__)
+#endif  // defined(VSTREAM_USE_CUDA) && defined(__linux__)

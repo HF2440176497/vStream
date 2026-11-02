@@ -1,6 +1,6 @@
 #include "data_handler_push.hpp"
 #include "cnstream_logging.hpp"
-#include "cuda/cnstream_cuda_diagnostics.hpp"
+#include "diagnostics.hpp"
 #include "data_converter.hpp"
 
 #include <algorithm>
@@ -77,7 +77,7 @@ bool PushHandlerIm::Open() {
     ClearStream();
     return false;
   }
-  DumpCudaNormalDiagnostics("sink_stream");
+  DumpDiagSnapshotAtStage("sink_stream");
   running_.store(true);
   encode_thread_ = std::thread(&PushHandlerIm::EncodeWorkerLoop, this);
   return true;

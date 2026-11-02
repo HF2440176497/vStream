@@ -15,7 +15,7 @@ extern "C" {
 #endif
 
 #include "cnstream_logging.hpp"
-#include "cuda/cnstream_cuda_diagnostics.hpp"
+#include "diagnostics.hpp"
 
 namespace cnstream {
 
@@ -109,7 +109,7 @@ void ClearStaleCudaError(const char* stage) {
   LOGW(CUDA_ENV) << "[" << name << "] existed CUDA error before init: "
                  << CudaInitErrorName(static_cast<int>(stale)) << "; cleared";
 #endif
-  DumpCudaFailureDiagnostics(name, "stale", static_cast<int>(stale), 0);
+  DumpDiagSnapshotOnError(name, "stale", static_cast<int>(stale), 0);
 }
 
 CudaInitGate& CudaInitGate::Instance() {
@@ -195,7 +195,7 @@ CudaInitResult RunCudaInit(const char* stage, const CudaInitCall& call,
       return result;
     }
 
-    DumpCudaFailureDiagnostics(name, "init", code, attempt);
+    DumpDiagSnapshotOnError(name, "init", code, attempt);
 
     // 无错误码可分类
     result.last_class = classify != nullptr ? classify(code) : CudaInitErrorClass::kTransient;

@@ -13,7 +13,7 @@ extern "C" {
 #include <unordered_map>
 
 #include "cnstream_logging.hpp"
-#include "cuda/cnstream_cuda_diagnostics.hpp"
+#include "diagnostics.hpp"
 #include "cuda/cnstream_cuda_init.hpp"
 
 namespace cnstream {
@@ -76,7 +76,7 @@ bool ProbeCudaDevice(int device_id) {
     return false;
   }
   // 正常路径基线快照：与 failure 快照分开文件，用于对比 VmData/smaps/overcommit/shm。
-  DumpCudaNormalDiagnostics("probe");
+  DumpDiagSnapshotAtStage("probe");
   return true;
 }
 

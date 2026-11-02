@@ -29,7 +29,7 @@
 #include <thread>
 #include <mutex>
 
-#include "cuda/cnstream_cuda_diagnostics.hpp"
+#include "diagnostics.hpp"
 #include "model_loader.hpp"
 #include "infer_engine.hpp"
 #include "infer_trans_data_helper.hpp"
@@ -451,7 +451,7 @@ bool Inference::Open(ModuleParamSet raw_params) {
     Close();
     return false;
   }
-  DumpCudaNormalDiagnostics("infer_pool");
+  DumpDiagSnapshotAtStage("infer_pool");
 
   return true;
 }
