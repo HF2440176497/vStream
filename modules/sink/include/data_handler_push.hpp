@@ -42,7 +42,10 @@ static std::string kDefaultEncoder = "h264_rkmpp";
 #else
 static constexpr AVPixelFormat kEncoderPixFmt = AV_PIX_FMT_YUV420P;
 static constexpr AVPixelFormat kSwsPixFmt     = AV_PIX_FMT_YUV420P;
-static std::string kDefaultEncoder;
+// 必须显式指定软编编码器：avcodec_find_encoder(AV_CODEC_ID_H264) 返回的是注册表里
+// 第一个 codec_id 匹配的编码器，可能是 h264_v4l2m2m / h264_vaapi / h264_qsv / libopenh264，
+// 与本分支硬编码的 kEncoderPixFmt(YUV420P) 不兼容时会在 avcodec_open2 失败。
+static std::string kDefaultEncoder = "libx264";
 #endif
 
 namespace cnstream {
@@ -126,7 +129,7 @@ class PushHandlerIm {
   virtual void CleanDeviceCtx() {}
   virtual bool SendDataFrame(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts) = 0;
   bool SendFrame(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts);
-  void EnsureSwsContext(AVPixelFormat src_pix_fmt, int src_width, int src_height);
+  bool EnsureSwsContext(AVPixelFormat src_pix_fmt, int src_width, int src_height);
   bool SendFrameFb(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts);
   bool EncodeFrame(AVFrame* frame);
   void ClearStream();

@@ -7,6 +7,10 @@
 #include <opencv2/opencv.hpp>
 #include <cmath>
 
+extern "C" {
+#include <libavutil/pixdesc.h>
+}
+
 namespace cnstream {
 
 bool PushHandlerIm::Open() {
@@ -53,6 +57,38 @@ bool PushHandlerIm::Open() {
   output_timeout_ms_       = GetIntParam(param_set_, key_output_timeout_ms).value_or(output_timeout_ms_);
   output_tcp_nodelay_      = GetIntParam(param_set_, key_output_tcp_nodelay).value_or(output_tcp_nodelay_);
   output_send_buffer_size_ = GetIntParam(param_set_, key_output_send_buffer_size).value_or(output_send_buffer_size_);
+
+  // 参数合法性检查。放在 InitStream 之前，避免带着非法值一路走到编码器内部才报错：
+  //  - fps_ <= 0：ControlFps/ComputePts/InitStream 都会除零
+  //  - 宽高 <= 0 或非偶数：YUV420P/NV12 这类 4:2:0 格式要求宽高为偶数，
+  //    libx264 会直接拒绝（"width or height not divisible by 2"），nvenc 同样不接受
+  if (fps_ <= 0) {
+    LOGE(SINK) << "[" << stream_id_ << "]: invalid output fps " << fps_ << ", must be > 0";
+    return false;
+  }
+  if (width_ <= 0 || height_ <= 0) {
+    LOGE(SINK) << "[" << stream_id_ << "]: invalid output size " << width_ << "x" << height_;
+    return false;
+  }
+  if ((width_ & 1) || (height_ & 1)) {
+    const int even_w = width_ & ~1;
+    const int even_h = height_ & ~1;
+    if (even_w <= 0 || even_h <= 0) {
+      LOGE(SINK) << "[" << stream_id_ << "]: output size " << width_ << "x" << height_
+                 << " is too small to be rounded to even";
+      return false;
+    }
+    LOGW(SINK) << "[" << stream_id_ << "]: output size " << width_ << "x" << height_
+               << " is not even, rounded down to " << even_w << "x" << even_h
+               << " (YUV420P/NV12 requires even dimensions)";
+    width_  = even_w;
+    height_ = even_h;
+  }
+  if (bitrate_kbps_ <= 0) {
+    LOGW(SINK) << "[" << stream_id_ << "]: invalid bitrate " << bitrate_kbps_
+               << " kbps, fallback to 1000 kbps";
+    bitrate_kbps_ = 1000;
+  }
 
   mark_render_ = GetIntParam(param_set_, key_mark_enable).value_or(0) != 0;
   if (mark_render_) {
@@ -223,7 +259,8 @@ bool PushHandlerIm::InitStream() {
   ctx_.codec_ctx->height     = height_;
   ctx_.codec_ctx->time_base  = {1, fps_};
   ctx_.codec_ctx->framerate  = {fps_, 1};
-  const int gop_size = output_gop_.value_or(fps_);
+  // gop_size <= 0 会让部分编码器变成"全 I 帧"，码率不可控，这里兜底为至少 1
+  const int gop_size = std::max(1, output_gop_.value_or(fps_));
   ctx_.codec_ctx->bit_rate       = bitrate_kbps_ * 1000;
   ctx_.codec_ctx->rc_min_rate    = bitrate_kbps_ * 1000;
   ctx_.codec_ctx->rc_max_rate    = bitrate_kbps_ * 1000;
@@ -336,14 +373,63 @@ bool PushHandlerIm::InitStream() {
   return true;
 }
 
+#if !defined(VSTREAM_USE_CUDA) && !defined(VSTREAM_USE_ROCKCHIP)
+namespace {
+// 编码器的 pix_fmts 列表以 AV_PIX_FMT_NONE 结尾；为 nullptr 表示"无限制"，按支持处理
+bool CodecSupportsPixFmt(const AVCodec* codec, AVPixelFormat fmt) {
+  if (!codec || !codec->pix_fmts) return true;
+  for (const AVPixelFormat* p = codec->pix_fmts; *p != AV_PIX_FMT_NONE; ++p) {
+    if (*p == fmt) return true;
+  }
+  return false;
+}
+}  // namespace
+#endif
+
 const AVCodec* PushHandlerIm::FindEncoder() {
   if (!codec_name_.empty()) {
-    return avcodec_find_encoder_by_name(codec_name_.c_str());
+    const AVCodec* named = avcodec_find_encoder_by_name(codec_name_.c_str());
+    if (!named) {
+      LOGE(SINK) << "[" << stream_id_ << "]: encoder '" << codec_name_ << "' not found";
+      return nullptr;
+    }
+    LOGI(SINK) << "[" << stream_id_ << "]: using encoder " << named->name << " (from 'codec' param)";
+    return named;
   }
-  if (kDefaultEncoder.empty()) {
-    return avcodec_find_encoder(AV_CODEC_ID_H264);
+
+  // 对于 CPU 路径：使用默认的 libx264 编码器
+  const AVCodec* codec = nullptr;
+  if (!kDefaultEncoder.empty()) {
+    codec = avcodec_find_encoder_by_name(kDefaultEncoder.c_str());
+    if (!codec) {
+      LOGW(SINK) << "[" << stream_id_ << "]: default encoder '" << kDefaultEncoder
+                 << "' not found, fallback to avcodec_find_encoder(H264)";
+    }
   }
-  return avcodec_find_encoder_by_name(kDefaultEncoder.c_str());
+  if (!codec) {
+    codec = avcodec_find_encoder(AV_CODEC_ID_H264);
+  }
+
+#if !defined(VSTREAM_USE_CUDA) && !defined(VSTREAM_USE_ROCKCHIP)
+  // CPU 平台：avcodec_find_encoder 可能返回 h264_v4l2m2m/h264_vaapi/h264_qsv 等，
+  // 它们不接受 kEncoderPixFmt(YUV420P)，会在 avcodec_open2 处失败且报错难以定位。
+  if (codec && !CodecSupportsPixFmt(codec, kEncoderPixFmt)) {
+    LOGW(SINK) << "[" << stream_id_ << "]: encoder " << codec->name << " does not support "
+               << av_get_pix_fmt_name(kEncoderPixFmt) << ", fallback to libx264";
+    const AVCodec* fallback = avcodec_find_encoder_by_name("libx264");
+    if (fallback) codec = fallback;
+  }
+#endif
+
+  if (!codec) {
+    LOGE(SINK) << "[" << stream_id_ << "]: no H.264 encoder available, "
+               << "check FFmpeg build or set 'codec' param explicitly";
+    return nullptr;
+  }
+  LOGI(SINK) << "[" << stream_id_ << "]: using encoder " << codec->name << " ("
+             << (codec->long_name ? codec->long_name : "") << "), pix_fmt="
+             << av_get_pix_fmt_name(kEncoderPixFmt);
+  return codec;
 }
 
 bool PushHandlerIm::ReinitStream(int device_id) {
@@ -369,7 +455,9 @@ bool PushHandlerIm::InitSwsFrame() {
 bool PushHandlerIm::SendFrame(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts) {
   const int src_width  = frame->GetWidth();
   const int src_height = frame->GetHeight();
-  EnsureSwsContext(src_pix_fmt, src_width, src_height);
+  if (!EnsureSwsContext(src_pix_fmt, src_width, src_height)) {
+    return false;
+  }
 
   int ret = av_frame_make_writable(ctx_.sw_frame);
   if (ret < 0) {
@@ -392,26 +480,42 @@ bool PushHandlerIm::SendFrame(const DataFramePtr& frame, AVPixelFormat src_pix_f
   return EncodeFrame(enc_frame);
 }
 
-void PushHandlerIm::EnsureSwsContext(AVPixelFormat src_pix_fmt, int src_width, int src_height) {
+bool PushHandlerIm::EnsureSwsContext(AVPixelFormat src_pix_fmt, int src_width, int src_height) {
   if (ctx_.sws_ctx && src_pix_fmt_ == src_pix_fmt
       && sws_src_width_ == src_width && sws_src_height_ == src_height) {
-    return;
+    return true;
+  }
+  if (!ctx_.codec_ctx) {
+    LOGE(SINK) << "[" << stream_id_ << "]: EnsureSwsContext: codec_ctx is null";
+    return false;
   }
   ctx_.sws_ctx = sws_getCachedContext(
     ctx_.sws_ctx,
     src_width, src_height, src_pix_fmt,
     ctx_.codec_ctx->width, ctx_.codec_ctx->height, kSwsPixFmt,
     SWS_BILINEAR, nullptr, nullptr, nullptr);
+  if (!ctx_.sws_ctx) {
+    // 失败时 sws_getCachedContext 已释放旧上下文，缓存参数保持不动以便下次重建
+    LOGE(SINK) << "[" << stream_id_ << "]: sws_getCachedContext failed: "
+               << src_width << "x" << src_height << " "
+               << av_get_pix_fmt_name(src_pix_fmt) << " -> "
+               << ctx_.codec_ctx->width << "x" << ctx_.codec_ctx->height << " "
+               << av_get_pix_fmt_name(kSwsPixFmt);
+    return false;
+  }
   src_pix_fmt_    = src_pix_fmt;
   sws_src_width_  = src_width;
   sws_src_height_ = src_height;
+  return true;
 }
 
 bool PushHandlerIm::SendFrameFb(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts) {
   auto src_data = static_cast<const uint8_t*>(frame->data_[0]->GetCpuData());
   int src_stride = frame->GetStride(0);
 
-  EnsureSwsContext(src_pix_fmt, frame->GetWidth(), frame->GetHeight());
+  if (!EnsureSwsContext(src_pix_fmt, frame->GetWidth(), frame->GetHeight())) {
+    return false;
+  }
   int ret = av_frame_make_writable(ctx_.sw_frame);
   if (ret < 0) {
     LOGE(SINK) << "[" << stream_id_ << "]: av_frame_make_writable failed";
@@ -556,23 +660,31 @@ void PushHandlerIm::EncodeWorkerLoop() {
   while (IsRunning()) {
     if (!encode_queue_.WaitAndTryPop(task, wait_timeout)) {
       if (!IsRunning()) break;
-      if (repeat_interval_us > 0 && last_frame_) {
-        auto now = std::chrono::steady_clock::now();
-        auto since_output_us = std::chrono::duration_cast<std::chrono::microseconds>(
-            now - last_output_time).count();
-        if (since_output_us >= repeat_interval_us) {
-          EncoderTask repeat_task;
-          {
-            std::lock_guard<std::mutex> lk(last_frame_mtx_);
-            repeat_task.frame   = last_frame_;
-            repeat_task.src_fmt = last_src_fmt_;
-          }
-          repeat_task.pts     = ComputePts();
-          repeat_task.is_eos  = false;
-          repeat_task.enqueue_time = now;
-          if (encode_queue_.Push(repeat_task)) {
-            LOGD(SINK) << "[" << stream_id_ << "]: repeat last frame for min_fps="
-                       << min_fps_ << " since_output_us=" << since_output_us;
+      if (repeat_interval_us > 0) {
+        // 必须在锁内取快照：last_frame_ 由生产者线程（PushHandlerIm::Process）在
+        // last_frame_mtx_ 保护下写入，无锁读 shared_ptr 属于数据竞争。
+        DataFramePtr repeat_src;
+        AVPixelFormat repeat_fmt = AV_PIX_FMT_RGB24;
+        {
+          std::lock_guard<std::mutex> lk(last_frame_mtx_);
+          repeat_src = last_frame_;
+          repeat_fmt = last_src_fmt_;
+        }
+        if (repeat_src) {
+          auto now = std::chrono::steady_clock::now();
+          auto since_output_us = std::chrono::duration_cast<std::chrono::microseconds>(
+              now - last_output_time).count();
+          if (since_output_us >= repeat_interval_us) {
+            EncoderTask repeat_task;
+            repeat_task.frame        = repeat_src;
+            repeat_task.src_fmt      = repeat_fmt;
+            repeat_task.pts          = ComputePts();
+            repeat_task.is_eos       = false;
+            repeat_task.enqueue_time = now;
+            if (encode_queue_.Push(repeat_task)) {
+              LOGD(SINK) << "[" << stream_id_ << "]: repeat last frame for min_fps="
+                         << min_fps_ << " since_output_us=" << since_output_us;
+            }
           }
         }
       }

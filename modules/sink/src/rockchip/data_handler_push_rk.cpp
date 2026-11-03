@@ -199,7 +199,9 @@ bool PushHandlerImRK::SendFrameFromCpu(const DataFramePtr& frame, AVPixelFormat 
 #endif
 
   // 1. CPU BGR/RGB -> NV12 (sw_frame，CPU 侧)
-  EnsureSwsContext(src_pix_fmt, src_width, src_height);
+  if (!EnsureSwsContext(src_pix_fmt, src_width, src_height)) {
+    return false;
+  }
   int ret = av_frame_make_writable(ctx_.sw_frame);
   if (ret < 0) {
     LOGE(SINK) << "[" << stream_id_ << "]: av_frame_make_writable (sw_frame) failed";

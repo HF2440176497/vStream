@@ -29,10 +29,6 @@ class PullHandlerImRK : public PullHandlerIm {
   void precheckDeviceNodes();
 
   std::string type_name_ = "rkmpp";
-
-  // 连续单帧处理失败计数：超过阈值判定流与硬解通路不兼容，终止拉流
-  static constexpr uint32_t kMaxFrameErrorCnt = 64;
-  uint32_t frame_error_cnt_ = 0;
 };
 
 }  // namespace cnstream
