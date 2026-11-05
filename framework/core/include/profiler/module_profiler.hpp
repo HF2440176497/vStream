@@ -133,6 +133,8 @@ class ModuleProfiler: private NonCopyable {
 
 inline constexpr char kINPUT_PROFILER_NAME[] = "INPUT";
 inline constexpr char kPROCESS_PROFILER_NAME[] = "PROCESS";
+/*! 按边注册在上游模块的入队阻塞指标前缀，完整名称为 "ENQUEUE_BLOCK:<next_module_name>" */
+inline constexpr char kENQUEUE_BLOCK_PREFIX[] = "ENQUEUE_BLOCK:";
 
 inline std::string ModuleProfiler::GetName() const {
   return module_name_;

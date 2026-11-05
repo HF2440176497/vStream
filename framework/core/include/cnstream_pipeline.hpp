@@ -28,6 +28,7 @@
  */
 
 #include <atomic>
+#include <chrono>
 #include <future>
 #include <iostream>
 #include <memory>
@@ -343,11 +344,16 @@ class Pipeline : private NonCopyable {
   EventHandleFlag DefaultBusWatch(const Event& event);
   void UpdateByStreamMsg(const StreamMsg& msg);
   void StreamMsgHandleFunc();
+  /*! @brief 周期打印各模块最近一个滑动窗口的统计信息，由消息线程 200ms tick 驱动 */
+  void ReportProfiles();
   std::vector<std::string> GetSortedModuleNames();
 
   std::unique_ptr<CNGraph<NodeContext>> graph_;
   std::vector<std::string> sorted_module_names_;
   std::map<std::string, std::unique_ptr<ModuleProfiler>> module_profilers_;
+  bool profiling_enabled_ = false;                 /*!< BuildPipeline 时缓存的 profiler 开关 */
+  int64_t profile_report_interval_ms_ = 0;         /*!< 周期打印间隔，0 表示不打印 */
+  std::chrono::steady_clock::time_point last_profile_report_;  /*!< 上次打印时间 */
 
   std::string name_;  // pipeline_name
   

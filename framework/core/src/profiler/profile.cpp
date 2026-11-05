@@ -29,11 +29,19 @@ std::string ProcessProfileToString(const ProcessProfile& profile, const std::str
   std::ostringstream oss;
   oss << std::fixed << std::setprecision(2);
   oss << indent << "Process Name: " << profile.process_name << "\n";
+  oss << indent << "Window: " << profile.window_ms << " ms\n";
   oss << indent << "Frames: " << profile.counter << " (Completed: " << profile.completed 
       << ", Dropped: " << profile.dropped << ")\n";
   oss << indent << "Latency: Avg " << profile.avg_latency << " ms, Max " << profile.max_latency 
       << " ms, Min " << profile.min_latency << " ms\n";
   oss << indent << "Throughput: " << profile.fps << " FPS\n";
+  if (profile.inflight > 0) {
+    oss << indent << "Inflight: " << profile.inflight
+        << " (Oldest: " << profile.oldest_inflight_ms << " ms)\n";
+  }
+  if (profile.purged > 0) {
+    oss << indent << "Purged Records: " << profile.purged << "\n";
+  }
   return oss.str();
 }
 
@@ -41,7 +49,7 @@ std::string ModuleProfileToString(const ModuleProfile& profile) {
   std::ostringstream oss;
   oss << std::fixed << std::setprecision(2);
   oss << "Module Name: " << profile.module_name << "\n";
-  oss << "Total Frames: " << profile.counter << " (Completed: " << profile.completed 
+  oss << "Window Frames: " << profile.counter << " (Completed: " << profile.completed 
       << ", Dropped: " << profile.dropped << ")\n\n";
   
   if (!profile.process_profiles.empty()) {

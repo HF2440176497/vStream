@@ -22,10 +22,12 @@
 #include <algorithm>
 #include <chrono>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <list>
 #include <memory>
 #include <queue>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <map>
@@ -94,6 +96,12 @@ bool Pipeline::BuildPipeline(const CNGraphConfig& graph_config) {
     LOGE(CORE) << "Init graph failed.";
     return false;
   }
+
+  // 缓存 profiler 配置
+  const ProfilerConfig& profiler_config = graph_->GetConfig().profiler_config;
+  profiling_enabled_ = profiler_config.enable_profile;
+  profile_report_interval_ms_ = profiler_config.report_interval_ms;
+
   // create modules by config
   std::vector<std::shared_ptr<Module>> modules;  // used to init profiler
   if (!CreateModules(&modules)) {
@@ -112,24 +120,30 @@ bool Pipeline::BuildPipeline(const CNGraphConfig& graph_config) {
 }
 
 bool Pipeline::IsProfilingEnabled() const {
-  if (nullptr == graph_) {
-    LOGF(CORE) << "Pipeline::IsProfilingEnabled() failed, graph_ is null.";
-    return false;
-  }
-  if (graph_->GetConfig().profiler_config.enable_profile) {
-    return true;
-  }
-  return false;
+  return profiling_enabled_;
 }
 
 /**
- * @brief 为每个 Module 创建一个 ModuleProfiler 都注册一个 kPROCESS_PROFILER_NAME
+ * @brief 为每个 Module 创建 ModuleProfiler：注册 PROCESS，并按边注册 ENQUEUE_BLOCK
+ *
+ * ENQUEUE_BLOCK 注册在上游模块，名称带下游模块名，用于定位“卡在哪条边”。
  */
 void Pipeline::GenerateModulesProfilers(const std::vector<std::shared_ptr<Module>>& modules) {
   for (const auto& module: modules) {
     auto name = module->GetName();
     module_profilers_.emplace(name, std::unique_ptr<ModuleProfiler>(new ModuleProfiler(graph_->GetConfig().profiler_config, name)));
     module_profilers_[name]->RegisterProcess(kPROCESS_PROFILER_NAME);
+  }
+
+  for (auto node = graph_->DFSBegin(); node != graph_->DFSEnd(); ++node) {
+    const auto& upstream = node->data.module;
+    if (!upstream) continue;
+    auto it = module_profilers_.find(upstream->GetName());
+    if (it == module_profilers_.end()) continue;
+    for (const auto& next : node->GetNext()) {
+      if (!next->data.module) continue;
+      it->second->RegisterProcess(kENQUEUE_BLOCK_PREFIX + next->data.module->GetName());
+    }
   }
 }
 
@@ -156,6 +170,7 @@ bool Pipeline::Start() {
 
   stop_requested_.store(false);
   stopping_.store(false);
+  last_profile_report_ = std::chrono::steady_clock::now();
   {
     std::lock_guard<std::mutex> lk(stream_state_mtx_);
     eos_streams_.clear();
@@ -589,9 +604,21 @@ void Pipeline::TransmitToNextNodes(NodeContext* context, const std::shared_ptr<F
     if (!connector->IsRunning()) continue;
     // push data to conveyor only after data passed by all parent nodes.
 
-    if (IsProfilingEnabled() && !data->IsEos()) {
-      next_module->GetProfiler()->RecordProcessStart(
-        kINPUT_PROFILER_NAME, std::make_pair(data->stream_id, data->timestamp));
+    // 语义与记录位置：
+    //  - INPUT 记在下游模块：上游开始尝试推送 -> 下游真正开始处理，
+    //  - ENQUEUE_BLOCK 记在上游模块并按边区分：其中因下游队列满而阻塞的部分；
+    //  - queue = INPUT - 该模块所有入边的 ENQUEUE_BLOCK，即纯排队时延。
+    const bool profile_enabled = IsProfilingEnabled() && !data->IsEos();
+    auto record_key = std::make_pair(data->stream_id, data->timestamp);
+    ModuleProfiler* upstream_profiler = profile_enabled ? context->module->GetProfiler() : nullptr;
+    ModuleProfiler* next_profiler = profile_enabled ? next_module->GetProfiler() : nullptr;
+    std::string enqueue_process_name;
+    if (upstream_profiler) {
+      enqueue_process_name = kENQUEUE_BLOCK_PREFIX + next_module->GetName();
+      upstream_profiler->RecordProcessStart(enqueue_process_name, record_key);
+    }
+    if (next_profiler) {
+      next_profiler->RecordProcessStart(kINPUT_PROFILER_NAME, record_key);
     }
 
     const int conveyor_idx = data->GetStreamIndex() % connector->GetConveyorCount();
@@ -603,6 +630,10 @@ void Pipeline::TransmitToNextNodes(NodeContext* context, const std::shared_ptr<F
       }
       std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }  // while try push
+
+    if (upstream_profiler) {
+      upstream_profiler->RecordProcessEnd(enqueue_process_name, record_key);
+    }
   }  // loop next nodes
 }
 
@@ -713,16 +744,104 @@ void Pipeline::UpdateByStreamMsg(const StreamMsg& msg) {
 }
 
 /**
+ * @brief 周期打印各模块最近一个滑动窗口的统计信息
+ */
+void Pipeline::ReportProfiles() {
+  if (!profiling_enabled_ || profile_report_interval_ms_ <= 0 || !IsRunning()) {
+    return;
+  }
+  auto now = std::chrono::steady_clock::now();
+  if (now - last_profile_report_ < std::chrono::milliseconds(profile_report_interval_ms_)) {
+    return;
+  }
+  last_profile_report_ = now;
+
+  const std::size_t prefix_len = sizeof(kENQUEUE_BLOCK_PREFIX) - 1;
+
+  // 第一遍：当前模块作为下游，得到每条边（上游 -> 此模块）的入队阻塞
+  std::vector<ModuleProfile> profiles;
+  std::map<std::string, double> incoming_block_avg;
+  for (const auto& name : GetSortedModuleNames()) {
+    ModuleProfiler* profiler = GetModuleProfiler(name);
+    if (!profiler) {
+      continue;
+    }
+    profiles.push_back(profiler->GetProfile());
+  }
+  for (const auto& module_profile : profiles) {
+    for (const auto& process : module_profile.process_profiles) {
+      if (process.process_name.compare(0, prefix_len, kENQUEUE_BLOCK_PREFIX) == 0) {
+        incoming_block_avg[process.process_name.substr(prefix_len)] += process.avg_latency;
+      }
+    }
+  }
+
+  // 第二遍：逐 process 输出
+  for (const auto& module_profile : profiles) {
+    // 本模块所有出边的入队阻塞合计：PROCESS 减去这部分，即为自身计算耗时
+    double outgoing_block_avg = 0.0;
+    for (const auto& process : module_profile.process_profiles) {
+      if (process.process_name.compare(0, prefix_len, kENQUEUE_BLOCK_PREFIX) == 0) {
+        outgoing_block_avg += process.avg_latency;
+      }
+    }
+    auto incoming = incoming_block_avg.find(module_profile.module_name);
+    double input_block_avg = incoming == incoming_block_avg.end() ? 0.0 : incoming->second;
+
+    for (const auto& process : module_profile.process_profiles) {
+      // 窗口内既无帧也无在途记录，不输出空行
+      if (process.counter == 0 && process.inflight == 0) {
+        continue;
+      }
+      // 窗口内无完成帧但仍有在途记录：说明该 process 正在阻塞
+      bool stalled = process.counter == 0 && process.inflight > 0;
+
+      std::ostringstream line;
+      line << std::fixed << std::setprecision(2)
+           << "[PROFILE] ["<< GetName() <<"] [win=" << process.window_ms
+           << "ms] module=" << module_profile.module_name
+           << " process=" << process.process_name
+           << " fps=" << process.fps
+           << " n=" << process.counter
+           << " drop=" << process.dropped
+           << " avg=" << process.avg_latency << "ms"
+           << " max=" << process.max_latency << "ms";
+      if (process.process_name == kINPUT_PROFILER_NAME) {
+        // 去掉上游入队阻塞后，剩下的就是纯排队时延
+        double queue_avg = process.avg_latency - input_block_avg;
+        if (queue_avg < 0.0) {
+          queue_avg = 0.0;
+        }
+        line << " queue=" << queue_avg << "ms";
+      }
+      if (process.process_name == kPROCESS_PROFILER_NAME) {
+        // self ≈ PROCESS - 向所有下游推送时的阻塞（近似值）
+        double self_avg = process.avg_latency - outgoing_block_avg;
+        if (self_avg < 0.0) {
+          self_avg = 0.0;
+        }
+        line << " self=" << self_avg << "ms";
+      }
+      line << " inflight=" << process.inflight
+           << " oldest=" << process.oldest_inflight_ms << "ms"
+           << " purged=" << process.purged
+           << " state=" << (stalled ? "STALLED" : "OK");
+      LOGI(CORE) << line.str();
+    }
+  }
+}
+
+/**
  * Pipeline 级别的消息处理执行，用于操作 Pipeline 内的成员，例如停止流
  * EventBus 用于产生执行消息
  */
 void Pipeline::StreamMsgHandleFunc() {
-  while (!exit_msg_loop_) {
+  while (!exit_msg_loop_ && !stop_requested_) {
     StreamMsg msg;
-    bool got_msg = false;
-    while (!exit_msg_loop_ && !stop_requested_.load() && !(got_msg = msgq_.WaitAndTryPop(msg, std::chrono::milliseconds(200)))) {
-    }
-    if (exit_msg_loop_) {
+    // 每 200ms 回到外层一次，让周期性任务（profiler 报告）有机会执行；
+    // 有消息到达时 WaitAndTryPop 会立即返回。
+    bool got_msg = msgq_.WaitAndTryPop(msg, std::chrono::milliseconds(200));
+    if (exit_msg_loop_ || stop_requested_) {
       LOGI(CORE) << "[" << GetName() << "] stop updating stream message";
       return;
     }
@@ -758,6 +877,7 @@ void Pipeline::StreamMsgHandleFunc() {
         Stop();
       }
     }
+    ReportProfiles();
   }
 }
 
