@@ -183,9 +183,9 @@ class PushHandlerIm {
   AVPixelFormat src_pix_fmt_ = AV_PIX_FMT_RGB24;
   int sws_src_width_  = 0;
   int sws_src_height_ = 0;
-  std::atomic<bool> hw_ctx_initialized_{false};
+  std::atomic<bool> hw_ctx_inited_{false};
 
-  bool stream_initialized_ = false;
+  bool stream_inited_ = false;
 
   std::chrono::steady_clock::time_point push_start_time_;
   std::chrono::steady_clock::time_point last_push_time_;

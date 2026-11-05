@@ -541,7 +541,9 @@ int PullHandlerImCPU::codec_init() {
   return 0;
 }
 
-
+/**
+ * @brief override function
+ */
 int PullHandlerImCPU::decode_write() {
   // 送包：EAGAIN 表示"解码器输出未取空"，应先取帧再重送。
   // ReceiveAndDeliver 会把可取的帧一次性取完，正常一轮即可送入；

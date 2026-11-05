@@ -100,3 +100,38 @@ TEST(CoreConfig, CNGraphConfig) {
     // 检查 profiler_config 模块
     EXPECT_TRUE(graph_config.profiler_config.enable_profile);
 }
+
+/**
+ * @brief 校验 ProfilerConfig 的默认值与新增 key 的解析/校验
+ */
+TEST(CoreConfig, ProfilerConfigParsing) {
+    cnstream::ProfilerConfig config;
+    // 默认开启性能分析
+    EXPECT_TRUE(config.enable_profile);
+    EXPECT_EQ(config.report_interval_ms, 5000);
+    EXPECT_EQ(config.window_ms, 5000);
+    EXPECT_EQ(config.bucket_ms, 1000);
+
+    const std::string jstr =
+        R"({"enable_profile":false,"report_interval_ms":1000,"window_ms":2000,"bucket_ms":500})";
+    EXPECT_TRUE(config.ParseByJSONStr(jstr));
+    EXPECT_FALSE(config.enable_profile);
+    EXPECT_EQ(config.report_interval_ms, 1000);
+    EXPECT_EQ(config.window_ms, 2000);
+    EXPECT_EQ(config.bucket_ms, 500);
+
+    // bucket_ms 大于 window_ms 时收敛到 window_ms
+    cnstream::ProfilerConfig clamped;
+    EXPECT_TRUE(clamped.ParseByJSONStr(R"({"window_ms":100,"bucket_ms":1000})"));
+    EXPECT_EQ(clamped.bucket_ms, 100);
+
+    // 非法取值应被拒绝
+    cnstream::ProfilerConfig bad_window;
+    EXPECT_FALSE(bad_window.ParseByJSONStr(R"({"window_ms":0})"));
+
+    cnstream::ProfilerConfig bad_bucket;
+    EXPECT_FALSE(bad_bucket.ParseByJSONStr(R"({"bucket_ms":-1})"));
+
+    cnstream::ProfilerConfig bad_interval;
+    EXPECT_FALSE(bad_interval.ParseByJSONStr(R"({"report_interval_ms":1.5})"));
+}

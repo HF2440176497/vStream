@@ -263,4 +263,86 @@ TEST(ProcessProfilerTest, ThreadSafety) {
   EXPECT_GT(profile.avg_latency, 0.0);
 }
 
+/**
+ * @brief 滑动窗口：滑出窗口的记录不再计入统计
+ */
+TEST(ProcessProfilerTest, SlidingWindowEviction) {
+  ProfilerConfig config;
+  config.enable_profile = true;
+  config.window_ms = 200;
+  config.bucket_ms = 100;
+
+  ProcessProfiler profiler(config, "window_process");
+  RecordKey key1("stream1", 1000);
+  RecordKey key2("stream1", 2000);
+  profiler.RecordStart(key1);
+  profiler.RecordStart(key2);
+  std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  profiler.RecordEnd(key1);
+  profiler.RecordEnd(key2);
+
+  ProcessProfile profile = profiler.GetProfile();
+  EXPECT_EQ(profile.window_ms, 200u);
+  EXPECT_EQ(profile.completed, 2u);
+  EXPECT_EQ(profile.counter, 2u);
+  EXPECT_GT(profile.fps, 0.0);
+
+  // 等待超过 1 个窗口，旧记录应被滑出
+  std::this_thread::sleep_for(std::chrono::milliseconds(350));
+  profile = profiler.GetProfile();
+  EXPECT_EQ(profile.completed, 0u);
+  EXPECT_EQ(profile.counter, 0u);
+  EXPECT_DOUBLE_EQ(profile.fps, 0.0);
+  EXPECT_EQ(profile.inflight, 0u);
+}
+
+/**
+ * @brief 未结束记录：inflight 与 oldest_inflight_ms 能反映“正在阻塞”
+ */
+TEST(ProcessProfilerTest, InflightMetrics) {
+  ProfilerConfig config;
+  config.enable_profile = true;
+  config.window_ms = 1000;
+  config.bucket_ms = 200;
+
+  ProcessProfiler profiler(config, "inflight_process");
+  RecordKey key("stream1", 1000);
+  profiler.RecordStart(key);
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  ProcessProfile profile = profiler.GetProfile();
+  EXPECT_EQ(profile.completed, 0u);
+  EXPECT_EQ(profile.inflight, 1u);
+  EXPECT_GE(profile.oldest_inflight_ms, 40.0);
+
+  profiler.RecordEnd(key);
+  profile = profiler.GetProfile();
+  EXPECT_EQ(profile.completed, 1u);
+  EXPECT_EQ(profile.inflight, 0u);
+}
+
+/**
+ * @brief 残留记录：超过 3 个窗口仍未结束的记录会被清理并计入 purged
+ */
+TEST(ProcessProfilerTest, PurgeStaleRecords) {
+  ProfilerConfig config;
+  config.enable_profile = true;
+  config.window_ms = 200;
+  config.bucket_ms = 100;
+
+  ProcessProfiler profiler(config, "purge_process");
+  RecordKey stale("stream1", 1000);
+  profiler.RecordStart(stale);
+  // 超过 3 * window_ms，且跨过 1s 的清理节流
+  std::this_thread::sleep_for(std::chrono::milliseconds(1100));
+
+  RecordKey fresh("stream1", 2000);
+  profiler.RecordStart(fresh);
+
+  ProcessProfile profile = profiler.GetProfile();
+  EXPECT_EQ(profile.purged, 1u);
+  EXPECT_EQ(profile.inflight, 1u);
+  profiler.RecordEnd(fresh);
+}
+
 }

@@ -26,6 +26,7 @@
  *
  * This file contains a declaration of the CNModuleConfig class.
  */
+#include <cstdint>
 #include <list>
 #include <memory>
 #include <set>
@@ -104,17 +105,26 @@ struct CNConfigBase {
  * {
  *   "profiler_config" : {
  *     "enable_profile" : true,
- *     "enable_tracing" : true
+ *     "report_interval_ms" : 5000,
+ *     "window_ms" : 5000,
+ *     "bucket_ms" : 1000
  *   }
  * }
  * @endcode
  *
+ * @note 统计口径为“最近 window_ms 的滑动窗口”，窗口由 bucket_ms 分桶实现。
  **/
 struct ProfilerConfig : public CNConfigBase {
-  bool enable_profile = false;           ///< Whether to enable profiling.
+  bool enable_profile = true;            ///< Whether to enable profiling.
+  int64_t report_interval_ms = 5000;     ///< 周期打印间隔，0 表示只采集不打印。
+  int64_t window_ms = 5000;              ///< 滑动统计窗口长度。
+  int64_t bucket_ms = 1000;              ///< 窗口分桶粒度。
   bool ParseByJSONStr(const std::string &jstr) override;
  private:
   std::string key_enable_profile = "enable_profile";  ///< The key of enable_profiling.
+  std::string key_report_interval_ms = "report_interval_ms";
+  std::string key_window_ms = "window_ms";
+  std::string key_bucket_ms = "bucket_ms";
 };  // struct ProfilerConfig
 
 /**

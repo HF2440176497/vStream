@@ -86,10 +86,33 @@ bool ProfilerConfig::ParseByJSONStr(const std::string& jstr) {
         LOGE(CORE) << "Profiler enable_profile must be boolean type.";
         return false;
       }
+    } else if (key == key_report_interval_ms) {
+      if (!value.is_number_integer() || value.get<int64_t>() < 0) {
+        LOGE(CORE) << "Profiler report_interval_ms must be a non-negative integer.";
+        return false;
+      }
+      this->report_interval_ms = value.get<int64_t>();
+    } else if (key == key_window_ms) {
+      if (!value.is_number_integer() || value.get<int64_t>() <= 0) {
+        LOGE(CORE) << "Profiler window_ms must be a positive integer.";
+        return false;
+      }
+      this->window_ms = value.get<int64_t>();
+    } else if (key == key_bucket_ms) {
+      if (!value.is_number_integer() || value.get<int64_t>() <= 0) {
+        LOGE(CORE) << "Profiler bucket_ms must be a positive integer.";
+        return false;
+      }
+      this->bucket_ms = value.get<int64_t>();
     } else {
         LOGE(CORE) << "unknown parameter named [" << key << "] for profiler_config.";
         return false;
     }
+  }
+  if (this->bucket_ms > this->window_ms) {
+    LOGW(CORE) << "Profiler bucket_ms(" << this->bucket_ms << ") > window_ms("
+               << this->window_ms << "), bucket_ms is clamped to window_ms.";
+    this->bucket_ms = this->window_ms;
   }
   return true;
 }

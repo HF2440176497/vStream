@@ -21,10 +21,13 @@
 #ifndef CNSTREAM_FRAMEWORK_CORE_INCLUDE_PROFILER_PROCESS_PROFILER_HPP_
 #define CNSTREAM_FRAMEWORK_CORE_INCLUDE_PROFILER_PROCESS_PROFILER_HPP_
 
-#include <string>
+#include <chrono>
+#include <cstdint>
+#include <limits>
 #include <map>
 #include <mutex>
-#include <chrono>
+#include <string>
+#include <vector>
 
 #include "cnstream_logging.hpp"
 #include "cnstream_config.hpp"
@@ -95,7 +98,9 @@ class ProcessProfiler: private NonCopyable {
   std::string GetName() const;
 
   /*!
-   * @brief Gets profiling results of the process during the execution of the program.
+   * @brief Gets profiling results of the process during the last profiling window.
+   *
+   * 统计口径为最近 ``window_ms`` 的滑动窗口，而非进程启动以来的累计值。
    *
    * @return Returns the profiling results. 
    */
@@ -109,18 +114,44 @@ class ProcessProfiler: private NonCopyable {
   void OnStreamEos(const std::string& stream_name);
 
  private:
+  /**
+   * @brief 滑动窗口内的一个统计桶。
+   *
+   * index 为该桶对应的绝对桶序号（自 start_time_ 起按 bucket_ms 递增），
+   * 槽位被复用时通过 index 判断数据是否仍属于当前窗口，因此无需显式清理中间桶。
+   */
+  struct Bucket {
+    int64_t  index = -1;
+    uint64_t completed = 0;
+    int64_t  dropped = 0;
+    double   latency_sum = 0.0;
+    double   latency_max = 0.0;
+    double   latency_min = std::numeric_limits<double>::max();
+  };
+
+  /*! @brief 当前时间对应的绝对桶序号，未初始化时返回 -1 */
+  int64_t CurrentBucketIndex(Time now) const;
+  /*! @brief 取得当前时间对应的可写桶，槽位过期时重置 */
+  Bucket& CurrentBucket(Time now);
+  /*! @brief 清理超过窗口上限仍未结束的残留记录，最多每 1s 执行一次（调用方需持锁） */
+  void PurgeStaleRecords(Time now);
+
   ProfilerConfig config_;
   std::mutex     mutex_;
   std::string    process_name_;
 
-  uint64_t                  completed_ = 0;                                    /*!< The number of completed frames. */
-  uint64_t                  dropped_ = 0;                                      /*!< The number of dropped frames. */
-  double                    total_latency_ = 0.0;                              /*!< Total latency (ms). */
-  double                    max_latency_ = 0.0;                                /*!< Maximum latency (ms). */
-  double                    min_latency_ = std::numeric_limits<double>::max(); /*!< Minimum latency (ms). */
-  Time                      start_time_;                                       /*!< Start time. */
-  bool                      start_time_initialized_ = false;                   /*!< Whether start time has been initialized. */
-  std::map<RecordKey, Time> start_times_; /*!< Records the start time of each key. */
+  int64_t                 window_ms_ = 5000;  /*!< 统计窗口长度 */
+  int64_t                 bucket_ms_ = 1000;  /*!< 分桶粒度 */
+  std::vector<Bucket>     buckets_;           /*!< 环形桶数组 */
+  size_t                  bucket_count_ = 0;
+
+  Time                      start_time_;                       /*!< 首个记录的时间基准 */
+  bool                      start_time_inited_ = false;
+  Time                      last_purge_time_;                  /*!< 上次清理残留记录的时间 */
+  bool                      last_purge_inited_ = false;
+
+  std::map<RecordKey, Time> start_times_; /*!< 未结束记录的起始时间 */
+  uint64_t                  purged_ = 0;  /*!< 生命周期内清理的残留记录数 */
 };
 
 inline std::string ProcessProfiler::GetName() const {

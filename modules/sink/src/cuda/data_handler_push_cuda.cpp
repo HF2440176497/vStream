@@ -93,7 +93,7 @@ bool PushHandlerImCUDA::SendDataFrame(const DataFramePtr& frame, AVPixelFormat s
   auto dev_type = frame->GetCtx().device_type;
   if (dev_type == DevType::CUDA) {
     int actual_device = frame->GetCtx().device_id;
-    if (!hw_ctx_initialized_.load()) {
+    if (!hw_ctx_inited_.load()) {
       if (actual_device >= 0 && actual_device != device_id_) {
         LOGI(SINK) << "Reinitializing stream for device " << actual_device;
         if (!ReinitStream(actual_device)) {
@@ -101,7 +101,7 @@ bool PushHandlerImCUDA::SendDataFrame(const DataFramePtr& frame, AVPixelFormat s
         }
         device_id_ = actual_device;
       }
-      hw_ctx_initialized_.store(true);
+      hw_ctx_inited_.store(true);
     }
     return SendFrameCuda(frame, src_pix_fmt, pts);
   } else if (dev_type == DevType::CPU) {
@@ -111,6 +111,12 @@ bool PushHandlerImCUDA::SendDataFrame(const DataFramePtr& frame, AVPixelFormat s
   }
 }
 
+/**
+ * @note GetCtx() 用于在数据源模块，创建对应的 SyncMemory
+ * 因此需要区分不同的路径，CUDA 路径可以直接获取 GetDevData
+ * @note 目前仅在 pull_cuda 中配置 dev_type = cuda
+ * 并且在目前项目设计中，前流程存在大量 CPU 处理依赖，GetDevData 几乎不会带来性能提升
+ */
 bool PushHandlerImCUDA::SendFrameCuda(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts) {
   const int src_width  = frame->GetWidth();
   const int src_height = frame->GetHeight();
@@ -172,8 +178,8 @@ bool PushHandlerImCUDA::SendFrameCuda(const DataFramePtr& frame, AVPixelFormat s
 }
 
 bool PushHandlerImCUDA::SendFrameToCuda(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts) {
-  if (!hw_ctx_initialized_.load()) {
-    hw_ctx_initialized_.store(true);
+  if (!hw_ctx_inited_.load()) {
+    hw_ctx_inited_.store(true);
   }
   const int src_width  = frame->GetWidth();
   const int src_height = frame->GetHeight();

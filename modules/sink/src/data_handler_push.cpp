@@ -369,7 +369,7 @@ bool PushHandlerIm::InitStream() {
   }
   LOGI(SINK) << "[" << stream_id_ << "]: Stream initialized, url=" << output_url_
              << " res=" << width_ << "x" << height_ << " fps=" << fps_;
-  stream_initialized_ = true;
+  stream_inited_ = true;
   return true;
 }
 
@@ -452,6 +452,9 @@ bool PushHandlerIm::InitSwsFrame() {
   return true;
 }
 
+/**
+ * @brief 针对 CPU 通路的编码发送
+ */
 bool PushHandlerIm::SendFrame(const DataFramePtr& frame, AVPixelFormat src_pix_fmt, int64_t pts) {
   const int src_width  = frame->GetWidth();
   const int src_height = frame->GetHeight();
@@ -705,7 +708,7 @@ void PushHandlerIm::EncodeWorkerLoop() {
     }
     last_output_time = std::chrono::steady_clock::now();
     std::lock_guard<std::recursive_mutex> lk(stream_mtx_);
-    if (!stream_initialized_) {
+    if (!stream_inited_) {
       if (!InitStream()) {
         LOGE(SINK) << "[" << stream_id_ << "]: InitStream failed in loop, "
                    << "will retry after " << kReconnectIntervalMs << "ms";
@@ -757,7 +760,7 @@ void PushHandlerIm::ClearStream() {
     avformat_free_context(ctx_.fmt_ctx);
   }
   ctx_ = StreamContext();
-  stream_initialized_ = false;
+  stream_inited_ = false;
   keyframe_time_valid_ = false;  // 流重建后首帧重新计时，确保首帧为关键帧
   LOGI(SINK) << "[" << stream_id_ << "]: Stream clean done";
 }
