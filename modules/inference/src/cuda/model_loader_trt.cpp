@@ -191,6 +191,9 @@ void ModelLoaderTrt::Logger::log(nvinfer1::ILogger::Severity severity, const cha
 
 ModelLoaderTrt::ModelLoaderTrt(int device_id) : ModelLoader(device_id) {
   device_type_ = DevType::CUDA;
+  // 第一次 CUDA 调用之前的基线。load 阶段在 set_device/stream_create 之后，
+  // 拿它和失败快照对比不是同一点；preinit 才能区分"布局差是因还是果"。
+  DumpDiagSnapshotAtStage("preinit");
   ClearStaleCudaError("model_loader_init");
   CudaInitResult device_ret = RunCudaInit(
       "set_device",

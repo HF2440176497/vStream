@@ -59,9 +59,16 @@ struct Summary {
   std::string gpu_total_mib = "?";
   std::string gpu_used_mib = "?";
   std::string gpu_free_mib = "?";
+  std::string gpu_reserved_mib = "?";
   std::string bar1_used_mib = "?";
   std::string gpu_clients = "?";
   std::string gpu_clients_in_proc = "?";
+  // 地址空间布局 / ASLR：当前首要假设是固定地址预留与继承布局冲突。
+  std::string aslr = "?";
+  std::string no_randomize = "?";
+  std::string low_va_kb = "?";
+  std::string low_vmas = "?";
+  std::string low_top_range = "?";
 };
 
 std::mutex g_diag_mutex;
@@ -209,7 +216,7 @@ std::string SelfElapsedSeconds() {
 }
 
 void CollectHeader(std::ostream& os, const char* mode, const char* stage,
-                   const char* kind, int code, int attempt) {
+                   const char* kind, int code, int attempt, int call_errno) {
   std::time_t now = std::chrono::system_clock::to_time_t(
       std::chrono::system_clock::now());
   std::tm tm_now {};
@@ -231,7 +238,14 @@ void CollectHeader(std::ostream& os, const char* mode, const char* stage,
      << " kind=" << (kind != nullptr ? kind : "?")
      << " attempt=" << attempt << "\n";
   os << "code=" << code << " name=" << CudaInitErrorName(code) << "\n";
-  os << "errno=" << errno << " (" << std::strerror(errno) << ")\n";
+  // call_errno 是失败调用返回后立即捕获的值，才是可信证据；
+  // snapshot_errno 是采集时刻的残留值，仅供参考（正常路径常见 2/115）。
+  if (call_errno >= 0) {
+    os << "call_errno=" << call_errno << " (" << std::strerror(call_errno) << ")\n";
+  } else {
+    os << "call_errno=not_captured\n";
+  }
+  os << "snapshot_errno=" << errno << " (" << std::strerror(errno) << ")\n";
 
   std::string cmdline;
   if (ReadFile("/proc/self/cmdline", 4096, &cmdline)) {
@@ -249,7 +263,7 @@ void CollectStatus(std::ostream& os, Summary* summary) {
     return;
   }
   WriteFiltered(os, content,
-                {"Name:", "State:", "Tgid:", "Pid:", "PPid:", "Threads:",
+                {"Name:", "State:", "Tgid:", "Pid:", "NSpid:", "PPid:", "Threads:",
                  "VmPeak:", "VmSize:", "VmLck:", "VmPin:", "VmHWM:", "VmRSS:",
                  "VmData:", "VmStk:", "VmExe:", "VmLib:", "VmPTE:", "VmSwap:",
                  "Cpus_allowed_list:", "Mems_allowed_list:",
@@ -283,7 +297,7 @@ void CollectMeminfo(std::ostream& os, Summary* summary) {
 }
 
 void CollectCgroup(std::ostream& os) {
-  WriteSection(os, "cgroup memory");
+  WriteSection(os, "cgroup memory / pids");
   const char* files[] = {
       "/proc/self/cgroup",
       "/sys/fs/cgroup/memory.max",
@@ -293,6 +307,10 @@ void CollectCgroup(std::ostream& os) {
       "/sys/fs/cgroup/memory/memory.limit_in_bytes",
       "/sys/fs/cgroup/memory/memory.usage_in_bytes",
       "/sys/fs/cgroup/memory/memory.failcnt",
+      // clone/pthread_create 触顶会返回 EAGAIN，与 cuInit 失败时的 errno 一致
+      "/sys/fs/cgroup/pids.max",
+      "/sys/fs/cgroup/pids.current",
+      "/sys/fs/cgroup/pids.events",
   };
   for (const char* path : files) {
     std::string content;
@@ -301,6 +319,55 @@ void CollectCgroup(std::ostream& os) {
     }
     os << "  " << path << ":\n";
     WriteIndented(os, content, 12);
+  }
+}
+
+// 内核侧分配能力。显存/BAR1 都空闲却 cuInit 失败时，剩下的嫌疑是宿主内核：
+// 高阶连续页枯竭、水位/原子分配失败、线程与 pid 计数触顶。这里一次采全判据。
+void CollectKernelAlloc(std::ostream& os) {
+  WriteSection(os, "kernel alloc / fragmentation");
+  const char* sysctls[] = {
+      "/proc/sys/vm/min_free_kbytes",
+      "/proc/sys/vm/extfrag_threshold",
+      "/proc/sys/vm/zone_reclaim_mode",
+      "/proc/sys/kernel/threads-max",
+      "/proc/sys/kernel/pid_max",
+      "/proc/sys/kernel/dmesg_restrict",
+  };
+  for (const char* path : sysctls) {
+    const std::string value = ReadFirstLine(path);
+    os << "  " << path << "=" << (value.empty() ? "?" : value) << "\n";
+  }
+
+  // buddyinfo：每行是 Node/zone 后跟 order 0..10 的空闲块数。
+  // 高 order（>=3）长期为 0 => 连续页枯竭，驱动的 DMA/连续分配会失败。
+  std::string buddy;
+  if (ReadFile("/proc/buddyinfo", kMaxSmallFile, &buddy)) {
+    os << "  /proc/buddyinfo (order 0..10):\n";
+    WriteIndented(os, buddy, 16);
+  } else {
+    os << "  /proc/buddyinfo <unreadable errno=" << errno << ">\n";
+  }
+
+  // zoneinfo 只保留水位与空闲页，避免整份文件（几百 KB）进入快照。
+  std::string zone;
+  if (ReadFile("/proc/zoneinfo", 512 * 1024, &zone)) {
+    os << "  /proc/zoneinfo (filtered):\n";
+    std::istringstream in(zone);
+    std::string line;
+    while (std::getline(in, line)) {
+      const std::string trimmed = Trim(line);
+      if (trimmed.rfind("Node ", 0) == 0) {
+        os << "    " << trimmed << "\n";
+      } else if (trimmed.rfind("pages free", 0) == 0 ||
+                 trimmed.rfind("min ", 0) == 0 ||
+                 trimmed.rfind("low ", 0) == 0 ||
+                 trimmed.rfind("high ", 0) == 0 ||
+                 trimmed.rfind("managed ", 0) == 0 ||
+                 trimmed.rfind("nr_free_pages", 0) == 0) {
+        os << "      " << trimmed << "\n";
+      }
+    }
   }
 }
 
@@ -401,6 +468,10 @@ void CollectLargestMappings(std::ostream& os, Summary* summary) {
   std::vector<Vma> top;
   unsigned long long total_kb = 0;
   unsigned long long nvidia_kb = 0;
+  unsigned long long nvidia0_kb = 0;   // /dev/nvidia0（compute client 的映射）
+  unsigned long long ctl_kb = 0;       // /dev/nvidiactl
+  unsigned long long uvm_kb = 0;       // /dev/nvidia-uvm（UVM per-process VA）
+  unsigned long long modeset_kb = 0;   // /dev/nvidia-modeset
   unsigned long long anon_kb = 0;
   std::string line;
   while (std::getline(in, line)) {
@@ -434,6 +505,15 @@ void CollectLargestMappings(std::ostream& os, Summary* summary) {
     total_kb += size_kb;
     if (path.rfind("/dev/nvidia", 0) == 0) {
       nvidia_kb += size_kb;
+      if (path.rfind("/dev/nvidia-uvm", 0) == 0) {
+        uvm_kb += size_kb;
+      } else if (path.rfind("/dev/nvidiactl", 0) == 0) {
+        ctl_kb += size_kb;
+      } else if (path.rfind("/dev/nvidia-modeset", 0) == 0) {
+        modeset_kb += size_kb;
+      } else {
+        nvidia0_kb += size_kb;
+      }
     } else if (path.empty()) {
       anon_kb += size_kb;
     }
@@ -453,6 +533,10 @@ void CollectLargestMappings(std::ostream& os, Summary* summary) {
 
   os << "  total_va_kb=" << total_kb << " nvidia_va_kb=" << nvidia_kb
      << " anon_va_kb=" << anon_kb << "\n";
+  // 按设备节点拆分：成功建立 context 时 uvm/nvidia0 会各有一块固定 VA；
+  // 失败时两者都接近 0，可直接看出卡在 context 建立之前。
+  os << "  nvidia0_va_kb=" << nvidia0_kb << " ctl_va_kb=" << ctl_kb
+     << " uvm_va_kb=" << uvm_kb << " modeset_va_kb=" << modeset_kb << "\n";
   for (const auto& vma : top) {
     os << "  " << std::setw(10) << vma.size_kb << " kB " << vma.range << " "
        << vma.perms << " " << (vma.path.empty() ? "[anon]" : vma.path) << "\n";
@@ -875,6 +959,17 @@ struct NvmlMemory {
   unsigned long long used;
 };
 
+// v2 的 used 不含 reserved；v1 在本驱动上 used 含 reserved（会把 597 报成 used，
+// 而 nvidia-smi 显示 used=153 + reserved=446）。优先用 v2。
+struct NvmlMemoryV2 {
+  unsigned int version;
+  unsigned long long total;
+  unsigned long long reserved;
+  unsigned long long free;
+  unsigned long long used;
+};
+constexpr unsigned int kNvmlMemoryV2Version = 0x02000028;
+
 struct NvmlBar1Memory {
   unsigned long long total;
   unsigned long long free;
@@ -893,10 +988,12 @@ struct NvmlApi {
   void* handle = nullptr;
   bool ready = false;
   NvmlReturn (*init)() = nullptr;
+  NvmlReturn (*shutdown)() = nullptr;
   NvmlReturn (*get_count)(unsigned int*) = nullptr;
   NvmlReturn (*get_handle)(unsigned int, NvmlDevice*) = nullptr;
   NvmlReturn (*get_name)(NvmlDevice, char*, unsigned int) = nullptr;
   NvmlReturn (*get_memory)(NvmlDevice, NvmlMemory*) = nullptr;
+  NvmlReturn (*get_memory_v2)(NvmlDevice, NvmlMemoryV2*) = nullptr;
   NvmlReturn (*get_bar1)(NvmlDevice, NvmlBar1Memory*) = nullptr;
   NvmlReturn (*get_procs)(NvmlDevice, unsigned int*, NvmlProcessInfo*) = nullptr;
 };
@@ -917,6 +1014,8 @@ NvmlApi& Nvml() {
     };
     result.init = reinterpret_cast<NvmlReturn (*)()>(
         sym("nvmlInit_v2") != nullptr ? sym("nvmlInit_v2") : sym("nvmlInit"));
+    result.shutdown =
+        reinterpret_cast<NvmlReturn (*)()>(sym("nvmlShutdown"));
     result.get_count = reinterpret_cast<NvmlReturn (*)(unsigned int*)>(
         sym("nvmlDeviceGetCount_v2") != nullptr ? sym("nvmlDeviceGetCount_v2")
                                                 : sym("nvmlDeviceGetCount"));
@@ -928,6 +1027,9 @@ NvmlApi& Nvml() {
         sym("nvmlDeviceGetName"));
     result.get_memory = reinterpret_cast<NvmlReturn (*)(NvmlDevice, NvmlMemory*)>(
         sym("nvmlDeviceGetMemoryInfo"));
+    result.get_memory_v2 =
+        reinterpret_cast<NvmlReturn (*)(NvmlDevice, NvmlMemoryV2*)>(
+            sym("nvmlDeviceGetMemoryInfo_v2"));
     result.get_bar1 = reinterpret_cast<NvmlReturn (*)(NvmlDevice, NvmlBar1Memory*)>(
         sym("nvmlDeviceGetBAR1MemoryInfo"));
     // 只用 v1：结构体只有 {pid, usedGpuMemory}，ABI 最稳定。
@@ -938,23 +1040,37 @@ NvmlApi& Nvml() {
         result.get_handle == nullptr || result.get_memory == nullptr) {
       return result;
     }
-    if (result.init() != kNvmlSuccess) {
-      return result;
-    }
+    // 符号已就绪；init/shutdown 由每次采集自己成对完成（见 CollectDeviceState）。
     result.ready = true;
     return result;
   }();
   return api;
 }
 
+// NVML init 会打开若干个 /dev/nvidia* fd 并映射少量 VA；为了让诊断本身不改变
+// 进程的 fd/VA 指纹，采集结束后立即 shutdown（每次快照 init/shutdown 一次）。
+struct NvmlShutdownGuard {
+  ~NvmlShutdownGuard() {
+    NvmlApi& api = Nvml();
+    if (api.ready && api.shutdown != nullptr) {
+      api.shutdown();
+    }
+  }
+};
+
 void CollectDeviceState(std::ostream& os, Summary* summary) {
   WriteSection(os, "device state (nvml)");
   NvmlApi& api = Nvml();
   if (!api.ready) {
-    os << "  nvml unavailable (libnvidia-ml.so.1 load/init failed, "
+    os << "  nvml unavailable (libnvidia-ml.so.1 load failed or symbols missing, "
           "VSTREAM_CUDA_DIAG_NVML may be 0)\n";
     return;
   }
+  if (api.init() != kNvmlSuccess) {
+    os << "  nvml init failed\n";
+    return;
+  }
+  NvmlShutdownGuard shutdown_guard;
 
   unsigned int count = 0;
   if (api.get_count(&count) != kNvmlSuccess || count == 0) {
@@ -975,17 +1091,32 @@ void CollectDeviceState(std::ostream& os, Summary* summary) {
     os << "  name=" << name << "\n";
   }
 
-  NvmlMemory memory {};
-  if (api.get_memory(device, &memory) == kNvmlSuccess) {
-    const unsigned long long mib = 1024ULL * 1024ULL;
-    os << "  memory_total_mib=" << memory.total / mib
-       << " used_mib=" << memory.used / mib
-       << " free_mib=" << memory.free / mib << "\n";
-    summary->gpu_total_mib = std::to_string(memory.total / mib);
-    summary->gpu_used_mib = std::to_string(memory.used / mib);
-    summary->gpu_free_mib = std::to_string(memory.free / mib);
+  const unsigned long long mib = 1024ULL * 1024ULL;
+  NvmlMemoryV2 memory_v2 {};
+  memory_v2.version = kNvmlMemoryV2Version;
+  if (api.get_memory_v2 != nullptr &&
+      api.get_memory_v2(device, &memory_v2) == kNvmlSuccess) {
+    os << "  memory_total_mib=" << memory_v2.total / mib
+       << " used_mib=" << memory_v2.used / mib
+       << " free_mib=" << memory_v2.free / mib
+       << " reserved_mib=" << memory_v2.reserved / mib << "\n";
+    summary->gpu_total_mib = std::to_string(memory_v2.total / mib);
+    summary->gpu_used_mib = std::to_string(memory_v2.used / mib);
+    summary->gpu_free_mib = std::to_string(memory_v2.free / mib);
+    summary->gpu_reserved_mib = std::to_string(memory_v2.reserved / mib);
   } else {
-    os << "  nvml get_memory failed\n";
+    NvmlMemory memory {};
+    if (api.get_memory(device, &memory) == kNvmlSuccess) {
+      // v1 的 used 含 reserved，单独标注避免误读。
+      os << "  memory_total_mib=" << memory.total / mib
+         << " used_incl_reserved_mib=" << memory.used / mib
+         << " free_mib=" << memory.free / mib << "\n";
+      summary->gpu_total_mib = std::to_string(memory.total / mib);
+      summary->gpu_used_mib = std::to_string(memory.used / mib);
+      summary->gpu_free_mib = std::to_string(memory.free / mib);
+    } else {
+      os << "  nvml get_memory failed\n";
+    }
   }
 
   if (api.get_bar1 != nullptr) {
@@ -1004,9 +1135,13 @@ void CollectDeviceState(std::ostream& os, Summary* summary) {
   if (api.get_procs == nullptr) {
     return;
   }
+  // NVML 在 info=nullptr 且存在进程时返回 NVML_ERROR_INSUFFICIENT_SIZE(7)，
+  // 同时把 count 填成实际数量；不能当失败处理（否则正常快照永远看不到 client 列表）。
+  constexpr NvmlReturn kNvmlInsufficientSize = 7;
   unsigned int proc_count = 0;
-  if (api.get_procs(device, &proc_count, nullptr) != kNvmlSuccess) {
-    os << "  nvml get_compute_processes(count) failed\n";
+  NvmlReturn proc_rc = api.get_procs(device, &proc_count, nullptr);
+  if (proc_rc != kNvmlSuccess && proc_rc != kNvmlInsufficientSize) {
+    os << "  nvml get_compute_processes(count) failed rc=" << proc_rc << "\n";
     return;
   }
   os << "  compute_processes=" << proc_count << "\n";
@@ -1018,8 +1153,14 @@ void CollectDeviceState(std::ostream& os, Summary* summary) {
 
   std::vector<NvmlProcessInfo> infos(proc_count);
   unsigned int filled = proc_count;
-  if (api.get_procs(device, &filled, infos.data()) != kNvmlSuccess) {
-    os << "  nvml get_compute_processes(list) failed\n";
+  proc_rc = api.get_procs(device, &filled, infos.data());
+  if (proc_rc == kNvmlInsufficientSize && filled > proc_count) {
+    // 查询期间又有新进程：按返回的容量再取一次
+    infos.resize(filled);
+    proc_rc = api.get_procs(device, &filled, infos.data());
+  }
+  if (proc_rc != kNvmlSuccess) {
+    os << "  nvml get_compute_processes(list) failed rc=" << proc_rc << "\n";
     return;
   }
   int in_proc = 0;
@@ -1043,8 +1184,172 @@ void CollectDeviceState(std::ostream& os, Summary* summary) {
   summary->gpu_clients_in_proc = std::to_string(in_proc);
 }
 
+// 地址空间布局 / ASLR 指纹。
+// 背景：失败代与正常代的 worker 低位预留区间"代内一致、代间不同"，而父链不加载
+// CUDA 库、forkserver 是 fork+exec 的单线程新解释器，继承类假设已排除。剩下的
+// 首要假设是固定地址预留与布局冲突，因此这里把可判据的布局量一次采全：
+//   - randomize_va_space / personality：验证 setarch -R 是否真的生效（跨 fork/exec 继承）
+//   - 关键库基址：关 ASLR 后各代应当完全一致
+//   - 低地址（<16GiB）VMA 全量清单：固定地址预留的冲突只可能出现在这里，
+//     而 largest mappings 只按大小取 top15，会漏掉小的冲突映射。
+void CollectLayout(std::ostream& os, Summary* summary) {
+  WriteSection(os, "layout / aslr");
+  summary->aslr = ReadFirstLine("/proc/sys/kernel/randomize_va_space");
+  os << "  randomize_va_space=" << summary->aslr << "\n";
+  os << "  mmap_min_addr=" << ReadFirstLine("/proc/sys/vm/mmap_min_addr") << "\n";
+
+  const std::string personality_text = ReadFirstLine("/proc/self/personality");
+  unsigned long personality = 0;
+  try {
+    personality = std::stoul(personality_text, nullptr, 16);
+  } catch (...) {
+    personality = 0;
+  }
+  // ADDR_NO_RANDOMIZE = 0x00040000（setarch -R 设置，跨 fork/exec 继承）
+  const bool no_randomize = (personality & 0x00040000UL) != 0;
+  summary->no_randomize = no_randomize ? "yes" : "no";
+  os << "  personality=0x" << std::hex << personality << std::dec
+     << " no_randomize=" << summary->no_randomize << "\n";
+
+  constexpr unsigned long long kLowLimit = 0x400000000ULL;  // 16 GiB
+  struct LowVma {
+    unsigned long long start = 0;
+    unsigned long long size_kb = 0;
+    std::string range;
+    std::string perms;
+    std::string path;
+  };
+  std::vector<LowVma> low;
+  unsigned long long low_va_kb = 0;
+  std::string libcuda_base = "?";
+  std::string libnvinfer_base = "?";
+  std::string libc_base = "?";
+
+  std::ifstream in("/proc/self/maps");
+  if (!in) {
+    os << "  /proc/self/maps <unreadable errno=" << errno << ">\n";
+    return;
+  }
+  std::string line;
+  while (std::getline(in, line)) {
+    std::istringstream fields(line);
+    std::string range;
+    std::string perms;
+    std::string offset;
+    std::string dev;
+    std::string inode;
+    std::string path;
+    fields >> range >> perms >> offset >> dev >> inode;
+    std::getline(fields, path);
+    path = Trim(path);
+    const size_t dash = range.find('-');
+    if (dash == std::string::npos) {
+      continue;
+    }
+    unsigned long long start = 0;
+    unsigned long long end = 0;
+    try {
+      start = std::stoull(range.substr(0, dash), nullptr, 16);
+      end = std::stoull(range.substr(dash + 1), nullptr, 16);
+    } catch (...) {
+      continue;
+    }
+    if (end <= start) {
+      continue;
+    }
+
+    if (path.find("libcuda.so") != std::string::npos && libcuda_base == "?") {
+      libcuda_base = range.substr(0, dash);
+    } else if (path.find("libnvinfer.so") != std::string::npos &&
+               libnvinfer_base == "?") {
+      libnvinfer_base = range.substr(0, dash);
+    } else if (path.find("/libc.so") != std::string::npos && libc_base == "?") {
+      libc_base = range.substr(0, dash);
+    }
+
+    if (start < kLowLimit) {
+      LowVma vma;
+      vma.start = start;
+      vma.size_kb = (end - start) / 1024ULL;
+      vma.range = range;
+      vma.perms = perms;
+      vma.path = path;
+      low.push_back(vma);
+      low_va_kb += vma.size_kb;
+    }
+  }
+
+  os << "  lib_base libcuda=0x" << libcuda_base << " libnvinfer=0x" << libnvinfer_base
+     << " libc=0x" << libc_base << "\n";
+  summary->low_va_kb = std::to_string(low_va_kb);
+  summary->low_vmas = std::to_string(low.size());
+  os << "  low_va_kb=" << low_va_kb << " low_vmas=" << low.size()
+     << " (start < 16GiB)\n";
+
+  std::sort(low.begin(), low.end(),
+            [](const LowVma& a, const LowVma& b) { return a.size_kb > b.size_kb; });
+  if (!low.empty()) {
+    summary->low_top_range = low.front().range;
+  }
+  constexpr size_t kMaxLowPrint = 60;
+  for (size_t i = 0; i < low.size() && i < kMaxLowPrint; ++i) {
+    os << "    " << std::setw(10) << low[i].size_kb << " kB " << low[i].range
+       << " " << low[i].perms << " "
+       << (low[i].path.empty() ? "[anon]" : low[i].path) << "\n";
+  }
+  if (low.size() > kMaxLowPrint) {
+    os << "    ... truncated, total=" << low.size() << "\n";
+  }
+}
+
+size_t CountMapsMatches(int pid, const char* needle) {
+  const std::string path = "/proc/" + std::to_string(pid) + "/maps";
+  std::ifstream in(path);
+  if (!in) {
+    return 0;
+  }
+  size_t count = 0;
+  std::string line;
+  while (std::getline(in, line)) {
+    if (line.find(needle) != std::string::npos) {
+      ++count;
+    }
+  }
+  return count;
+}
+
+// 父链是否已加载 CUDA 库 / 是否多线程。
+// 之前只能靠手工命令回答"动态加载是否与启动方式无关"，这里固化进每份快照：
+// 若任一祖先 libnvinfer>0，说明 CUDA 库在 fork 前已加载，继承假设需要重新评估。
+void CollectAncestors(std::ostream& os) {
+  WriteSection(os, "ancestor chain (cuda libs / threads)");
+  int pid = getppid();
+  for (int depth = 0; depth < 15 && pid > 1; ++depth) {
+    const std::string cmd = ReadPidCmdline(pid);
+    const bool is_forkserver = cmd.find("forkserver") != std::string::npos;
+    os << "  pid=" << pid
+       << " ppid=" << ReadPidStatusField(pid, "PPid:")
+       << " threads=" << ReadPidStatusField(pid, "Threads:")
+       << " libcuda=" << CountMapsMatches(pid, "libcuda")
+       << " libnvinfer=" << CountMapsMatches(pid, "libnvinfer")
+       << " nvidia_fds=" << NvidiaFdCountForPid(pid)
+       << " forkserver=" << (is_forkserver ? "yes" : "no") << "\n";
+    os << "    cmd=" << cmd << "\n";
+    int ppid = 0;
+    try {
+      ppid = std::stoi(ReadPidStatusField(pid, "PPid:"));
+    } catch (...) {
+      break;
+    }
+    if (ppid <= 0 || ppid == pid) {
+      break;
+    }
+    pid = ppid;
+  }
+}
+
 void DumpImpl(const char* mode, const char* stage, const char* kind, int code,
-              int attempt) {
+              int attempt, int call_errno) {
   static const bool enabled_all = []() {
     const char* value = std::getenv("VSTREAM_CUDA_DIAG");
     return !(value != nullptr && value[0] == '0' && value[1] == '\0');
@@ -1096,7 +1401,7 @@ void DumpImpl(const char* mode, const char* stage, const char* kind, int code,
       return;
     }
 
-    CollectHeader(out, mode_str.c_str(), stage, kind, code, attempt);
+    CollectHeader(out, mode_str.c_str(), stage, kind, code, attempt, call_errno);
     CollectStatus(out, &summary);
     CollectLimits(out);
     CollectSmapsRollup(out, &summary);
@@ -1106,15 +1411,20 @@ void DumpImpl(const char* mode, const char* stage, const char* kind, int code,
     CollectShm(out, &summary);
     CollectMaps(out, &summary);
     CollectLargestMappings(out, &summary);
+    CollectLayout(out, &summary);
     CollectFds(out, &summary);
-    CollectDeviceState(out, &summary);
     CollectNvidiaHolders(out, &summary);
+    CollectAncestors(out);
     CollectThread(out);
     CollectEnv(out);
     CollectGpuProc(out);
     CollectDevices(out);
     CollectMountInfo(out);
     CollectCudaToolkit(out);
+    CollectKernelAlloc(out);
+    // NVML 放在最后：nvmlInit 会打开 /dev/nvidia* 句柄，提前调用会污染
+    // 上面 fds / holders 的计数（11-12 现场就出现过 7 → 13 的假增长）。
+    CollectDeviceState(out, &summary);
 
     out << "\n--- notes ---\n"
         << "  normal/failure snapshots are written to separate files;"
@@ -1164,6 +1474,7 @@ void DumpImpl(const char* mode, const char* stage, const char* kind, int code,
                  << " nvidia_holders=" << summary.nvidia_holders
                  << " gpu_used_mib=" << summary.gpu_used_mib
                  << " gpu_free_mib=" << summary.gpu_free_mib
+                 << " gpu_reserved_mib=" << summary.gpu_reserved_mib
                  << " bar1_used_mib=" << summary.bar1_used_mib
                  << " gpu_clients=" << summary.gpu_clients
                  << " gpu_clients_in_pid_ns=" << summary.gpu_clients_in_proc
@@ -1175,6 +1486,12 @@ void DumpImpl(const char* mode, const char* stage, const char* kind, int code,
                  << " shmem_kb=" << summary.shmem_kb
                  << " shm_used_kb=" << summary.shm_used_kb
                  << " overcommit=" << summary.overcommit
+                 << " aslr=" << summary.aslr
+                 << " no_randomize=" << summary.no_randomize
+                 << " low_va_kb=" << summary.low_va_kb
+                 << " low_vmas=" << summary.low_vmas
+                 << " low_top=" << summary.low_top_range
+                 << " call_errno=" << call_errno
                  << " page_tables_kb=" << summary.page_tables_kb
                  << " libcuda=" << (summary.libcuda.empty() ? "?" : summary.libcuda)
                  << " file=" << path;
@@ -1183,12 +1500,12 @@ void DumpImpl(const char* mode, const char* stage, const char* kind, int code,
 }  // namespace
 
 void DumpDiagSnapshotOnError(const char* stage, const char* kind, int code,
-                             int attempt) {
-  DumpImpl("failure", stage, kind, code, attempt);
+                             int attempt, int call_errno) {
+  DumpImpl("failure", stage, kind, code, attempt, call_errno);
 }
 
 void DumpDiagSnapshotAtStage(const char* stage) {
-  DumpImpl("normal", stage, "normal", 0, 0);
+  DumpImpl("normal", stage, "normal", 0, 0, -1);
 }
 
 }  // namespace cnstream
@@ -1197,7 +1514,7 @@ void DumpDiagSnapshotAtStage(const char* stage) {
 
 namespace cnstream {
 
-void DumpDiagSnapshotOnError(const char*, const char*, int, int) {}
+void DumpDiagSnapshotOnError(const char*, const char*, int, int, int) {}
 
 void DumpDiagSnapshotAtStage(const char*) {}
 

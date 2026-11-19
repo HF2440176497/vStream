@@ -6,6 +6,7 @@ extern "C" {
 #include <libavutil/error.h>
 }
 
+#include <cerrno>
 #include <chrono>
 #include <cstdlib>
 #include <thread>
@@ -174,10 +175,13 @@ CudaInitResult RunCudaInit(const char* stage, const CudaInitCall& call,
     result.attempt = attempt;
 
     int code = 0;
+    int call_errno = 0;
     {
       // 闸门只覆盖创建动作本身，退避等待在闸门外进行
       CudaInitGateGuard guard(name);
       code = call();
+      // 必须在 析构/任何日志之前捕获
+      call_errno = errno;
     }
     result.last_error = code;
 
@@ -195,7 +199,7 @@ CudaInitResult RunCudaInit(const char* stage, const CudaInitCall& call,
       return result;
     }
 
-    DumpDiagSnapshotOnError(name, "init", code, attempt);
+    DumpDiagSnapshotOnError(name, "init", code, attempt, call_errno);
 
     // 无错误码可分类
     result.last_class = classify != nullptr ? classify(code) : CudaInitErrorClass::kTransient;

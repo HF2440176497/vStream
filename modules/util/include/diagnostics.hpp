@@ -16,13 +16,15 @@ namespace cnstream {
  *   VSTREAM_CUDA_DIAG_NVML=0     关闭设备侧采集（默认通过 dlopen 读 NVML）
  *   VSTREAM_CUDA_DIAG_DIR=dir    输出目录（默认 /tmp，需已存在）
  *
- * @param stage   阶段（load / probe / infer_pool / sink_stream / CUDA 初始化 stage）
+ * @param stage   阶段（preinit / load / probe / infer_pool / sink_stream / CUDA 初始化 stage）
  * @param kind    init（初始化失败）/ stale（初始化前发现陈旧错误）/ normal
  * @param code    原始错误码（CUDA 正值或 AVERROR 负值）
  * @param attempt 第几次尝试（0 表示非重试路径）
+ * @param call_errno 失败调用返回后立即捕获的 errno；-1 表示未提供（退化为快照时刻 errno）。
+ *                   必须传调用点的值：快照时刻的 errno 可能已被后续 syscall 覆盖。
  */
 void DumpDiagSnapshotOnError(const char* stage, const char* kind, int code,
-                             int attempt);
+                             int attempt, int call_errno = -1);
 
 /**
  * 采集一次正常路径快照（每个 stage 每进程只写一次）。
