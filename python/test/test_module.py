@@ -189,5 +189,191 @@ def test_python_module():
     print("PASS: Python custom module")
 
 
+# ---------------------------------------------------------------------------
+# 扇出 + 派生图示例：演示推荐的安全写法
+#
+# 拓扑 source -> [py_writer, py_reader] 同一帧同时进两个分支。
+# 若写分支直接在 get_image() 返回的共享数组上原地改图，就会与并行的读分支产生数据竞争。
+# 安全写法是：只在私有副本上修改，再经 set_model_input_image
+# 发布为派生图——派生图是 collection 里一块独立缓冲，不与原图共享内存。
+# 下游 C++ 推理前处理经 GetModelInputImage 读取这块派生图。
+# ---------------------------------------------------------------------------
+
+# 写分支在副本上填充的纯色方块（BGR），以及采样点
+_EDIT_COLOR = (0, 255, 0)
+_SAMPLE = (30, 30)  # (row, col)，落在方块内部
+_BG_COLOR = (128, 64, 32)  # create_test_image 的背景色
+
+
+class SafeDerivedWriter(vstream.Module):
+    """扇出中的写分支：改私有副本 + 发布派生图，绝不原地修改共享原图。"""
+
+    processed = 0
+
+    def __init__(self, name: str):
+        vstream.Module.__init__(self, name)
+
+    def open(self, params: dict) -> bool:
+        return True
+
+    def close(self):
+        pass
+
+    def process(self, data) -> int:
+        df = data.get_data_frame()
+        if df is None:
+            return 0
+        img = df.get_image()          # 零拷贝读原图（共享内存，只读）
+        edited = img.copy()           # 关键：私有副本，不碰共享内存
+        cv2.rectangle(edited, (10, 10), (60, 60), _EDIT_COLOR, -1)
+
+        # 发布为帧级派生图（独立缓冲）。若只想喂给某个模型，传 model_name="xxx"
+        data.set_model_input_image(edited, model_name="")
+
+        # 自证：派生图带上了修改，而原图保持干净
+        derived = data.get_model_input_image(model_name="")
+        assert tuple(int(v) for v in derived[_SAMPLE]) == _EDIT_COLOR
+        assert tuple(int(v) for v in img[_SAMPLE]) == _BG_COLOR
+
+        SafeDerivedWriter.processed += 1
+        return 0
+
+    def on_eos(self, stream_id: str):
+        pass
+
+
+class SafeOriginalReader(vstream.Module):
+    """扇出中的读分支：并发读原图，统计是否被写分支污染（应恒为 0）。"""
+
+    checked = 0
+    violations = 0
+
+    def __init__(self, name: str):
+        vstream.Module.__init__(self, name)
+
+    def open(self, params: dict) -> bool:
+        return True
+
+    def close(self):
+        pass
+
+    def process(self, data) -> int:
+        df = data.get_data_frame()
+        if df is None:
+            return 0
+        img = df.get_image()          # 读原图，与写分支并发
+        px = tuple(int(v) for v in img[_SAMPLE])
+        if px != _BG_COLOR:
+            SafeOriginalReader.violations += 1
+        SafeOriginalReader.checked += 1
+        return 0
+
+    def on_eos(self, stream_id: str):
+        pass
+
+
+def test_python_module_fanout_derived_image():
+    print("=" * 60)
+    print("TEST: Python module fan-out + derived image (safe write)")
+    print("=" * 60)
+
+    config = {
+        "profiler_config": {"enable_profile": False},
+        "source": {
+            "parallelism": 1,
+            "max_input_queue_size": 20,
+            "class_name": "cnstream::DataSource",
+            "next_modules": ["py_writer", "py_reader"],
+            "custom_params": {"config_file": "data_source.json"}
+        },
+        "py_writer": {
+            "parallelism": 1,
+            "max_input_queue_size": 20,
+            "class_name": "cnstream::PyModule",
+            "next_modules": ["sink"],
+            "custom_params": {"pyclass_name": "test_module.SafeDerivedWriter"}
+        },
+        "py_reader": {
+            "parallelism": 1,
+            "max_input_queue_size": 20,
+            "class_name": "cnstream::PyModule",
+            "next_modules": [],
+            "custom_params": {"pyclass_name": "test_module.SafeOriginalReader"}
+        },
+        "sink": {
+            "parallelism": 1,
+            "max_input_queue_size": 20,
+            "class_name": "cnstream::DataSink",
+            "next_modules": [],
+            "custom_params": {"config_file": "data_sink.json"}
+        }
+    }
+
+    json_path = "pipeline_python_fanout.json"
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(config, f, indent=2, ensure_ascii=False)
+
+    pipeline = vstream.Pipeline("py_fanout_pipeline")
+    assert pipeline.build_pipeline_by_json_file(json_path), "Build pipeline failed"
+
+    source = pipeline.get_data_source(source_module_name)
+    assert source is not None
+    send_handler = vstream.SendHandler(source, stream_id)
+    sink = pipeline.get_data_sink(sink_module_name)
+    assert sink is not None
+    queue_handler = vstream.QueueHandler(sink, stream_id)
+
+    assert pipeline.start(), "Pipeline start failed"
+    assert source.add_source(send_handler) == 0
+    assert sink.add_sink(queue_handler) == 0
+
+    running = True
+    send_count = 0
+    receive_count = 0
+
+    def send_thread():
+        nonlocal send_count
+        while running:
+            send_handler.send(get_timestamp_ms(), str(send_count), create_test_image(480, 640))
+            send_count += 1
+            time.sleep(0.02)
+
+    def receive_thread():
+        nonlocal receive_count
+        while running:
+            ok, _ = queue_handler.get_data(wait_ms=10)
+            if ok:
+                receive_count += 1
+            else:
+                time.sleep(0.01)
+
+    t_send = threading.Thread(target=send_thread)
+    t_recv = threading.Thread(target=receive_thread)
+    t_send.start()
+    t_recv.start()
+    time.sleep(5)
+    running = False
+    t_send.join()
+    t_recv.join()
+
+    send_handler.stop()
+    send_handler.close()
+    pipeline.stop()
+
+    # C++ 侧 import 的是 test_module 模块（与 __main__ 是同一文件的两个模块对象），
+    # 统计累加在该模块的类属性上，这里 import 回来读取（sys.modules 缓存，同一对象）
+    import test_module as tm
+    print(f"sent={send_count}, received={receive_count}, "
+          f"writer_processed={tm.SafeDerivedWriter.processed}, "
+          f"reader_checked={tm.SafeOriginalReader.checked}, "
+          f"reader_violations={tm.SafeOriginalReader.violations}")
+
+    assert tm.SafeDerivedWriter.processed > 0, "writer never ran"
+    assert tm.SafeOriginalReader.checked > 0, "reader never ran"
+    assert tm.SafeOriginalReader.violations == 0, "original image was polluted in fan-out!"
+    print("PASS: fan-out safe write via derived image")
+
+
 if __name__ == "__main__":
     test_python_module()
+    test_python_module_fanout_derived_image()

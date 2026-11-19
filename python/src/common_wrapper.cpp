@@ -37,6 +37,9 @@ py::capsule MakeCapsule(const cv::Mat& m) {
  * @brief Convert cv::Mat to python numpy array
  */
 py::array MatToArray(const cv::Mat& m) {
+  if (m.empty()) {
+    return py::array();
+  }
   if (!m.isContinuous()) {
     throw std::invalid_argument("only continuous cv::Mat is supported. Call mat.clone() or mat.reshape(1) first.");
   }
@@ -62,13 +65,22 @@ cv::Mat ArrayToMat(py::array_t<uint8_t>& array) {
   if (buf.format != py::format_descriptor<uint8_t>::format()) {
     throw std::runtime_error("only uint8 format is supported");
   }
-  int rows = static_cast<int>(buf.shape[0]);  // height
-  int cols = static_cast<int>(buf.shape[1]);  // width
-  int channels = (buf.ndim == 3) ? buf.shape[2] : 1;
-  size_t step = static_cast<size_t>(buf.strides[0]);
+  int channels = (buf.ndim == 3) ? static_cast<int>(buf.shape[2]) : 1;
+  if (channels != 1 && channels != 3) {
+    throw std::runtime_error("only 1 or 3 channels are supported");
+  }
+  // 规范化为 C 连续内存：切片/翻转/非连续数组的步长在此被统一（按需拷贝），
+  // 否则直接按 strides[0] 构造 cv::Mat 会行内错位，负步长还会越界
+  py::array contig = py::array::ensure(array, py::array::c_style);
+  if (!contig) {
+    throw std::runtime_error("failed to make array C-contiguous");
+  }
+  py::buffer_info cbuf = contig.request();
+  int rows = static_cast<int>(cbuf.shape[0]);  // height
+  int cols = static_cast<int>(cbuf.shape[1]);  // width
   cv::Mat mat(rows, cols,
               (channels == 1) ? CV_8UC1 : CV_8UC3,
-              static_cast<uint8_t*>(buf.ptr), step);
+              static_cast<uint8_t*>(cbuf.ptr));
   return mat.clone();
 }
 

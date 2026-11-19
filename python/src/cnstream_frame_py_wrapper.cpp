@@ -46,7 +46,8 @@ void FrameInfoWrapper(const py::module &m) {
     .def("is_removed", &FrameInfo::IsRemoved)
     .def("is_invalid", &FrameInfo::IsInvalid)
     .def_readwrite("stream_id", &FrameInfo::stream_id)
-    .def_readwrite("timestamp", &FrameInfo::timestamp);
+    .def_readwrite("timestamp", &FrameInfo::timestamp)
+    .def_readwrite("frame_id_s", &FrameInfo::frame_id_s);
 }
 
 }  //  namespace cnstream

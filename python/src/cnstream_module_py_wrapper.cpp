@@ -142,9 +142,18 @@ bool PyModule::Open(ModuleParamSet params) {
     LOGE(PyModule) << "pyclass_name must be set.";
     return false;
   }
+  // PyModule 依赖进程内已有 Python 解释器（由 Python 宿主启动）。
+  // 纯 C++ 进程未初始化解释器时，提前失败。
+  if (!Py_IsInitialized()) {
+    LOGE(PyModule) << "PyModule requires a Python-host process (interpreter not initialized). "
+                   << "pyclass_name : [" << pyclass_name_iter->second << "]";
+    return false;
+  }
+  // 先保存字符串：params.erase 会使 pyclass_name_iter 失效，catch 中不能再解引用它
+  const std::string pyclass_fullname = pyclass_name_iter->second;
   py::gil_scoped_acquire gil;
   try {
-    auto t = SplitPyModuleAndClass(pyclass_name_iter->second);
+    auto t = SplitPyModuleAndClass(pyclass_fullname);
     std::string pymodule_name = std::move(t.first);
     std::string pyclass_name = std::move(t.second);
     py::module pymodule = py::module::import(pymodule_name.c_str());
@@ -164,20 +173,19 @@ bool PyModule::Open(ModuleParamSet params) {
 
     // invoke py inside open function
     return py::cast<bool>(pyopen_(params));
-  } catch (std::runtime_error e) {
-    LOGE(PyModule) << "pyclass_name : [" << pyclass_name_iter->second << "]. " << e.what();
+  } catch (const std::exception &e) {
+    // pybind11 3.x 的 error_already_set 继承自 std::exception
+    LOGE(PyModule) << "pyclass_name : [" << pyclass_fullname << "]. " << e.what();
     return false;
   }
-
-  return true;
 }
 
 void PyModule::Close() {
   py::gil_scoped_acquire gil;
   try {
     pyclose_();
-  } catch (std::runtime_error e) {
-    LOGF(PyModule) << GetName() << " call close failed : " << e.what();
+  } catch (const std::exception &e) {
+    LOGE(PyModule) << GetName() << " call close failed : " << e.what();
   }
 }
 
@@ -185,16 +193,27 @@ int PyModule::Process(std::shared_ptr<FrameInfo> data) {
   {
     py::gil_scoped_acquire gil;
     if (instance_has_transmit_) {
-      return py::cast<int>(pyprocess_(data));
+      try {
+        return py::cast<int>(pyprocess_(data));
+      } catch (const std::exception &e) {
+        LOGE(PyModule) << GetName() << " call process failed : " << e.what();
+        return -1;
+      }
     } else {
       if (data->IsEos()) {
-        pyon_eos_(data->stream_id);
+        try {
+          pyon_eos_(data->stream_id);
+        } catch (const std::exception &e) {
+          // on_eos 失败不应阻断 EOS 向下游传递
+          LOGE(PyModule) << GetName() << " call on_eos failed : " << e.what();
+        }
       } else {
         try {
           int ret = py::cast<int>(pyprocess_(data));
           if (ret) return ret;
-        } catch (std::runtime_error e) {
-          LOGF(PyModule) << GetName() << " call process failed : " << e.what();
+        } catch (const std::exception &e) {
+          LOGE(PyModule) << GetName() << " call process failed : " << e.what();
+          return -1;
         }
       }
     }
@@ -232,7 +251,7 @@ void ModuleWrapper(py::module &m) {  // NOLINT
       .def("has_transmit", &Module::HasTransmit)
       .def("get_container", [] (detail::Pybind11Module* module) {
             return module->proxy_ ? module->proxy_->GetContainer() : nullptr;
-          });
+          }, py::return_value_policy::reference);
   py::class_<detail::Pybind11ModuleEx, detail::Pybind11Module,
       detail::Pybind11ModuleV<detail::Pybind11ModuleEx>>(m, "ModuleEx")
       .def(py::init<const std::string&>());
