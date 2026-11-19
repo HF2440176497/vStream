@@ -153,20 +153,21 @@ class Pre_YOLO_CPU_v2: public Preproc {
         return 0;
     }
     
-    cv::parallel_for_(cv::Range(0, roi_h), [&](const cv::Range& range) {
-        for (int y = range.start; y < range.end; ++y) {
-            const uint8_t* src_row = resize_img.ptr<uint8_t>(y);
-            int dst_idx = (top + y) * input_w + left;
-            for (int x = 0; x < roi_w; ++x) {
-                float r = src_row[3 * x + 2] / 255.0f;
-                float g = src_row[3 * x + 1] / 255.0f;
-                float b = src_row[3 * x + 0] / 255.0f;
-                ch_r[dst_idx + x] = r;
-                ch_g[dst_idx + x] = g;
-                ch_b[dst_idx + x] = b;
-            }
+    // 外层 InferThreadPool 已按帧并行，且任务量小（模型输入尺寸固定），
+    // 此处串行执行，避免唤醒 OpenCV 线程池引发自旋空转
+    const float inv255 = 1.0f / 255.0f;
+    for (int y = 0; y < roi_h; ++y) {
+        const uint8_t* src_row = resize_img.ptr<uint8_t>(y);
+        const int dst_idx = (top + y) * input_w + left;
+        float* r_row = ch_r + dst_idx;
+        float* g_row = ch_g + dst_idx;
+        float* b_row = ch_b + dst_idx;
+        for (int x = 0; x < roi_w; ++x) {
+            r_row[x] = src_row[3 * x + 2] * inv255;
+            g_row[x] = src_row[3 * x + 1] * inv255;
+            b_row[x] = src_row[3 * x + 0] * inv255;
         }
-    });
+    }
     return 0;
   }
  private:

@@ -47,6 +47,10 @@ PYBIND11_MODULE(vstream, m) {
   m.def("set_ffmpeg_log_level", &SetFFmpegLogLevel,
         "Set the FFmpeg log level (e.g., AV_LOG_ERROR=16, AV_LOG_WARNING=24, AV_LOG_INFO=32, AV_LOG_DEBUG=48)");
 
+  // 前处理已由 InferThreadPool 按帧并行，
+  // OpenCV 内建线程池会在帧间 sched_yield 自旋空转。
+  cv::setNumThreads(1);
+
   FrameInfoWrapper(m);
   FrameVaWrapper(m);
   ModuleWrapper(m);
