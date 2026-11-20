@@ -63,7 +63,7 @@ class QueueHandlerImpl {
 
     LOGI(SINK) << "[" << stream_id_ << "]: OnFrame timestamp=" << frame_info->timestamp;
 
-    SaveOriFrame(frame_info);
+    EnsureOriginalImage(frame_info);
 
     s_output_data data = ConvertFrameInfo(frame_info);
     Push(data);

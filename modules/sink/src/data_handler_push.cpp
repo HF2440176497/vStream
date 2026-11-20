@@ -187,7 +187,7 @@ int PushHandlerIm::Process(const std::shared_ptr<FrameInfo> data) {
     return -1;
   }
 
-  SaveOriFrame(data);
+  EnsureOriginalImage(data);
 
   if (mark_render_ && data->collection.HasValue(cnstream::kInferObjsTag)) {
     if (!render_) {

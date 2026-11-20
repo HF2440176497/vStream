@@ -113,27 +113,19 @@ inline void to_json(nlohmann::json& j, const s_obj_in& obj) {
 }
 
 /**
- * @brief 在 FrameInfo 的 collection 中保存原始图像到 kCustomImagesTag。
+ * @brief 在任何可能修改 DataFrame 原始数据的操作（如标框渲染）之前，物化原图快照。
  *
- * 应在任何可能修改 DataFrame 原始数据的操作（如标框渲染）之前调用。
- * PushHandler 和 QueueHandler 均需在 Process 入口处调用。
+ * 隔离机制：DataFrame::GetImage() 首次调用时会从原始平面 data_[0] clone/转换出
+ * 独立的 mat_ 并缓存，之后始终返回该 mat_ 的浅引用；标框渲染 Render 改的是
+ * data_[0]，不影响 mat_。因此只需在渲染前触发一次 GetImage()，
+ * 后续 ConvertFrameInfo 读到的就是未渲染的原图。
  *
- * 隔离机制：GetImage() 返回缓存 mat_ 的浅引用，
- * 而 mat_ 首次生成时是从原始平面 data_[0] clone/转换出来的独立缓冲
- * （见 DataFrame::GetImage / BGRToBGR）；标框渲染 Render
- * 改的是 data_[0]，因此本快照天然独立于渲染修改，无需再 clone（避免每帧整帧拷贝的热路径开销）。
  */
-inline void SaveOriFrame(const std::shared_ptr<FrameInfo>& frame_info) {
+inline void EnsureOriginalImage(const std::shared_ptr<FrameInfo>& frame_info) {
   if (!frame_info->collection.HasValue(kDataFrameTag)) return;
   auto frame = frame_info->collection.Get<DataFramePtr>(kDataFrameTag);
   if (!frame) return;
-
-  if (!frame_info->collection.HasValue(kCustomImagesTag)) {
-    frame_info->collection.AddIfNotExists(kCustomImagesTag,
-        std::make_shared<std::map<std::string, cv::Mat>>());
-  }
-  auto custom_images = frame_info->collection.Get<CustomImagesPtr>(kCustomImagesTag);
-  (*custom_images)[output_constants::key_original_image] = frame->GetImage();
+  frame->GetImage();  // 首次调用完成深拷贝并缓存到 DataFrame::mat_
 }
 
 /**
